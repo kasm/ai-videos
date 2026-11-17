@@ -1,4 +1,5 @@
-// Entry point: npm run video -- <command> [slug] [options]
+// Entry point: npm run video -- <command> [video] [options]
+import { existsSync } from "node:fs";
 import { mkdir, writeFile, copyFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
@@ -10,25 +11,43 @@ import { buildTimeline } from "./timeline.ts";
 import { KokoroProvider, speak } from "./tts.ts";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
+// npm runs scripts in the package folder; paths on the command line are relative to where it was typed.
+const CALLER = process.env.INIT_CWD ?? process.cwd();
 const TTS_CACHE = path.join(ROOT, ".cache", "tts");
 const log = (msg: string) => console.log(msg);
 
-const HELP = `Usage: npm run video -- <command> [slug] [options]
+const HELP = `Usage: npm run video -- <command> [video] [options]
+
+A video is a folder holding a video.yaml: a bare name is a folder in this tool's videos/,
+anything with a slash is a path, relative to where the command is run.
 
 Commands
-  build <slug>     Narrate, compose, render and post-process a video into out/<slug>/
-  compose <slug>   Narrate and generate the HyperFrames project in build/<slug>/ (no render)
-  check <slug>     Compose, then run HyperFrames' lint and layout checks
-  preview <slug>   Compose, then open the live preview
+  build <video>    Narrate, compose, render and post-process a video into out/<name>/
+  compose <video>  Narrate and generate the HyperFrames project in build/<name>/ (no render)
+  check <video>    Compose, then run HyperFrames' lint and layout checks
+  preview <video>  Compose, then open the live preview
   voices [text]    Write a sample of several voices to out/voice-samples/
 
 Options
   --format <landscape|portrait>   Only this format (default: every format in the script)
   --draft                         Fast, lower-quality render for iteration
+  --out <folder>                  build only: write the finished files here instead of out/<name>/
 `;
 
-async function prepare(slug: string, only?: string) {
-  const video = await loadVideo(ROOT, slug);
+/** The folder a command-line video names: a bare name is in videos/, anything else is a path. */
+function videoDir(arg: string): string {
+  const isPath = /[\\/]/.test(arg) || arg === "." || arg === ".." || path.isAbsolute(arg);
+  if (isPath) return path.resolve(CALLER, arg);
+  const dir = path.join(ROOT, "videos", arg);
+  if (!existsSync(dir) && existsSync(path.join(CALLER, arg, "video.yaml"))) {
+    throw new Error(`No video "${arg}" in ${path.join(ROOT, "videos")}. For the folder here, give it as a path: ./${arg}`);
+  }
+  return dir;
+}
+
+async function prepare(dir: string, only?: string) {
+  const video = await loadVideo(dir);
+  log(`Video: ${video.dir}`);
   const formats = (only ? [only] : video.script.formats) as FormatName[];
   for (const f of formats) {
     if (f !== "landscape" && f !== "portrait") throw new Error(`Unknown format "${f}"`);
@@ -49,6 +68,7 @@ async function main() {
     options: {
       format: { type: "string" },
       draft: { type: "boolean", default: false },
+      out: { type: "string" },
       help: { type: "boolean", short: "h", default: false },
     },
   });
@@ -71,10 +91,13 @@ async function main() {
     return log(`Samples written to ${dir}`);
   }
 
-  if (!arg) throw new Error(`"${command}" needs a video slug, e.g. npm run video -- ${command} scroll-demo`);
   if (!["build", "compose", "check", "preview"].includes(command)) throw new Error(`Unknown command "${command}"\n\n${HELP}`);
+  if (!arg) {
+    throw new Error(`"${command}" needs a video: a name in videos/ or a folder's path, e.g. npm run video -- ${command} scroll-demo`);
+  }
+  if (values.out !== undefined && command !== "build") throw new Error(`--out is for build; ${command} writes only to build/`);
 
-  const { video, timeline, formats, projects } = await prepare(arg, values.format);
+  const { video, timeline, formats, projects } = await prepare(videoDir(arg), values.format);
 
   if (command === "compose") {
     return log(`Projects: ${Object.values(projects).join(", ")}`);
@@ -96,7 +119,7 @@ async function main() {
     return;
   }
 
-  const outDir = path.join(ROOT, "out", video.slug);
+  const outDir = values.out !== undefined ? path.resolve(CALLER, values.out) : path.join(ROOT, "out", video.slug);
   await mkdir(outDir, { recursive: true });
   const suffix = values.draft ? "-draft" : "";
   for (const format of formats) {

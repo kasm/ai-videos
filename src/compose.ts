@@ -136,7 +136,7 @@ export async function compose(
   }
 
   const index = `<!doctype html>
-<!-- Generated from videos/${video.slug}/video.yaml. Edit the script, the page or the scene template, not this file. -->
+<!-- Generated from ${video.file}. Edit the script, the page or the scene template, not this file. -->
 <html lang="en">
   <head>
     <meta charset="UTF-8" />

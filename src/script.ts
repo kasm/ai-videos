@@ -1,4 +1,4 @@
-// Loads and validates a video script (videos/<slug>/video.yaml).
+// Loads and validates a video script (<video folder>/video.yaml).
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { parse } from "yaml";
@@ -84,19 +84,27 @@ export type VideoScript = z.infer<typeof Video>;
 export type SceneScript = VideoScript["scenes"][number];
 
 export interface LoadedVideo {
+  /** The video folder's name: it names the build folder and the finished files. */
   slug: string;
+  /** The video folder, anywhere on the disk. Pages, styles and assets are relative to it. */
   dir: string;
+  /** Its video.yaml. */
+  file: string;
   script: VideoScript;
 }
 
-export async function loadVideo(root: string, videoSlug: string): Promise<LoadedVideo> {
-  const dir = path.join(root, "videos", videoSlug);
+/** Loads the video whose folder is `dir`: its video.yaml and, relative to it, everything it names. */
+export async function loadVideo(dir: string): Promise<LoadedVideo> {
   const file = path.join(dir, "video.yaml");
   let raw: string;
   try {
     raw = await readFile(file, "utf8");
   } catch {
     throw new Error(`No script found at ${file}`);
+  }
+  const name = slug.safeParse(path.basename(dir));
+  if (!name.success) {
+    throw new Error(`${dir}: the folder's name names the video's files, so use lowercase letters, digits and dashes`);
   }
   const result = Video.safeParse(parse(raw));
   if (!result.success) {
@@ -108,5 +116,5 @@ export async function loadVideo(root: string, videoSlug: string): Promise<Loaded
   if (ids.includes("main") || ids.includes("root")) {
     throw new Error(`${file}: scene ids "main" and "root" are reserved`);
   }
-  return { slug: videoSlug, dir, script: result.data };
+  return { slug: name.data, dir, file, script: result.data };
 }

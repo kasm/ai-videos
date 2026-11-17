@@ -6,23 +6,38 @@ HTML to MP4 frame by frame. Everything runs locally on Node; there is no Python 
 ## Commands
 
 ```
-npm run video -- build <slug>            narrate, render every format, write out/<slug>/
-npm run video -- build <slug> --draft    fast low-quality render for iteration
-npm run video -- build <slug> --format portrait
-npm run video -- check <slug>            lint, layout, contrast and pacing checks (run after every edit)
-npm run video -- preview <slug>          live preview in the browser
-npm run video -- compose <slug>          only generate build/<slug>/<format>/
-npm run video -- voices ["text"]         voice samples in out/voice-samples/
+npm run video -- build <video>             narrate, render every format, write out/<name>/
+npm run video -- build <video> --draft     fast low-quality render for iteration
+npm run video -- build <video> --format portrait
+npm run video -- build <video> --out <dir> write the finished files to <dir> instead
+npm run video -- check <video>             lint, layout, contrast and pacing checks (run after every edit)
+npm run video -- preview <video>           live preview in the browser
+npm run video -- compose <video>           only generate build/<name>/<format>/
+npm run video -- voices ["text"]           voice samples in out/voice-samples/
 npm run typecheck
 ```
+
+A `<video>` is a folder holding a `video.yaml`. A bare name (`scroll-demo`) is a folder in this
+tool's `videos/`; anything with a slash is a path to a folder anywhere on the disk, relative to
+where the command is typed, so another project runs the tool on its own folder:
+
+```
+cd d:/some/project
+npm --prefix d:/m/web/ai_videos run video -- build media/videos/intro --out media/out
+```
+
+The folder's name is the video's `<name>`: it names `build/<name>/` and the finished files
+(`<name>-landscape.mp4`, `<name>.srt`), so it uses lowercase letters, digits and dashes. Pages,
+styles and `assets/` are found relative to the folder; scene templates, voices and the TTS cache
+always come from this tool. The build and the cache stay here; only `--out` writes elsewhere.
 
 ## Layout
 
 | Path | What it is |
 | --- | --- |
-| `videos/<slug>/video.yaml` | The script: scenes, narration lines, cues. Source of truth for a video. |
-| `videos/<slug>/page.html`, `page.css` | The page a `page-scroll` scene shows. |
-| `videos/<slug>/assets/` | The page's pictures, copied into the build; the page refers to them as `assets/<file>`. |
+| `videos/<name>/video.yaml` | The script: scenes, narration lines, cues. Source of truth for a video. |
+| `videos/<name>/page.html`, `page.css` | The page a `page-scroll` scene shows. |
+| `videos/<name>/assets/` | The page's pictures, copied into the build; the page refers to them as `assets/<file>`. |
 | `scenes/<name>/scene.html` | Reusable scene templates (HyperFrames sub-compositions with `{{placeholders}}`). |
 | `src/` | The pipeline: `script` → `tts` → `timeline` → `compose` → `render` → `srt`. |
 | `build/` | Generated HyperFrames projects. Never edit; regenerated on every run. |
@@ -76,3 +91,5 @@ Portrait scenes keep reading text inside x 120–888 and y 288–1248, the area 
 - HyperFrames telemetry is disabled on this machine (`npx hyperframes telemetry disable`).
 - Subtitles come from the script text and line timings; long lines are split in proportion to
   their length, not by word timestamps.
+- Two videos with the same folder name share `build/<name>/` and, without `--out`, `out/<name>/`:
+  build one at a time, or give the outside one its own `--out`.
