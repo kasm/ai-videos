@@ -1,0 +1,255 @@
+/* Page styles for the scroll demo. Every rule starts with .page so it cannot leak into the scene.
+   Sizes are in em: the scene sets the base font size per format. Inter ships at 400, 700 and 900. */
+.page {
+  --ink: #0f172a;
+  --muted: #55607a;
+  --accent: #3b5bfd;
+  --soft: #eef1ff;
+  --line: #dde2ec;
+  color: var(--ink);
+  line-height: 1.5;
+  padding: 0 2em 3em;
+}
+.page > * {
+  max-width: 34em;
+  margin-left: auto;
+  margin-right: auto;
+}
+.page p {
+  color: var(--muted);
+}
+
+.page .hero {
+  padding: 3.4em 0 2.6em;
+}
+.page .eyebrow {
+  font-size: 0.84em;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.page h1 {
+  margin: 0.25em 0 0.3em;
+  font-size: 3.2em;
+  font-weight: 900;
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+}
+.page .lead {
+  max-width: 24em;
+  font-size: 1.2em;
+}
+
+.page .step {
+  padding: 2.2em 0 2.4em;
+  border-top: 2px solid var(--line);
+}
+.page .num {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.84em;
+  color: var(--accent);
+}
+.page h2 {
+  margin: 0.1em 0 0.3em;
+  font-size: 1.9em;
+  font-weight: 700;
+  line-height: 1.12;
+  letter-spacing: -0.025em;
+}
+
+/* 01 script */
+.page .code {
+  margin-top: 1.3em;
+  padding: 1.3em 1.6em;
+  border-radius: 0.7em;
+  background: var(--ink);
+  color: #cbd5e1;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.84em;
+  line-height: 1.6;
+  white-space: pre;
+  overflow: hidden;
+}
+.page .code .k {
+  color: #8fa4ff;
+}
+.page .code .s {
+  color: #f1f5f9;
+}
+.page .code .c {
+  color: #5eead4;
+}
+
+/* 02 voice */
+.page .wave {
+  display: flex;
+  align-items: center;
+  gap: 0.28em;
+  height: 5em;
+  margin-top: 1.3em;
+  padding: 0 1.2em;
+  border-radius: 0.7em;
+  background: var(--soft);
+}
+.page .wave i {
+  flex: 1;
+  height: var(--h);
+  border-radius: 999px;
+  background: var(--accent);
+}
+.page .facts {
+  display: flex;
+  gap: 2em;
+  margin-top: 1.2em;
+}
+.page .facts div {
+  flex: 1;
+  padding-left: 0.8em;
+  border-left: 3px solid var(--accent);
+}
+.page .facts dt {
+  font-size: 0.84em;
+  color: var(--muted);
+}
+.page .facts dd {
+  margin: 0;
+  font-size: 1em;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+/* 03 timing */
+.page .clock {
+  margin-top: 1.3em;
+}
+.page .track {
+  display: flex;
+  gap: 0.3em;
+}
+.page .track span {
+  padding: 0.55em 0;
+  border-radius: 0.4em;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 0.84em;
+  font-weight: 700;
+  text-align: center;
+}
+.page .track.marks {
+  margin-top: 0.3em;
+}
+.page .track.marks span {
+  padding: 0.5em 0 0 0.5em;
+  border-radius: 0;
+  border-left: 3px solid var(--ink);
+  background: none;
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 400;
+  text-align: left;
+}
+
+/* 04 render */
+.page .strip {
+  display: flex;
+  gap: 0.5em;
+  margin-top: 1.3em;
+  padding: 0.6em;
+  border-radius: 0.7em;
+  background: var(--ink);
+}
+.page .cell {
+  position: relative;
+  flex: 1;
+  aspect-ratio: 16 / 10;
+  border-radius: 0.3em;
+  background: #ffffff;
+  overflow: hidden;
+}
+.page .cell b {
+  position: absolute;
+  z-index: 1;
+  right: 0.3em;
+  bottom: 0.2em;
+  padding: 0 0.25em;
+  border-radius: 0.2em;
+  background: #ffffff;
+  line-height: 1.3;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.84em;
+  font-weight: 400;
+  color: var(--muted);
+}
+.page .cell span {
+  position: absolute;
+  inset: 14% 12% auto 12%;
+  height: 160%;
+  translate: 0 var(--y);
+  background: repeating-linear-gradient(to bottom, var(--line) 0 9%, transparent 9% 20%);
+}
+
+/* 05 formats */
+.page .shapes {
+  display: flex;
+  align-items: flex-end;
+  gap: 2em;
+  margin-top: 1.3em;
+}
+.page .shapes figure {
+  margin: 0;
+}
+.page .shapes div {
+  border: 3px solid var(--accent);
+  border-radius: 0.4em;
+  background:
+    linear-gradient(var(--accent), var(--accent)) 12% 18% / 46% 8% no-repeat,
+    repeating-linear-gradient(to bottom, var(--line) 0 0.28em, transparent 0.28em 0.8em) 12% 70% / 76% 46% no-repeat,
+    var(--soft);
+}
+.page .shapes .wide div {
+  width: 12.8em;
+  height: 7.2em;
+}
+.page .shapes .tall div {
+  width: 4.05em;
+  height: 7.2em;
+}
+.page .shapes figcaption {
+  margin-top: 0.4em;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.84em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* Vertical video: narrower column, so stack what sat side by side. */
+[data-format="portrait"] .page {
+  padding: 0 0 3em;
+}
+[data-format="portrait"] .page h1 {
+  font-size: 2.7em;
+}
+[data-format="portrait"] .page .code {
+  font-size: 0.72em;
+  padding: 1.2em 1.2em;
+}
+[data-format="portrait"] .page .track span {
+  font-size: 0.72em;
+}
+[data-format="portrait"] .page .facts {
+  flex-direction: column;
+  gap: 0.5em;
+}
+[data-format="portrait"] .page .facts div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1em;
+}
+[data-format="portrait"] .page .strip {
+  flex-wrap: wrap;
+}
+[data-format="portrait"] .page .cell {
+  flex: 1 1 30%;
+}

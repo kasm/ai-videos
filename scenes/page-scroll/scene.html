@@ -1,0 +1,468 @@
+<!--
+  page-scroll: a web page inside a browser window, scrolled in time with the narration.
+  Placeholders are filled by src/compose.ts. The page body comes from the video's page file;
+  each narration line names a data-cue element, and the scroll arrives there as the line begins.
+  A line may also draw marks (circle, underline, arrow, box, check) on data-mark elements: each is
+  a canvas over the page, painted from the scene's time alone, so any frame can be drawn on its own.
+-->
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      font-family: Inter, sans-serif;
+      --ps-margin: 56px; /* window inset: sides and bottom */
+      --ps-top: 56px; /* window inset: top */
+      --ps-bar: 68px; /* address bar height */
+      --ps-pad-l: 0px; /* extra page padding, keeps text clear of app UI */
+      --ps-pad-r: 0px;
+      --page-font: 34px; /* 1em for the page */
+    }
+    /* 9:16: apps cover the top 168 px, the right-hand rail and everything below about 1250 px.
+       Text stays between x 120 and 888; the script below parks each cue just under y 288. */
+    #root[data-format="portrait"] {
+      --ps-margin: 32px;
+      --ps-top: 168px;
+      --ps-bar: 80px;
+      --ps-pad-l: 88px;
+      --ps-pad-r: 160px;
+      --page-font: 40px;
+    }
+    .ps-bg {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(120% 90% at 15% 0%, #22346b 0%, #0c1222 62%);
+    }
+    .ps-window {
+      position: absolute;
+      inset: var(--ps-top) var(--ps-margin) var(--ps-margin);
+      border-radius: 28px;
+      overflow: hidden;
+      background: #ffffff;
+      box-shadow: 0 40px 120px rgba(0, 0, 0, 0.45);
+    }
+    .ps-bar {
+      position: absolute;
+      inset: 0 0 auto 0;
+      height: var(--ps-bar);
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      padding: 0 28px;
+      background: #eceff5;
+      border-bottom: 2px solid #dde2ec;
+    }
+    .ps-dots {
+      display: flex;
+      gap: 12px;
+    }
+    .ps-dots i {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #c9cfdc;
+    }
+    .ps-url {
+      flex: 1;
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 0 28px;
+      height: calc(var(--ps-bar) - 26px);
+      line-height: calc(var(--ps-bar) - 26px);
+      border-radius: 999px;
+      background: #ffffff;
+      color: #55607a;
+      font-size: calc(var(--ps-bar) * 0.42);
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+    .ps-viewport {
+      position: absolute;
+      inset: var(--ps-bar) 0 0 0;
+      overflow: hidden;
+    }
+    .ps-content {
+      position: relative;
+      width: 100%;
+      padding: 0 var(--ps-pad-r) 0 var(--ps-pad-l);
+      font-size: var(--page-font);
+    }
+    /* Hand-drawn marks: one canvas per mark, laid over the page and scrolled with it. */
+    .ps-ink {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 0;
+      height: 0;
+      overflow: visible;
+      pointer-events: none;
+      z-index: 2;
+    }
+    .ps-ink canvas {
+      position: absolute;
+    }
+    .ps-thumb {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 10px;
+      height: 120px;
+      border-radius: 5px;
+      background: rgba(15, 23, 42, 0.22);
+    }
+    {{pageCss}}
+  </style>
+
+  <div id="root" data-composition-id="{{id}}" data-width="{{width}}" data-height="{{height}}" data-format="{{format}}">
+    <div class="ps-bg" data-layout-allow-occlusion></div>
+    <div class="ps-window" id="{{id}}-window">
+      <div class="ps-bar" data-layout-allow-occlusion>
+        <span class="ps-dots"><i></i><i></i><i></i></span>
+        <span class="ps-url" data-layout-allow-occlusion>{{url}}</span>
+      </div>
+      <div class="ps-viewport" id="{{id}}-viewport" data-layout-allow-overflow>
+        <div class="ps-content" id="{{id}}-content">
+          <div class="page">
+{{pageHtml}}
+          </div>
+          <div class="ps-ink" id="{{id}}-ink" data-layout-ignore></div>
+        </div>
+        <div class="ps-thumb" id="{{id}}-thumb" data-layout-ignore></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var ID = "{{id}}";
+      var DURATION = {{duration}};
+      var LINES = {{linesJson}}; // [{ start, duration, cue, pause, marks: [{ mark, on, area, from, at }] }], seconds from the scene's start
+
+      var FOCUS = { landscape: 90, portrait: 56 }["{{format}}"]; // a cue's top edge lands this far below the address bar, px
+      var LEAD = 0.3; // the scroll starts this long before the voice
+      var MOVE = 0.9; // longest scroll move, seconds
+      var DRIFT = 36; // slow creep while a line is spoken, px
+      var DRIFT_MAX = 72; // most creep between two moves, so a cue with many lines stays in view
+      var DIM = 0.4; // opacity of cue blocks that are not being talked about
+
+      var content = document.getElementById(ID + "-content");
+      var viewport = document.getElementById(ID + "-viewport");
+      var thumb = document.getElementById(ID + "-thumb");
+
+      function topWithin(el) {
+        var y = 0;
+        while (el && el !== content) {
+          y += el.offsetTop;
+          el = el.offsetParent;
+        }
+        return y;
+      }
+
+      // Layout boxes, not getBoundingClientRect: a preview may scale the stage, layout never moves.
+      function boxWithin(el) {
+        var box = { x: 0, y: 0, w: el.offsetWidth, h: el.offsetHeight };
+        while (el && el !== content) {
+          box.x += el.offsetLeft;
+          box.y += el.offsetTop;
+          el = el.offsetParent;
+        }
+        return box;
+      }
+
+      // ---- Hand-drawn marks -------------------------------------------------------------------
+      var INK_TIME = { circle: 0.62, underline: 0.42, arrow: 0.6, box: 0.75, check: 0.36 }; // seconds to draw
+      var INK_FADE = 0.3; // seconds to fade when the page moves on
+      var DIRS = {
+        left: [-1, 0], right: [1, 0], top: [0, -1], bottom: [0, 1],
+        "top-left": [-0.7071, -0.7071], "top-right": [0.7071, -0.7071],
+        "bottom-left": [-0.7071, 0.7071], "bottom-right": [0.7071, 0.7071],
+      };
+
+      function seeded(seed) {
+        // mulberry32: the same wobble on every render
+        return function () {
+          seed = (seed + 0x6d2b79f5) | 0;
+          var t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+          t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+      }
+
+      // Points from a to b, bowed sideways by `bow` px at the middle.
+      function stroke(pts, a, b, bow) {
+        var dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy) || 1;
+        var n = Math.max(2, Math.ceil(len / 4));
+        for (var i = pts.length ? 1 : 0; i <= n; i++) {
+          var s = i / n, off = Math.sin(Math.PI * s) * bow;
+          pts.push([a[0] + dx * s - (dy / len) * off, a[1] + dy * s + (dx / len) * off]);
+        }
+        return pts;
+      }
+
+      // Each shape is a list of strokes (point lists, content px), drawn one after another.
+      var SHAPES = {
+        circle: function (r, rand, em) {
+          var cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+          // big enough to go round the area's corners, not through them
+          var rx = (r.w / 2) * 1.3 + 0.3 * em, ry = (r.h / 2) * 1.3 + 0.3 * em;
+          var start = -2.3 + (rand() - 0.5) * 0.5; // upper left, then clockwise
+          var sweep = Math.PI * 2 * (1.1 + rand() * 0.06);
+          var tilt = (rand() - 0.5) * 0.1, p1 = rand() * 6.3, p2 = rand() * 6.3;
+          var n = Math.ceil((sweep * Math.max(rx, ry)) / 3) + 8, pts = [];
+          for (var i = 0; i <= n; i++) {
+            var s = i / n, a = start + sweep * s;
+            // a slight spiral, so the end overshoots the start instead of closing neatly
+            var k = 1 + 0.03 * Math.sin(2 * a + p1) + 0.02 * Math.sin(3 * a + p2) + 0.07 * (s - 0.4);
+            var x = rx * k * Math.cos(a), y = ry * k * Math.sin(a);
+            pts.push([cx + x * Math.cos(tilt) - y * Math.sin(tilt), cy + x * Math.sin(tilt) + y * Math.cos(tilt)]);
+          }
+          return [pts];
+        },
+        underline: function (r, rand, em) {
+          var x0 = r.x - 0.1 * em, x1 = r.x + r.w + 0.15 * em, y = r.y + r.h + 0.12 * em;
+          var rise = -(0.06 + rand() * 0.12) * em, sag = (0.05 + rand() * 0.06) * em, ph = rand() * 6.3;
+          var n = Math.ceil((x1 - x0) / 4) + 4, pts = [];
+          for (var i = 0; i <= n; i++) {
+            var s = i / n;
+            pts.push([x0 + (x1 - x0) * s, y + rise * s + sag * Math.sin(Math.PI * s) + 0.025 * em * Math.sin((s * (x1 - x0)) / (0.9 * em) + ph)]);
+          }
+          return [pts];
+        },
+        box: function (r, rand, em) {
+          var pad = 0.3 * em, j = function () { return (rand() - 0.5) * 0.18 * em; };
+          var c = [
+            [r.x - pad + j(), r.y - pad + j()], [r.x + r.w + pad + j(), r.y - pad + j()],
+            [r.x + r.w + pad + j(), r.y + r.h + pad + j()], [r.x - pad + j(), r.y + r.h + pad + j()],
+          ];
+          var back = [c[0][0] + j(), c[0][1] + j()], over = [back[0] + 1.1 * em, back[1] + j() * 0.5];
+          var pts = [];
+          [[c[0], c[1]], [c[1], c[2]], [c[2], c[3]], [c[3], back], [back, over]].forEach(function (e) {
+            stroke(pts, e[0], e[1], (rand() - 0.5) * 0.2 * em);
+          });
+          return [pts];
+        },
+        arrow: function (r, rand, em, from) {
+          var d = DIRS[from] || DIRS.left;
+          var cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+          var rx = Math.max(1, r.w / 2), ry = Math.max(1, r.h / 2);
+          var reach = 1 / Math.hypot(d[0] / rx, d[1] / ry) + 0.3 * em, L = 3.8 * em;
+          var tip = [cx + d[0] * reach, cy + d[1] * reach];
+          var tail = [tip[0] + d[0] * L, tip[1] + d[1] * L];
+          var bend = (rand() < 0.5 ? -1 : 1) * (0.12 + rand() * 0.08) * L;
+          var mid = [(tip[0] + tail[0]) / 2 - d[1] * bend, (tip[1] + tail[1]) / 2 + d[0] * bend];
+          var shaft = [], n = Math.ceil(L / 4) + 4;
+          for (var i = 0; i <= n; i++) {
+            var s = i / n, u = 1 - s;
+            shaft.push([u * u * tail[0] + 2 * u * s * mid[0] + s * s * tip[0], u * u * tail[1] + 2 * u * s * mid[1] + s * s * tip[1]]);
+          }
+          var vx = mid[0] - tip[0], vy = mid[1] - tip[1], vl = Math.hypot(vx, vy) || 1, h = 0.85 * em;
+          vx /= vl; vy /= vl;
+          var wing = function (a) { return [tip[0] + (vx * Math.cos(a) - vy * Math.sin(a)) * h, tip[1] + (vx * Math.sin(a) + vy * Math.cos(a)) * h]; };
+          var head = stroke(stroke([], wing(0.5), tip, 0), tip, wing(-0.5), 0);
+          return [shaft, head];
+        },
+        check: function (r, rand, em) {
+          var s = Math.min(r.w, r.h), cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+          var a = [cx - 0.42 * s, cy - 0.02 * s], b = [cx - 0.12 * s, cy + 0.3 * s], c = [cx + 0.45 * s, cy - 0.4 * s];
+          return [stroke(stroke([], a, b, 0.03 * s), b, c, -0.05 * s)];
+        },
+      };
+
+      function makeMark(spec, start, seed, ink, style) {
+        var el = content.querySelector('[data-mark="' + spec.on + '"]');
+        if (!el) return null;
+        var box = boxWithin(el), a = spec.area;
+        var r = { x: box.x + a[0] * box.w, y: box.y + a[1] * box.h, w: (a[2] - a[0]) * box.w, h: (a[3] - a[1]) * box.h };
+        var strokes = SHAPES[spec.mark](r, seeded(seed), style.em, spec.from).map(function (pts) {
+          var cum = [0];
+          for (var i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+          return { pts: pts, cum: cum, length: cum[cum.length - 1], phase: seed * 1.7 };
+        });
+        var total = strokes.reduce(function (sum, s) { s.base = sum; return sum + s.length; }, 0);
+        var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+        strokes.forEach(function (s) {
+          s.pts.forEach(function (p) { x0 = Math.min(x0, p[0]); y0 = Math.min(y0, p[1]); x1 = Math.max(x1, p[0]); y1 = Math.max(y1, p[1]); });
+        });
+        var pad = Math.ceil(style.width * 2 + 8), dpr = window.devicePixelRatio || 1;
+        var canvas = document.createElement("canvas");
+        canvas.setAttribute("data-layout-ignore", "");
+        var ox = Math.floor(x0 - pad), oy = Math.floor(y0 - pad);
+        var cw = Math.ceil(x1 + pad) - ox, ch = Math.ceil(y1 + pad) - oy;
+        canvas.width = Math.ceil(cw * dpr);
+        canvas.height = Math.ceil(ch * dpr);
+        canvas.style.left = ox + "px";
+        canvas.style.top = oy + "px";
+        canvas.style.width = cw + "px";
+        canvas.style.height = ch + "px";
+        ink.appendChild(canvas);
+        return {
+          ctx: canvas.getContext("2d"), canvas: canvas, ox: ox, oy: oy, cw: cw, ch: ch, dpr: dpr,
+          strokes: strokes, total: total, start: start, dur: INK_TIME[spec.mark], fadeAt: Infinity, shown: -1, alpha: -1,
+        };
+      }
+
+      // Paints the first `share` of a mark's strokes: a soft shadow pass, then the ink.
+      function paintMark(m, share, style) {
+        var ctx = m.ctx;
+        ctx.setTransform(m.dpr, 0, 0, m.dpr, 0, 0);
+        ctx.clearRect(0, 0, m.cw, m.ch);
+        if (share <= 0) return;
+        ctx.translate(-m.ox, -m.oy);
+        ctx.lineCap = "round";
+        var upto = share * m.total, W = style.width;
+        [[style.shadow, 1.6, style.em * 0.06], [style.color, 0, 0]].forEach(function (pass) {
+          ctx.strokeStyle = pass[0];
+          m.strokes.forEach(function (s) {
+            var limit = upto - s.base, pts = s.pts, cum = s.cum, L = s.length;
+            for (var i = 1; i < pts.length && cum[i - 1] < limit; i++) {
+              var p = pts[i - 1], q = pts[i], qx = q[0], qy = q[1];
+              if (cum[i] > limit) {
+                var f = (limit - cum[i - 1]) / (cum[i] - cum[i - 1]);
+                qx = p[0] + (q[0] - p[0]) * f;
+                qy = p[1] + (q[1] - p[1]) * f;
+              }
+              var at = (cum[i - 1] + Math.min(cum[i], limit)) / 2;
+              var taper = Math.min(1, 0.5 + 0.5 * Math.min(at, L - at) / (2.2 * W)); // thin where the pen lands and lifts
+              var press = 1 + 0.09 * Math.sin(at / (1.1 * style.em) + s.phase);
+              ctx.lineWidth = W * taper * press + pass[1];
+              ctx.beginPath();
+              ctx.moveTo(p[0], p[1] + pass[2]);
+              ctx.lineTo(qx, qy + pass[2]);
+              ctx.stroke();
+            }
+          });
+        });
+      }
+
+      function inkAt(t, marks, style) {
+        marks.forEach(function (m) {
+          var p = Math.min(1, Math.max(0, (t - m.start) / m.dur));
+          var alpha = t < m.fadeAt ? 1 : Math.max(0, 1 - (t - m.fadeAt) / INK_FADE);
+          // a hand speeds up mid-stroke and slows as it lands
+          var share = alpha > 0 ? Math.round((0.6 * (0.5 - 0.5 * Math.cos(Math.PI * p)) + 0.4 * p) * 1000) / 1000 : 0;
+          if (share !== m.shown) {
+            paintMark(m, share, style);
+            m.shown = share;
+          }
+          if (alpha !== m.alpha) {
+            m.canvas.style.opacity = String(alpha);
+            m.alpha = alpha;
+          }
+        });
+      }
+
+      function build() {
+        var tl = gsap.timeline({ paused: true });
+        var viewH = viewport.clientHeight;
+        var blocks = Array.prototype.slice.call(content.querySelectorAll("[data-cue]"));
+
+        // Make the page long enough for its last cue to reach the focus line like the others.
+        var deepest = blocks.reduce(function (max, el) { return Math.max(max, topWithin(el) - FOCUS); }, 0);
+        var shortBy = deepest - (content.scrollHeight - viewH);
+        if (shortBy > 0) content.style.paddingBottom = Math.ceil(shortBy) + "px";
+        var maxScroll = Math.max(0, content.scrollHeight - viewH);
+        var opacity = blocks.map(function () { return 1; });
+
+        var thumbH = Math.max(60, Math.round((viewH - 16) * Math.min(1, viewH / content.scrollHeight)));
+        var thumbTravel = viewH - 16 - thumbH;
+        thumb.style.height = thumbH + "px";
+        var thumbY = function (scroll) { return maxScroll ? (scroll / maxScroll) * thumbTravel : 0; };
+
+        // Every tween states both ends, so any frame can be drawn without playing the ones before it.
+        function scrollTo(from, to, at, duration, ease) {
+          tl.fromTo(content, { y: -from }, { y: -to, duration: duration, ease: ease, immediateRender: false }, at);
+          tl.fromTo(thumb, { y: thumbY(from) }, { y: thumbY(to), duration: duration, ease: ease, immediateRender: false }, at);
+        }
+
+        tl.set(content, { y: 0 }, 0);
+        tl.set(thumb, { y: 0 }, 0);
+
+        var ink = document.getElementById(ID + "-ink");
+        var pageStyle = getComputedStyle(content.querySelector(".page") || content);
+        var em = parseFloat(getComputedStyle(content).fontSize);
+        var style = {
+          em: em,
+          color: pageStyle.getPropertyValue("--mark").trim() || "#1f74ff",
+          shadow: pageStyle.getPropertyValue("--mark-shadow").trim() || "rgba(6, 10, 24, 0.22)",
+          width: (parseFloat(pageStyle.getPropertyValue("--mark-width")) || 0.27) * em,
+        };
+        var marks = [];
+        var live = []; // marks still showing: the next line that moves the page or draws clears them
+
+        var scroll = 0;
+        var drifted = 0;
+        // A line's slot opens before its voice: by LEAD, and by its pause, so the page is there first.
+        function opens(l) { return Math.max(0, l.start - LEAD - (l.pause || 0)); }
+        LINES.forEach(function (line, i) {
+          var at = opens(line);
+          var slotEnd = i + 1 < LINES.length ? opens(LINES[i + 1]) : DURATION - LEAD;
+          var block = line.cue && line.cue !== "top" && line.cue !== "bottom"
+            ? content.querySelector('[data-cue="' + line.cue + '"]')
+            : null;
+
+          var target = scroll;
+          if (line.cue === "top") target = 0;
+          else if (line.cue === "bottom") target = maxScroll;
+          else if (block) target = Math.min(maxScroll, Math.max(0, topWithin(block) - FOCUS));
+
+          var move = 0;
+          if (Math.abs(target - scroll) > 1) {
+            move = Math.min(MOVE, Math.max(0.3, slotEnd - at - 0.2));
+            scrollTo(scroll, target, at, move, "power3.inOut");
+            scroll = target;
+            drifted = 0;
+          }
+
+          var drift = Math.min(DRIFT, maxScroll - scroll, DRIFT_MAX - drifted);
+          var driftFor = slotEnd - (at + move);
+          if (drift > 1 && driftFor > 0.5) {
+            scrollTo(scroll, scroll + drift, at + move, driftFor, "none");
+            scroll += drift;
+            drifted += drift;
+          }
+
+          var drawn = line.marks || [];
+          if (move > 0 || drawn.length) {
+            live.forEach(function (m) { m.fadeAt = Math.min(m.fadeAt, at); });
+            live = [];
+          }
+          drawn.forEach(function (spec, k) {
+            // never draw while the page is still travelling to the cue
+            var m = makeMark(spec, Math.max(spec.at, at + move + 0.05), i * 16 + k + 1, ink, style);
+            if (m) {
+              marks.push(m);
+              live.push(m);
+            }
+          });
+
+          if (line.cue) {
+            blocks.forEach(function (el, b) {
+              var want = !block || el === block ? 1 : DIM;
+              if (want !== opacity[b]) {
+                tl.fromTo(el, { opacity: opacity[b] }, { opacity: want, duration: 0.45, ease: "power2.out", immediateRender: false }, at);
+                opacity[b] = want;
+              }
+            });
+          }
+        });
+
+        // One clock across the scene repaints the marks for its time, so seeking anywhere is exact.
+        if (marks.length) {
+          var clock = { t: 0 };
+          inkAt(0, marks, style);
+          tl.fromTo(clock, { t: 0 }, {
+            t: DURATION, duration: DURATION, ease: "none", immediateRender: false,
+            onUpdate: function () { inkAt(clock.t, marks, style); },
+          }, 0);
+        }
+
+        window.__timelines[ID] = tl;
+      }
+
+      // Cue positions depend on the final fonts, so measure only once they have loaded.
+      if (document.fonts && document.fonts.status !== "loaded") document.fonts.ready.then(build);
+      else build();
+    })();
+  </script>
+</template>

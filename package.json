@@ -1,0 +1,24 @@
+{
+  "name": "ai-videos",
+  "version": "1.0.0",
+  "scripts": {
+    "video": "node src/cli.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "license": "UNLICENSED",
+  "type": "module",
+  "private": "true",
+  "dependencies": {
+    "hyperframes": "0.9.58",
+    "kokoro-js": "1.2.1",
+    "yaml": "2.9.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "typescript": "7.0.2"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

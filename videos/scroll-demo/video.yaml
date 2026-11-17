@@ -1,0 +1,26 @@
+# Test video for the pipeline: a page that scrolls while a local voice explains how it was made.
+# Build it with:  npm run video -- build scroll-demo
+title: How this video was made
+voice: af_heart
+fps: 30
+formats: [landscape, portrait]
+
+scenes:
+  - id: tour
+    scene: page-scroll
+    page: page.html
+    css: page.css
+    url: localhost / how-this-video-was-made
+    narration:
+      - text: This video is a web page. Nobody recorded a screen, and nobody recorded a voice.
+        cue: top
+      - text: "It starts as a short script: a list of lines to say, and where the page should be for each one."
+        cue: script
+      - text: A small speech model reads each line aloud. It runs right here on this computer, so narration costs nothing.
+        cue: voice
+      - text: Then the voice sets the clock. Every line is measured, and the scroll arrives just as its sentence begins.
+        cue: timing
+      - text: Finally, Chrome draws the page one frame at a time, thirty frames for every second you watch.
+        cue: render
+      - text: And because it's just a page, the same source reflows into a wide video and a vertical one.
+        cue: formats

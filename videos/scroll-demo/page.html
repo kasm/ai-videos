@@ -1,0 +1,82 @@
+<header class="hero">
+  <p class="eyebrow">Pipeline test · scroll demo</p>
+  <h1>This video is<br />a web page.</h1>
+  <p class="lead">
+    No screen recorder and no microphone. A script, a local voice, and a browser that draws one
+    frame at a time.
+  </p>
+</header>
+
+<section class="step" data-cue="script">
+  <p class="num">01</p>
+  <h2>It starts as a script</h2>
+  <p>A short file lists what to say, and where the page should be when it is said.</p>
+  <pre class="code"><span class="k">scenes</span>:
+  - <span class="k">scene</span>: page-scroll
+    <span class="k">narration</span>:
+      - <span class="k">text</span>: <span class="s">It starts as a script.</span>
+        <span class="k">cue</span>: <span class="c">script</span></pre>
+</section>
+
+<section class="step" data-cue="voice">
+  <p class="num">02</p>
+  <h2>A local model speaks it</h2>
+  <p>Kokoro, a small open speech model, turns every line into audio on this machine.</p>
+  <div class="wave" aria-hidden="true">
+    <i style="--h: 18%"></i><i style="--h: 34%"></i><i style="--h: 62%"></i><i style="--h: 88%"></i>
+    <i style="--h: 70%"></i><i style="--h: 46%"></i><i style="--h: 58%"></i><i style="--h: 96%"></i>
+    <i style="--h: 76%"></i><i style="--h: 40%"></i><i style="--h: 22%"></i><i style="--h: 30%"></i>
+    <i style="--h: 66%"></i><i style="--h: 84%"></i><i style="--h: 54%"></i><i style="--h: 72%"></i>
+    <i style="--h: 92%"></i><i style="--h: 60%"></i><i style="--h: 36%"></i><i style="--h: 16%"></i>
+    <i style="--h: 28%"></i><i style="--h: 50%"></i><i style="--h: 80%"></i><i style="--h: 64%"></i>
+    <i style="--h: 42%"></i><i style="--h: 74%"></i><i style="--h: 90%"></i><i style="--h: 56%"></i>
+    <i style="--h: 32%"></i><i style="--h: 20%"></i><i style="--h: 44%"></i><i style="--h: 68%"></i>
+    <i style="--h: 52%"></i><i style="--h: 26%"></i><i style="--h: 14%"></i><i style="--h: 24%"></i>
+  </div>
+  <dl class="facts">
+    <div><dt>Model size</dt><dd>82 million parameters</dd></div>
+    <div><dt>Runs on</dt><dd>the CPU, offline</dd></div>
+    <div><dt>Cost per minute</dt><dd>nothing</dd></div>
+  </dl>
+</section>
+
+<section class="step" data-cue="timing">
+  <p class="num">03</p>
+  <h2>The voice sets the clock</h2>
+  <p>Each line is measured, then the scroll is scheduled to arrive as the sentence begins.</p>
+  <div class="clock" aria-hidden="true">
+    <div class="track">
+      <span style="flex: 52">line 1</span><span style="flex: 61">line 2</span>
+      <span style="flex: 66">line 3</span><span style="flex: 64">line 4</span>
+      <span style="flex: 58">line 5</span><span style="flex: 55">line 6</span>
+    </div>
+    <div class="track marks">
+      <span style="flex: 52">top</span><span style="flex: 61">scroll</span>
+      <span style="flex: 66">scroll</span><span style="flex: 64">scroll</span>
+      <span style="flex: 58">scroll</span><span style="flex: 55">scroll</span>
+    </div>
+  </div>
+</section>
+
+<section class="step" data-cue="render">
+  <p class="num">04</p>
+  <h2>Chrome draws every frame</h2>
+  <p>The page is moved to an exact moment, captured, and encoded. Nothing plays in real time.</p>
+  <div class="strip" aria-hidden="true">
+    <div class="cell"><b>0001</b><span style="--y: 0%"></span></div>
+    <div class="cell"><b>0002</b><span style="--y: -12%"></span></div>
+    <div class="cell"><b>0003</b><span style="--y: -24%"></span></div>
+    <div class="cell"><b>0004</b><span style="--y: -36%"></span></div>
+    <div class="cell"><b>0005</b><span style="--y: -48%"></span></div>
+  </div>
+</section>
+
+<section class="step" data-cue="formats">
+  <p class="num">05</p>
+  <h2>One source, two shapes</h2>
+  <p>It is only a page, so the same source reflows for a wide screen and a phone.</p>
+  <div class="shapes" aria-hidden="true">
+    <figure class="wide"><div></div><figcaption>1920 × 1080</figcaption></figure>
+    <figure class="tall"><div></div><figcaption>1080 × 1920</figcaption></figure>
+  </div>
+</section>
