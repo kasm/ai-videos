@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "scripts": {
     "video": "node src/cli.ts",
+    "test": "node --test src/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "license": "UNLICENSED",

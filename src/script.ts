@@ -55,6 +55,36 @@ const PageScrollScene = z.strictObject({
   narration: z.array(Line).min(1),
 });
 
+const ClipLine = z.strictObject({
+  /** What the voice says. Keep to one or two sentences. */
+  text: z.string().min(1),
+  /** The name of an event in the clip's JSON: the line waits for the clip to reach it. Omit to follow on. */
+  cue: z.string().optional(),
+  /** Extra silence before this line, seconds. */
+  pause: z.number().min(0).max(5).default(0),
+  /** Per-line voice override. */
+  voice: z.string().optional(),
+});
+
+const clipFile = z.string().min(1);
+
+const ClipScene = z.strictObject({
+  id: slug,
+  scene: z.literal("clip"),
+  /**
+   * The video file to play, relative to the video folder: one for every format, or one per format.
+   * Beside each lies its JSON (the same name, ending in .json).
+   */
+  clip: z.union([
+    clipFile,
+    z
+      .strictObject({ landscape: clipFile.optional(), portrait: clipFile.optional() })
+      .refine((c) => c.landscape || c.portrait, { message: "name a clip for landscape, portrait or both" }),
+  ]),
+  narration: z.array(ClipLine).min(1),
+});
+export type ClipSceneScript = z.infer<typeof ClipScene>;
+
 const Timing = z.strictObject({
   /** Silence before the first line of a scene, seconds. */
   lead: z.number().min(0).default(0.6),
@@ -77,11 +107,12 @@ const Video = z.strictObject({
   fps: z.union([z.literal(24), z.literal(25), z.literal(30), z.literal(60)]).default(30),
   formats: z.array(z.enum(["landscape", "portrait"])).min(1).default(["landscape", "portrait"]),
   timing: Timing.prefault({}),
-  scenes: z.array(PageScrollScene).min(1),
+  scenes: z.array(z.discriminatedUnion("scene", [PageScrollScene, ClipScene])).min(1),
 });
 
 export type VideoScript = z.infer<typeof Video>;
 export type SceneScript = VideoScript["scenes"][number];
+export type PageScrollSceneScript = z.infer<typeof PageScrollScene>;
 
 export interface LoadedVideo {
   /** The video folder's name: it names the build folder and the finished files. */

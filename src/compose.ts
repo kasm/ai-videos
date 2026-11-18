@@ -1,8 +1,18 @@
 // Generates a HyperFrames project (index.html + one file per scene) from script and timeline.
 import { copyFile, cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { FORMATS, type FormatName, type LoadedVideo, type MarkScript } from "./script.ts";
-import type { TimedLine, Timeline } from "./timeline.ts";
+import type { SceneClips } from "./clip.ts";
+import { run } from "./render.ts";
+import {
+  FORMATS,
+  type ClipSceneScript,
+  type FormatName,
+  type LoadedVideo,
+  type MarkScript,
+  type PageScrollSceneScript,
+} from "./script.ts";
+import { captionsOf } from "./srt.ts";
+import type { TimedLine, TimedScene, Timeline } from "./timeline.ts";
 
 const GSAP = "https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js";
 
@@ -64,9 +74,75 @@ function timeMarks(sceneId: string, pageFile: string, pageHtml: string, line: Ti
   });
 }
 
+/** A page-scroll scene's placeholders: the page, its style, and each line's cue and marks. */
+async function pageScrollScene(video: LoadedVideo, scene: PageScrollSceneScript, timed: TimedScene) {
+  const pageHtml = await readFile(path.join(video.dir, scene.page), "utf8");
+  const pageCss = scene.css ? await readFile(path.join(video.dir, scene.css), "utf8") : "";
+  for (const line of scene.narration) {
+    const cue = line.cue;
+    if (cue && cue !== "top" && cue !== "bottom" && !pageHtml.includes(`data-cue="${cue}"`)) {
+      throw new Error(`Scene "${scene.id}": cue "${cue}" has no element with data-cue="${cue}" in ${scene.page}`);
+    }
+  }
+  const lines = timed.lines.map((l, j) => ({
+    start: l.localStart,
+    duration: l.duration,
+    cue: l.cue ?? null,
+    pause: l.pause,
+    marks: timeMarks(scene.id, scene.page, pageHtml, l, scene.narration[j]!.draw ?? []),
+  }));
+  return { url: esc(scene.url), pageHtml, pageCss, linesJson: JSON.stringify(lines) };
+}
+
+const CAPTION_LINGER = 1.0; // seconds a caption may stay after its words
+
+/**
+ * A clip scene's placeholders: the clip, copied into the project; a still of its last frame when
+ * the scene runs on past it; and the narration as captions, split and timed as the subtitles are.
+ */
+async function clipScene(project: string, scene: ClipSceneScript, timed: TimedScene, clips: SceneClips, format: FormatName, fps: number) {
+  const clip = clips.byFormat[format]!;
+  const dir = path.join(project, "assets", "clips");
+  await mkdir(dir, { recursive: true });
+  const name = `${scene.id}${path.extname(clip.file)}`;
+  await copyFile(clip.file, path.join(dir, name));
+
+  let hold = "";
+  const rest = Math.round((timed.duration - clips.duration) * 1000) / 1000;
+  if (rest > 0.5 / fps) {
+    const still = `${scene.id}-last.png`;
+    // Every frame of the last second written over one file leaves the last frame in it.
+    const { code, stderr } = await run("ffmpeg", ["-v", "error", "-y", "-sseof", "-1", "-i", clip.file, "-update", "1", path.join(dir, still)]);
+    if (code !== 0) throw new Error(`ffmpeg could not take the last frame of ${clip.file}:\n${stderr.slice(-600)}`);
+    hold = `    <img id="${scene.id}-hold" class="clip cl-media" data-start="${clips.duration}" data-duration="${rest}" data-track-index="1" src="assets/clips/${still}" width="${clip.width}" height="${clip.height}" alt="" data-layout-allow-occlusion />`;
+  }
+
+  // A caption stays through the pause after its words, until the next one or CAPTION_LINGER after
+  // its words end, so a short line is up long enough to read.
+  const pieces = timed.lines.flatMap((line) => captionsOf(line.text, line.localStart, line.duration));
+  const captions: { id: string; start: number }[] = [];
+  const markup: string[] = [];
+  pieces.forEach((c, k) => {
+    const id = `${scene.id}-cap-${k + 1}`;
+    const end = Math.min(pieces[k + 1]?.start ?? Infinity, c.end + CAPTION_LINGER, timed.duration);
+    const start = Math.round(c.start * 1000) / 1000;
+    const duration = Math.round((end - c.start) * 1000) / 1000;
+    captions.push({ id, start });
+    markup.push(`    <div id="${id}" class="clip cl-cap" data-start="${start}" data-duration="${duration}" data-track-index="2"><p>${esc(c.text)}</p></div>`);
+  });
+  return {
+    clipSrc: `assets/clips/${name}`,
+    clipDuration: clips.duration,
+    hold,
+    captions: markup.join("\n"),
+    captionsJson: JSON.stringify(captions),
+  };
+}
+
 export async function compose(
   root: string,
   video: LoadedVideo,
+  clips: Map<string, SceneClips>,
   timeline: Timeline,
   format: FormatName,
 ): Promise<string> {
@@ -91,36 +167,12 @@ export async function compose(
   for (const [i, scene] of video.script.scenes.entries()) {
     const timed = timeline.scenes[i]!;
     const template = await readFile(path.join(root, "scenes", scene.scene, "scene.html"), "utf8");
-    const pageHtml = await readFile(path.join(video.dir, scene.page), "utf8");
-    const pageCss = scene.css ? await readFile(path.join(video.dir, scene.css), "utf8") : "";
-    for (const line of scene.narration) {
-      const cue = line.cue;
-      if (cue && cue !== "top" && cue !== "bottom" && !pageHtml.includes(`data-cue="${cue}"`)) {
-        throw new Error(`Scene "${scene.id}": cue "${cue}" has no element with data-cue="${cue}" in ${scene.page}`);
-      }
-    }
-    const lines = timed.lines.map((l, j) => ({
-      start: l.localStart,
-      duration: l.duration,
-      cue: l.cue ?? null,
-      pause: l.pause,
-      marks: timeMarks(scene.id, scene.page, pageHtml, l, scene.narration[j]!.draw ?? []),
-    }));
-
-    await writeFile(
-      path.join(project, "compositions", `${scene.id}.html`),
-      fill(template, {
-        id: scene.id,
-        width,
-        height,
-        format,
-        duration: timed.duration,
-        url: esc(scene.url),
-        pageHtml,
-        pageCss,
-        linesJson: JSON.stringify(lines),
-      }),
-    );
+    const values = { id: scene.id, width, height, format, duration: timed.duration };
+    const html =
+      scene.scene === "clip"
+        ? fill(template, { ...values, ...(await clipScene(project, scene, timed, clips.get(scene.id)!, format, timeline.fps)) })
+        : fill(template, { ...values, ...(await pageScrollScene(video, scene, timed)) });
+    await writeFile(path.join(project, "compositions", `${scene.id}.html`), html);
 
     hosts.push(
       `      <div id="${scene.id}" class="clip" data-composition-id="${scene.id}" data-composition-src="compositions/${scene.id}.html" data-start="${timed.start}" data-duration="${timed.duration}" data-track-index="1" data-track-kind="graphics" data-width="${width}" data-height="${height}"></div>`,

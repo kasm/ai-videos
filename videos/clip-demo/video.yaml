@@ -1,0 +1,21 @@
+# Test video for clip scenes: a clip drawn by make-clip.ts, narrated line by line on its events.
+# Build it with:  npm run video -- build clip-demo
+title: A clip on cue
+voice: af_heart
+fps: 30
+formats: [landscape, portrait]
+
+scenes:
+  - id: square
+    scene: clip
+    clip:
+      landscape: clips/demo-16x9.mp4
+      portrait: clips/demo-9x16.mp4
+    narration:
+      - text: "This square is a clip: a short video file, with a little JSON beside it."
+        cue: start
+      - text: "Here it slides: the JSON names the clip's events, and a line can wait for one."
+        cue: slide
+      - text: And here it rises, on cue.
+        cue: rise
+      - text: When the voice runs past the clip's end, its last frame holds.

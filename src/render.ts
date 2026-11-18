@@ -9,7 +9,7 @@ interface RunResult {
   stderr: string;
 }
 
-function run(cmd: string, args: string[], opts: { cwd?: string; inherit?: boolean } = {}): Promise<RunResult> {
+export function run(cmd: string, args: string[], opts: { cwd?: string; inherit?: boolean } = {}): Promise<RunResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, {
       cwd: opts.cwd,

@@ -48,19 +48,27 @@ function wrap(text: string): string {
   return best;
 }
 
+/** A line as subtitles: pieces that fit one each, timed in proportion to their length from `start`. */
+export function captionsOf(text: string, start: number, duration: number): { text: string; start: number; end: number }[] {
+  const chunks = chunk(text);
+  const total = chunks.reduce((sum, c) => sum + c.length, 0);
+  let t = start;
+  return chunks.map((c) => {
+    const span = duration * (c.length / total);
+    const piece = { text: c, start: t, end: t + span };
+    t += span;
+    return piece;
+  });
+}
+
 export function toSrt(timeline: Timeline): string {
   const entries: string[] = [];
   let index = 0;
   for (const scene of timeline.scenes) {
     for (const line of scene.lines) {
-      const chunks = chunk(line.text);
-      const total = chunks.reduce((sum, c) => sum + c.length, 0);
-      let t = line.start;
-      for (const c of chunks) {
-        const span = line.duration * (c.length / total);
+      for (const c of captionsOf(line.text, line.start, line.duration)) {
         index++;
-        entries.push(`${index}\n${stamp(t)} --> ${stamp(t + span)}\n${wrap(c)}\n`);
-        t += span;
+        entries.push(`${index}\n${stamp(c.start)} --> ${stamp(c.end)}\n${wrap(c.text)}\n`);
       }
     }
   }

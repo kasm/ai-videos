@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdir, writeFile, copyFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
+import { loadClips } from "./clip.ts";
 import { compose } from "./compose.ts";
 import { hyperframes, normalizeLoudness, renderProject } from "./render.ts";
 import { loadVideo, type FormatName } from "./script.ts";
@@ -52,12 +53,20 @@ async function prepare(dir: string, only?: string) {
   for (const f of formats) {
     if (f !== "landscape" && f !== "portrait") throw new Error(`Unknown format "${f}"`);
   }
+  // Clips and their JSON are checked before any narration is made, so a bad one fails at once.
+  const clips = await loadClips(video, formats);
+  for (const [id, scene] of clips) {
+    for (const [format, clip] of Object.entries(scene.byFormat)) {
+      const { made, events, texts } = clip.data;
+      log(`Clip ${id} (${format}): ${path.basename(clip.file)}, ${clip.width}x${clip.height}, ${scene.duration}s, ${events.length} events, ${texts.length} texts; made by ${made.by} from ${made.from}`);
+    }
+  }
   log(`Narration (${video.script.voice})`);
-  const timeline = await buildTimeline(video.script, new KokoroProvider(), TTS_CACHE, log);
+  const timeline = await buildTimeline(video.script, clips, new KokoroProvider(), TTS_CACHE, log);
   log(`Timeline: ${timeline.duration.toFixed(2)}s at ${timeline.fps} fps`);
   const projects: Record<string, string> = {};
   for (const format of formats) {
-    projects[format] = await compose(ROOT, video, timeline, format);
+    projects[format] = await compose(ROOT, video, clips, timeline, format);
   }
   return { video, timeline, formats, projects };
 }

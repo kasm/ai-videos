@@ -1,0 +1,89 @@
+<!--
+  clip: a video file played at its own speed, with the narration as captions over it.
+  Placeholders are filled by src/compose.ts. The clip is muted (the narration is the sound); when
+  the voice runs on past the clip, a still of its last frame holds until the scene ends. Captions
+  are the narration lines, split as the subtitles are, each a timed element shown while it is said.
+-->
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      font-family: Inter, sans-serif;
+      --cl-font: 54px;
+      --cl-width: 1500px; /* widest caption */
+      --cl-left: 120px; /* caption area: the clear part of the frame */
+      --cl-right: 120px;
+      --cl-bottom: 96px;
+    }
+    /* 9:16: apps cover the top 168 px, the right-hand rail and everything below about 1250 px,
+       so captions stay between x 120 and 888 and end above y 1248. */
+    #root[data-format="portrait"] {
+      --cl-font: 48px;
+      --cl-width: 768px;
+      --cl-left: 120px;
+      --cl-right: 192px;
+      --cl-bottom: 680px;
+    }
+    .cl-bg {
+      position: absolute;
+      inset: 0;
+      background: #0c1222;
+    }
+    .cl-media {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: {{width}}px;
+      height: {{height}}px;
+      object-fit: contain;
+      z-index: 1;
+    }
+    .cl-cap {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding: 0 var(--cl-right) var(--cl-bottom) var(--cl-left);
+    }
+    .cl-cap p {
+      max-width: var(--cl-width);
+      padding: 0.2em 0.55em 0.24em;
+      border-radius: 0.32em;
+      background: rgba(8, 10, 14, 0.78);
+      color: #ffffff;
+      font-size: var(--cl-font);
+      font-weight: 700;
+      line-height: 1.25;
+      text-align: center;
+      text-wrap: balance;
+    }
+  </style>
+
+  <div id="root" data-composition-id="{{id}}" data-width="{{width}}" data-height="{{height}}" data-format="{{format}}">
+    <div class="cl-bg" data-layout-allow-occlusion></div>
+    <video id="{{id}}-clip" class="clip cl-media" data-start="0" data-duration="{{clipDuration}}" data-track-index="1" src="{{clipSrc}}" muted playsinline data-layout-allow-occlusion></video>
+{{hold}}
+{{captions}}
+  </div>
+
+  <script>
+    (function () {
+      var ID = "{{id}}";
+      var DURATION = {{duration}};
+      var CAPTIONS = {{captionsJson}}; // [{ id, start }], seconds from the scene's start
+      var FADE = 0.12; // a caption fades in this fast; it leaves on a cut, so the next one can replace it
+
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+      CAPTIONS.forEach(function (cap) {
+        var text = document.getElementById(cap.id).querySelector("p");
+        tl.fromTo(text, { opacity: 0 }, { opacity: 1, duration: FADE, ease: "power1.out", immediateRender: false }, cap.start);
+      });
+      tl.set({}, {}, DURATION); // the timeline spans the scene, so its length matches the host's slot
+      window.__timelines[ID] = tl;
+    })();
+  </script>
+</template>

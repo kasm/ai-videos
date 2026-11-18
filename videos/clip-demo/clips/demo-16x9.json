@@ -1,0 +1,53 @@
+{
+  "format": "ai-videos-clip",
+  "version": 1,
+  "made": {
+    "by": "videos/clip-demo/make-clip.ts (ffmpeg)",
+    "from": "the times and positions in make-clip.ts"
+  },
+  "duration": 13,
+  "events": [
+    {
+      "name": "start",
+      "at": 0,
+      "span": "hold"
+    },
+    {
+      "name": "slide",
+      "at": 5,
+      "span": "move"
+    },
+    {
+      "name": "across",
+      "at": 6.5,
+      "span": "hold"
+    },
+    {
+      "name": "rise",
+      "at": 10,
+      "span": "move"
+    },
+    {
+      "name": "up",
+      "at": 11,
+      "span": "hold"
+    }
+  ],
+  "texts": [
+    {
+      "text": "A square waits on the left.",
+      "from": 0,
+      "to": 5
+    },
+    {
+      "text": "It slides to the right.",
+      "from": 5,
+      "to": 6.5
+    },
+    {
+      "text": "Then it rises.",
+      "from": 10,
+      "to": 11
+    }
+  ]
+}
