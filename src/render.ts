@@ -50,24 +50,24 @@ export async function renderProject(
   if (code !== 0) throw new Error(`HyperFrames render failed (exit ${code})`);
 }
 
-const TARGET = "I=-14:TP=-1.5:LRA=11";
-
 /**
- * Two-pass loudness normalization to -14 LUFS (the level YouTube and most platforms play at).
+ * Two-pass loudness normalization to `loudness` LUFS, the script's (-14 by default, the level
+ * YouTube and most platforms play at), its peaks kept 1.5 dB below full scale.
  * Video is copied untouched; only the audio is re-encoded.
  */
-export async function normalizeLoudness(input: string, output: string): Promise<void> {
+export async function normalizeLoudness(input: string, output: string, loudness = -14): Promise<void> {
+  const target = `I=${loudness}:TP=-1.5:LRA=11`;
   await mkdir(path.dirname(output), { recursive: true });
   const measure = await run("ffmpeg", [
     "-hide_banner", "-nostats", "-i", input,
-    "-af", `loudnorm=${TARGET}:print_format=json`,
+    "-af", `loudnorm=${target}:print_format=json`,
     "-vn", "-f", "null", "-",
   ]);
   const json = measure.stderr.match(/\{[^{}]*"input_i"[^{}]*\}/)?.[0];
   if (measure.code !== 0 || !json) throw new Error(`ffmpeg loudness measurement failed:\n${measure.stderr.slice(-600)}`);
   const m = JSON.parse(json) as Record<string, string>;
   const filter =
-    `loudnorm=${TARGET}:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}` +
+    `loudnorm=${target}:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}` +
     `:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true`;
   const encode = await run("ffmpeg", [
     "-hide_banner", "-nostats", "-y", "-i", input,

@@ -47,6 +47,12 @@ always come from this tool. The build and the cache stay here; only `--out` writ
 | `out/` | Finished videos and subtitles. |
 | `.cache/tts/` | Narration audio, keyed by text, voice and speed. |
 
+## How loud
+
+The build's last step brings the whole soundtrack to the script's `loudness` (LUFS, default -14,
+the level YouTube and most platforms play at; -16 or -20 is quieter), its peaks 1.5 dB below full
+scale. A line's own level doesn't matter: this step sets the whole.
+
 ## How timing works
 
 The voice sets the clock. Each narration line is synthesized and measured, lines are laid end to

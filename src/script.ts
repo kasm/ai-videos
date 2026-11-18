@@ -126,6 +126,8 @@ const Video = z.strictObject({
   speed: z.number().min(0.5).max(2).default(1),
   fps: z.union([z.literal(24), z.literal(25), z.literal(30), z.literal(60)]).default(30),
   formats: z.array(z.enum(["landscape", "portrait"])).min(1).default(["landscape", "portrait"]),
+  /** How loud the finished soundtrack is, in LUFS: -14 is what YouTube and most platforms play at; lower is quieter. */
+  loudness: z.number().min(-30).max(-9).default(-14),
   timing: Timing.prefault({}),
   scenes: z.array(z.discriminatedUnion("scene", [PageScrollScene, ClipScene])).min(1),
 });

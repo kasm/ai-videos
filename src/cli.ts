@@ -190,8 +190,8 @@ async function main() {
     const final = path.join(outDir, `${video.slug}-${format}${suffix}.mp4`);
     log(`\nRender (${format}${values.draft ? ", draft" : ""})`);
     await renderProject(ROOT, projects[format]!, raw, { fps: timeline.fps, draft: values.draft });
-    log(`Loudness (${format})`);
-    await normalizeLoudness(raw, final);
+    log(`Loudness (${format}, ${video.script.loudness} LUFS)`);
+    await normalizeLoudness(raw, final, video.script.loudness);
     log(`  ${final}`);
   }
   const srt = path.join(outDir, `${video.slug}.srt`);
