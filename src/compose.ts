@@ -102,6 +102,8 @@ const CAPTION_LINGER = 1.0; // seconds a caption may stay after its words
  */
 async function clipScene(project: string, scene: ClipSceneScript, timed: TimedScene, clips: SceneClips, format: FormatName, fps: number) {
   const clip = clips.byFormat[format]!;
+  if (!clip.video) throw new Error(`Scene "${scene.id}": ${clip.file} was not read`);
+  const { width, height } = clip.video;
   const dir = path.join(project, "assets", "clips");
   await mkdir(dir, { recursive: true });
   const name = `${scene.id}${path.extname(clip.file)}`;
@@ -114,7 +116,7 @@ async function clipScene(project: string, scene: ClipSceneScript, timed: TimedSc
     // Every frame of the last second written over one file leaves the last frame in it.
     const { code, stderr } = await run("ffmpeg", ["-v", "error", "-y", "-sseof", "-1", "-i", clip.file, "-update", "1", path.join(dir, still)]);
     if (code !== 0) throw new Error(`ffmpeg could not take the last frame of ${clip.file}:\n${stderr.slice(-600)}`);
-    hold = `    <img id="${scene.id}-hold" class="clip cl-media" data-start="${clips.duration}" data-duration="${rest}" data-track-index="1" src="assets/clips/${still}" width="${clip.width}" height="${clip.height}" alt="" data-layout-allow-occlusion />`;
+    hold = `    <img id="${scene.id}-hold" class="clip cl-media" data-start="${clips.duration}" data-duration="${rest}" data-track-index="1" src="assets/clips/${still}" width="${width}" height="${height}" alt="" data-layout-allow-occlusion />`;
   }
 
   // A caption stays through the pause after its words, until the next one or CAPTION_LINGER after

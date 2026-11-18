@@ -32,10 +32,10 @@ async function editJson(dir: string, size: "16x9" | "9x16", change: (data: any) 
 test("the demo's clips load, with their events", async () => {
   const clips = await demo("ok");
   const square = clips.get("square")!;
-  assert.equal(square.duration, 13);
-  assert.deepEqual(square.events.map((e) => `${e.name}:${e.span}`), ["start:hold", "slide:move", "across:hold", "rise:move", "up:hold"]);
+  // Drawn to its request: each span keeps its length at the clip's own pace.
+  assert.deepEqual(square.events.map((e) => `${e.name}:${e.span}:${e.natural}`), ["start:hold:5", "slide:move:1.5", "across:hold:3.5", "rise:move:1", "up:hold:2"]);
   assert.equal(path.basename(square.byFormat.portrait!.file), "demo-9x16.mp4");
-  assert.equal(square.byFormat.landscape!.width, 1920);
+  assert.equal(square.byFormat.landscape!.video!.width, 1920);
 });
 
 test("a clip without its JSON", async () => {
@@ -53,6 +53,26 @@ test("a cue that is not an event", async () => {
     }),
     /line 3: cue "orbit" is not an event of demo-16x9\.json \(its events: start, slide, across, rise, up\)/,
   );
+});
+
+test("a cue before one an earlier line named: a clip plays forward", async () => {
+  await assert.rejects(
+    demo("backward", async (dir) => {
+      const file = path.join(dir, "video.yaml");
+      await writeFile(file, (await readFile(file, "utf8")).replace("cue: rise", "cue: start"));
+    }),
+    /line 3: cue "start" comes before "slide", cued earlier; a clip plays forward/,
+  );
+});
+
+test("the JSON alone, before its clip is drawn, is enough for a request", async () => {
+  const dir = path.join(scratch, "json-only");
+  await cp(DEMO, dir, { recursive: true, filter: (src) => !src.endsWith(".mp4") && !src.endsWith(".ts") });
+  const video = await loadVideo(dir);
+  await assert.rejects(loadClips(video, FORMATS), /clip clips\/demo-16x9\.mp4 is not at/);
+  const clips = await loadClips(video, FORMATS, { readVideo: false });
+  assert.equal(clips.get("square")!.events.length, 5);
+  assert.equal(clips.get("square")!.byFormat.landscape!.video, undefined);
 });
 
 test("JSON the schema refuses: a missing field, an unknown span", async () => {
@@ -82,13 +102,13 @@ test("JSON the schema refuses: events out of order, a text past the end", async 
 test("JSON from another run: its length is not the clip's", async () => {
   await assert.rejects(
     demo("stale", (dir) => editJson(dir, "16x9", (d) => (d.duration = 12))),
-    /says the clip lasts 12 s, but .*demo-16x9\.mp4 lasts 13 s/,
+    /says the clip lasts 12 s, but .*demo-16x9\.mp4 lasts [\d.]+ s/,
   );
 });
 
 test("the formats' clips disagree on an event", async () => {
   await assert.rejects(
     demo("disagree", (dir) => editJson(dir, "9x16", (d) => (d.events[1].at = 5.5))),
-    /demo-16x9\.json and demo-9x16\.json put "slide" at 5 s and 5\.5 s/,
+    /demo-16x9\.json and demo-9x16\.json put "slide" at [\d.]+ s and 5\.5 s/,
   );
 });

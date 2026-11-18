@@ -3,12 +3,13 @@ import { existsSync } from "node:fs";
 import { mkdir, writeFile, copyFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
-import { loadClips } from "./clip.ts";
+import { loadClips, type SceneClips } from "./clip.ts";
 import { compose } from "./compose.ts";
+import { drawnTo, fitClip, requestDocument, requestFileOf, type Fit } from "./fit.ts";
 import { hyperframes, normalizeLoudness, renderProject } from "./render.ts";
-import { loadVideo, type FormatName } from "./script.ts";
+import { loadVideo, type FormatName, type LoadedVideo } from "./script.ts";
 import { toSrt } from "./srt.ts";
-import { buildTimeline } from "./timeline.ts";
+import { buildTimeline, narrate, type SpokenLine } from "./timeline.ts";
 import { KokoroProvider, speak } from "./tts.ts";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
@@ -27,6 +28,8 @@ Commands
   compose <video>  Narrate and generate the HyperFrames project in build/<name>/ (no render)
   check <video>    Compose, then run HyperFrames' lint and layout checks
   preview <video>  Compose, then open the live preview
+  request <video>  Fit each clip scene to the voice: write <clip>.request.json beside each clip,
+                   how long each span should last (only the clips' JSON is needed)
   voices [text]    Write a sample of several voices to out/voice-samples/
 
 Options
@@ -46,24 +49,47 @@ function videoDir(arg: string): string {
   return dir;
 }
 
-async function prepare(dir: string, only?: string) {
+/** The script, its clips (checked before any narration is made, so a bad one fails at once) and the measured voice. */
+async function load(dir: string, only: string | undefined, readVideo: boolean) {
   const video = await loadVideo(dir);
   log(`Video: ${video.dir}`);
   const formats = (only ? [only] : video.script.formats) as FormatName[];
   for (const f of formats) {
     if (f !== "landscape" && f !== "portrait") throw new Error(`Unknown format "${f}"`);
   }
-  // Clips and their JSON are checked before any narration is made, so a bad one fails at once.
-  const clips = await loadClips(video, formats);
+  const clips = await loadClips(video, formats, { readVideo });
   for (const [id, scene] of clips) {
     for (const [format, clip] of Object.entries(scene.byFormat)) {
       const { made, events, texts } = clip.data;
-      log(`Clip ${id} (${format}): ${path.basename(clip.file)}, ${clip.width}x${clip.height}, ${scene.duration}s, ${events.length} events, ${texts.length} texts; made by ${made.by} from ${made.from}`);
+      const picture = clip.video ? `${clip.video.width}x${clip.video.height}, ` : "";
+      log(`Clip ${id} (${format}): ${path.basename(clip.file)}, ${picture}${scene.duration}s, ${events.length} events, ${texts.length} texts; made by ${made.by} from ${made.from}`);
     }
   }
   log(`Narration (${video.script.voice})`);
-  const timeline = await buildTimeline(video.script, clips, new KokoroProvider(), TTS_CACHE, log);
+  const spoken = await narrate(video.script, new KokoroProvider(), TTS_CACHE, log);
+  return { video, formats, clips, spoken };
+}
+
+/** Each clip scene fitted to the measured voice. */
+function fitAll(video: LoadedVideo, clips: Map<string, SceneClips>, spoken: SpokenLine[][]): Map<string, Fit> {
+  const { fps, timing } = video.script;
+  const fits = new Map<string, Fit>();
+  for (const [i, scene] of video.script.scenes.entries()) {
+    const clip = clips.get(scene.id);
+    if (clip) fits.set(scene.id, fitClip(clip.events, clip.duration, spoken[i]!, { fps, ...timing, ...timing.moves }));
+  }
+  return fits;
+}
+
+async function prepare(dir: string, only: string | undefined, arg: string) {
+  const { video, formats, clips, spoken } = await load(dir, only, true);
+  const timeline = buildTimeline(video.script, clips, spoken, log);
   log(`Timeline: ${timeline.duration.toFixed(2)}s at ${timeline.fps} fps`);
+  for (const [id, fit] of fitAll(video, clips, spoken)) {
+    const clip = clips.get(id)!;
+    if (drawnTo(fit, clip.events, clip.duration, video.script.fps)) log(`Clip ${id}: drawn to the voice`);
+    else log(`Clip ${id}: not drawn to the voice (it would last ${fit.duration.toFixed(2)}s, not ${clip.duration}s); "npm run video -- request ${arg}" writes how long each span should last`);
+  }
   const projects: Record<string, string> = {};
   for (const format of formats) {
     projects[format] = await compose(ROOT, video, clips, timeline, format);
@@ -100,13 +126,39 @@ async function main() {
     return log(`Samples written to ${dir}`);
   }
 
-  if (!["build", "compose", "check", "preview"].includes(command)) throw new Error(`Unknown command "${command}"\n\n${HELP}`);
+  if (!["build", "compose", "check", "preview", "request"].includes(command)) throw new Error(`Unknown command "${command}"\n\n${HELP}`);
   if (!arg) {
     throw new Error(`"${command}" needs a video: a name in videos/ or a folder's path, e.g. npm run video -- ${command} scroll-demo`);
   }
   if (values.out !== undefined && command !== "build") throw new Error(`--out is for build; ${command} writes only to build/`);
 
-  const { video, timeline, formats, projects } = await prepare(videoDir(arg), values.format);
+  if (command === "request") {
+    // Only the clips' JSON is read: the clips themselves may not be drawn yet.
+    const { video, clips, spoken } = await load(videoDir(arg), values.format, false);
+    if (clips.size === 0) throw new Error(`${video.file} has no clip scene to fit`);
+    for (const [id, fit] of fitAll(video, clips, spoken)) {
+      const clip = clips.get(id)!;
+      log(`\nRequest for ${id}: ${fit.duration.toFixed(3)}s, ${fit.frames} frames (the clip's own pace: ${clip.duration}s)`);
+      for (const s of fit.spans) {
+        const motion = s.move !== undefined && s.move < s.duration ? `, moving ${s.move.toFixed(2)}s then holding` : "";
+        log(`  ${s.event.padEnd(14)} ${s.span}  ${s.natural.toFixed(2)}s -> ${s.duration.toFixed(2)}s at ${s.at.toFixed(2)}s${motion}`);
+      }
+      for (const [n, line] of fit.lines.entries()) {
+        if (line.waits > 0) log(`  line ${n + 1} waits ${line.waits.toFixed(2)}s for "${line.cue}": its moves are at their fastest`);
+      }
+      for (const c of new Set(Object.values(clip.byFormat))) {
+        const file = requestFileOf(c.file);
+        // The script, as a path from the request: the same on every run, however the tool was started.
+        const script = path.relative(path.dirname(file), video.file).split(path.sep).join("/");
+        const meta = { from: `${script}, scene ${id}`, clip: path.basename(c.dataFile), fps: video.script.fps };
+        await writeFile(file, `${JSON.stringify(requestDocument(fit, meta), null, 2)}\n`);
+        log(`  ${file}`);
+      }
+    }
+    return;
+  }
+
+  const { video, timeline, formats, projects } = await prepare(videoDir(arg), values.format, arg);
 
   if (command === "compose") {
     return log(`Projects: ${Object.values(projects).join(", ")}`);

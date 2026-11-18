@@ -3,51 +3,56 @@
   "version": 1,
   "made": {
     "by": "videos/clip-demo/make-clip.ts (ffmpeg)",
-    "from": "the times and positions in make-clip.ts"
+    "from": "the times and positions in make-clip.ts, drawn to demo-9x16.request.json"
   },
-  "duration": 13,
+  "duration": 17.1,
   "events": [
     {
       "name": "start",
       "at": 0,
-      "span": "hold"
+      "span": "hold",
+      "natural": 5
     },
     {
       "name": "slide",
-      "at": 5,
-      "span": "move"
+      "at": 5.033,
+      "span": "move",
+      "natural": 1.5
     },
     {
       "name": "across",
-      "at": 6.5,
-      "span": "hold"
+      "at": 6.533,
+      "span": "hold",
+      "natural": 3.5
     },
     {
       "name": "rise",
-      "at": 10,
-      "span": "move"
+      "at": 10.033,
+      "span": "move",
+      "natural": 1
     },
     {
       "name": "up",
-      "at": 11,
-      "span": "hold"
+      "at": 11.033,
+      "span": "hold",
+      "natural": 2
     }
   ],
   "texts": [
     {
       "text": "A square waits on the left.",
       "from": 0,
-      "to": 5
+      "to": 5.033
     },
     {
       "text": "It slides to the right.",
-      "from": 5,
-      "to": 6.5
+      "from": 5.033,
+      "to": 6.533
     },
     {
       "text": "Then it rises.",
-      "from": 10,
-      "to": 11
+      "from": 10.033,
+      "to": 11.033
     }
   ]
 }

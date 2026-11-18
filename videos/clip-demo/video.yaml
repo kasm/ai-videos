@@ -1,5 +1,8 @@
 # Test video for clip scenes: a clip drawn by make-clip.ts, narrated line by line on its events.
-# Build it with:  npm run video -- build clip-demo
+# After changing a line, fit the clip to the voice again, then build:
+#   npm run video -- request clip-demo
+#   node videos/clip-demo/make-clip.ts --request
+#   npm run video -- build clip-demo
 title: A clip on cue
 voice: af_heart
 fps: 30
@@ -14,8 +17,8 @@ scenes:
     narration:
       - text: "This square is a clip: a short video file, with a little JSON beside it."
         cue: start
-      - text: "Here it slides: the JSON names the clip's events, and a line can wait for one."
+      - text: "Here it slides: the JSON names the clip's events, and a line can cue to one."
         cue: slide
       - text: And here it rises, on cue.
         cue: rise
-      - text: When the voice runs past the clip's end, its last frame holds.
+      - text: The clip was drawn again to fit this voice, so each move starts with its line.

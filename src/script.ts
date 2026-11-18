@@ -92,6 +92,13 @@ const Timing = z.strictObject({
   gap: z.number().min(0).default(0.4),
   /** Hold after the last line of a scene, seconds. */
   tail: z.number().min(0).default(1.0),
+  /** How slow and how fast a clip's move may play when the clip is fitted to the voice, as multiples of its own speed. */
+  moves: z
+    .strictObject({
+      slowest: z.number().positive().max(1).default(0.5),
+      fastest: z.number().min(1).max(10).default(2),
+    })
+    .prefault({}),
 });
 
 export const FORMATS = {

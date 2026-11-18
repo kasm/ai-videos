@@ -3,6 +3,19 @@ import type { SceneClips } from "./clip.ts";
 import type { VideoScript } from "./script.ts";
 import { speak, type TtsProvider } from "./tts.ts";
 
+/** A narration line, spoken and measured. */
+export interface SpokenLine {
+  /** 1-based position in the whole video. */
+  n: number;
+  text: string;
+  cue?: string;
+  /** Extra silence before the line, seconds. */
+  pause: number;
+  audioFile: string;
+  /** The voice's length, seconds, as measured (not rounded). */
+  duration: number;
+}
+
 export interface TimedLine {
   /** 1-based position in the whole video. */
   n: number;
@@ -33,65 +46,80 @@ export interface Timeline {
 
 const round = (t: number) => Math.round(t * 1000) / 1000;
 
-/**
- * Lines are laid end to end with the script's pauses. In a clip scene the clip plays at its own
- * speed: a line cued to an event waits until the clip reaches it, and the scene lasts until both
- * the clip and the voice are done (fitting the clip to the voice is the next step).
- */
-export async function buildTimeline(
+/** Speaks every line (or takes it from the cache) and measures it: one list per scene. */
+export async function narrate(
   script: VideoScript,
-  clips: Map<string, SceneClips>,
   provider: TtsProvider,
   cacheDir: string,
   log: (msg: string) => void,
-): Promise<Timeline> {
+): Promise<SpokenLine[][]> {
+  let n = 0;
+  const scenes: SpokenLine[][] = [];
+  for (const scene of script.scenes) {
+    const lines: SpokenLine[] = [];
+    for (const line of scene.narration) {
+      n++;
+      const spoken = await speak(provider, cacheDir, { text: line.text, voice: line.voice ?? script.voice, speed: script.speed });
+      log(`  line ${n}: ${spoken.duration.toFixed(2)}s ${spoken.cached ? "(cached)" : "(generated)"}`);
+      lines.push({ n, text: line.text, cue: line.cue, pause: line.pause, audioFile: spoken.file, duration: spoken.duration });
+    }
+    scenes.push(lines);
+  }
+  return scenes;
+}
+
+/**
+ * Lines are laid end to end with the script's pauses. In a clip scene the clip plays as it was
+ * drawn: a line cued to an event waits until the clip reaches it, and the scene lasts until both
+ * the clip and the voice are done. A clip drawn to its request (see fit.ts) has every event where
+ * the voice wants it, so no line waits for longer than a frame.
+ */
+export function buildTimeline(
+  script: VideoScript,
+  clips: Map<string, SceneClips>,
+  spoken: SpokenLine[][],
+  log: (msg: string) => void,
+): Timeline {
   const { lead, gap, tail } = script.timing;
+  const fps = script.fps;
   const scenes: TimedScene[] = [];
   let sceneStart = 0;
-  let n = 0;
 
-  for (const scene of script.scenes) {
+  for (const [i, scene] of script.scenes.entries()) {
     const clip = clips.get(scene.id);
     const lines: TimedLine[] = [];
     let local = lead;
-    for (const line of scene.narration) {
-      n++;
+    for (const line of spoken[i]!) {
       local += line.pause;
-      const spoken = await speak(provider, cacheDir, {
-        text: line.text,
-        voice: line.voice ?? script.voice,
-        speed: script.speed,
-      });
-      let note = "";
       const event = clip && line.cue ? clip.events.find((e) => e.name === line.cue) : undefined;
-      if (event) {
-        if (event.at > local) {
-          note = `, waits ${(event.at - local).toFixed(2)}s for "${event.name}"`;
-          local = event.at;
-        } else if (local - event.at > lead) {
-          // Up to the scene's opening silence, a voice behind its picture is on time.
-          note = `, ${(local - event.at).toFixed(2)}s after "${event.name}"`;
-        }
+      if (event && event.at > local) {
+        // A fitted clip puts an event on the frame after the voice's time: less than a frame is no wait.
+        if (event.at - local > 1 / fps) log(`  line ${line.n} waits ${(event.at - local).toFixed(2)}s for "${event.name}"`);
+        local = event.at;
+      } else if (event && local - event.at > lead) {
+        // Up to the scene's opening silence, a voice behind its picture is on time.
+        log(`  line ${line.n} starts ${(local - event.at).toFixed(2)}s after "${event.name}"`);
       }
-      log(`  line ${n}: ${spoken.duration.toFixed(2)}s ${spoken.cached ? "(cached)" : "(generated)"}${note}`);
       lines.push({
-        n,
+        n: line.n,
         text: line.text,
         cue: line.cue,
         pause: line.pause,
-        audioFile: spoken.file,
-        duration: round(spoken.duration),
+        audioFile: line.audioFile,
+        duration: round(line.duration),
         start: round(sceneStart + local),
         localStart: round(local),
       });
-      local += spoken.duration + gap;
+      local += line.duration + gap;
     }
-    const end = Math.max(local - gap + tail, clip?.duration ?? 0);
-    // Scenes end on a whole frame so the next one starts on a frame boundary.
-    const duration = Math.ceil(end * script.fps) / script.fps;
+    // Scenes end on a whole frame so the next one starts on a frame boundary. A clip has whole
+    // frames already; its length is rounded, not raised, so a written 16.633 stays 499 frames.
+    const voice = Math.ceil((local - gap + tail) * fps);
+    const frames = clip ? Math.max(voice, Math.round(clip.duration * fps)) : voice;
+    const duration = frames / fps;
     scenes.push({ id: scene.id, start: round(sceneStart), duration: round(duration), lines });
     sceneStart += duration;
   }
 
-  return { fps: script.fps, duration: round(sceneStart), scenes };
+  return { fps, duration: round(sceneStart), scenes };
 }

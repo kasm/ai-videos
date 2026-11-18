@@ -21,9 +21,10 @@ export const ClipData = z
     duration: z.number().positive(),
     /**
      * Named moments, in order, the first at 0. The span from each to the next (from the last, to the
-     * clip's end) is a `hold`, where nothing moves, or a `move`.
+     * clip's end) is a `hold`, where nothing moves, or a `move`. A clip drawn to a request gives each
+     * span's `natural` length, its length at the clip's own pace, so fitting it again starts from that.
      */
-    events: z.array(z.strictObject({ name, at: seconds, span: z.enum(SPAN_KINDS) })).min(1),
+    events: z.array(z.strictObject({ name, at: seconds, span: z.enum(SPAN_KINDS), natural: z.number().positive().optional() })).min(1),
     /** The texts that go with the clip, each with when it applies: from and to, seconds. */
     texts: z.array(z.strictObject({ text: z.string().min(1), from: seconds, to: seconds })).default([]),
   })
@@ -97,9 +98,8 @@ export interface Clip {
   file: string;
   dataFile: string;
   data: ClipJson;
-  width: number;
-  height: number;
-  fps: number;
+  /** The file's picture, when it was read: `request` needs only the JSON, as the clip may not be drawn yet. */
+  video?: Probe;
 }
 
 /** A clip scene's clips, one per format, and what they agree on: their length and their events. */
@@ -111,9 +111,9 @@ export interface SceneClips {
 
 const exists = (file: string) => stat(file).then((s) => s.isFile(), () => false);
 
-async function loadClip(sceneId: string, dir: string, rel: string): Promise<Clip> {
+async function loadClip(sceneId: string, dir: string, rel: string, readVideo: boolean): Promise<Clip> {
   const file = path.resolve(dir, rel);
-  if (!(await exists(file))) throw new Error(`Scene "${sceneId}": clip ${rel} is not at ${file}`);
+  if (readVideo && !(await exists(file))) throw new Error(`Scene "${sceneId}": clip ${rel} is not at ${file}`);
   const dataFile = dataFileOf(file);
   if (!(await exists(dataFile))) {
     throw new Error(
@@ -122,35 +122,46 @@ async function loadClip(sceneId: string, dir: string, rel: string): Promise<Clip
     );
   }
   const data = await readClipData(dataFile);
-  const probed = await probe(file);
+  if (!readVideo) return { file, dataFile, data };
+  const video = await probe(file);
   // ffprobe's length and a frame count can differ by a frame, and the JSON may round.
-  if (Math.abs(probed.duration - data.duration) > 1 / probed.fps + 0.001) {
-    throw new Error(`${dataFile} says the clip lasts ${data.duration} s, but ${file} lasts ${probed.duration} s: is the JSON from another run?`);
+  if (Math.abs(video.duration - data.duration) > 1 / video.fps + 0.001) {
+    throw new Error(`${dataFile} says the clip lasts ${data.duration} s, but ${file} lasts ${video.duration} s: is the JSON from another run?`);
   }
-  return { file, dataFile, data, width: probed.width, height: probed.height, fps: probed.fps };
+  return { file, dataFile, data, video };
 }
 
-/** The formats' clips must agree on events (names, kinds, times within half a frame) and length. */
-function agree(sceneId: string, a: Clip, b: Clip): void {
-  const slack = 0.5 / Math.min(a.fps, b.fps);
+/** The formats' clips must agree on length and events (names, kinds, times and natural lengths within half a frame). */
+function agree(sceneId: string, a: Clip, b: Clip, fps: number): void {
+  const slack = 0.5 / fps;
   const where = `Scene "${sceneId}": ${path.basename(a.dataFile)} and ${path.basename(b.dataFile)}`;
   if (Math.abs(a.data.duration - b.data.duration) > slack) {
     throw new Error(`${where} differ in length (${a.data.duration} s, ${b.data.duration} s); the formats share one timeline`);
   }
   const names = (c: Clip) => c.data.events.map((e) => `${e.name} (${e.span})`).join(", ");
-  if (names(a) !== names(b)) throw new Error(`${where} differ in events:\n  ${names(a)}\n  ${names(b)}`);
+  if (names(a) !== names(b)) throw new Error(`${where} differ in events:
+  ${names(a)}
+  ${names(b)}`);
   a.data.events.forEach((e, i) => {
     const other = b.data.events[i]!;
     if (Math.abs(e.at - other.at) > slack) throw new Error(`${where} put "${e.name}" at ${e.at} s and ${other.at} s`);
+    if (Math.abs((e.natural ?? 0) - (other.natural ?? 0)) > slack) {
+      throw new Error(`${where} give "${e.name}" natural lengths ${e.natural ?? "(none)"} and ${other.natural ?? "(none)"}`);
+    }
   });
 }
 
 /**
  * Every clip scene's clips, read and checked before any narration is made: each clip and its JSON
  * exist, the JSON passes the schema and matches the clip's length, the formats' clips agree, and
- * every narration cue names one of the events.
+ * every narration cue names one of the events, never one before an earlier line's (a clip plays
+ * forward). With `readVideo: false` only the JSON is read: the clips may not be drawn yet.
  */
-export async function loadClips(video: LoadedVideo, formats: FormatName[]): Promise<Map<string, SceneClips>> {
+export async function loadClips(
+  video: LoadedVideo,
+  formats: FormatName[],
+  { readVideo = true }: { readVideo?: boolean } = {},
+): Promise<Map<string, SceneClips>> {
   const clips = new Map<string, SceneClips>();
   let n = 0;
   for (const scene of video.script.scenes) {
@@ -163,21 +174,28 @@ export async function loadClips(video: LoadedVideo, formats: FormatName[]): Prom
     for (const format of formats) {
       const rel = typeof scene.clip === "string" ? scene.clip : scene.clip[format];
       if (!rel) throw new Error(`Scene "${scene.id}" has no clip for ${format}`);
-      const clip = loaded.get(rel) ?? (await loadClip(scene.id, video.dir, rel));
+      const clip = loaded.get(rel) ?? (await loadClip(scene.id, video.dir, rel, readVideo));
       loaded.set(rel, clip);
       byFormat[format] = clip;
     }
     const [first, ...rest] = [...loaded.values()];
-    for (const other of rest) agree(scene.id, first!, other);
+    for (const other of rest) agree(scene.id, first!, other, video.script.fps);
     const events = first!.data.events;
+    let reached: ClipEvent = events[0]!;
     for (const line of scene.narration) {
       n++;
-      if (line.cue && !events.some((e) => e.name === line.cue)) {
+      if (!line.cue) continue;
+      const event = events.find((e) => e.name === line.cue);
+      if (!event) {
         throw new Error(
           `Scene "${scene.id}", line ${n}: cue "${line.cue}" is not an event of ${path.basename(first!.dataFile)} ` +
             `(its events: ${events.map((e) => e.name).join(", ")})`,
         );
       }
+      if (event.at < reached.at) {
+        throw new Error(`Scene "${scene.id}", line ${n}: cue "${event.name}" comes before "${reached.name}", cued earlier; a clip plays forward`);
+      }
+      reached = event;
     }
     clips.set(scene.id, { byFormat, duration: first!.data.duration, events });
   }

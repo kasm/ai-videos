@@ -13,6 +13,7 @@ npm run video -- build <video> --out <dir> write the finished files to <dir> ins
 npm run video -- check <video>             lint, layout, contrast and pacing checks (run after every edit)
 npm run video -- preview <video>           live preview in the browser
 npm run video -- compose <video>           only generate build/<name>/<format>/
+npm run video -- request <video>           fit each clip to the voice: <clip>.request.json (see Clips)
 npm run video -- voices ["text"]           voice samples in out/voice-samples/
 npm test                                   the tool's tests (src/*.test.ts)
 npm run typecheck
@@ -39,9 +40,9 @@ always come from this tool. The build and the cache stay here; only `--out` writ
 | `videos/<name>/video.yaml` | The script: scenes, narration lines, cues. Source of truth for a video. |
 | `videos/<name>/page.html`, `page.css` | The page a `page-scroll` scene shows. |
 | `videos/<name>/assets/` | The page's pictures, copied into the build; the page refers to them as `assets/<file>`. |
-| `videos/clip-demo/` | The `clip` scene's demo: two small clips, their JSON, and `make-clip.ts`, which draws them. |
+| `videos/clip-demo/` | The `clip` scene's demo: two small clips, their JSON and requests, and `make-clip.ts`, which draws them. |
 | `scenes/<name>/scene.html` | Reusable scene templates (HyperFrames sub-compositions with `{{placeholders}}`): `page-scroll`, `clip`. |
-| `src/` | The pipeline: `script` → `clip` → `tts` → `timeline` → `compose` → `render` → `srt`. |
+| `src/` | The pipeline: `script` → `clip` → `tts` → `timeline` (and `fit`, for `request`) → `compose` → `render` → `srt`. |
 | `build/` | Generated HyperFrames projects. Never edit; regenerated on every run. |
 | `out/` | Finished videos and subtitles. |
 | `.cache/tts/` | Narration audio, keyed by text, voice and speed. |
@@ -115,20 +116,62 @@ Beside each clip lies its JSON: the same path with `.json` for the extension
   a JSON left from another run.
 - `events` are named moments in order, the first at 0, each before the end. Names use lowercase
   letters, digits and dashes, once each. The span from an event to the next (from the last, to the
-  end) is a `hold`, where nothing moves, or a `move`. Narration lines cue to events by name.
+  end) is a `hold`, where nothing moves, or a `move`. Narration lines cue to events by name, in
+  the clip's order (a line may cue the event the line before it cued).
+- A clip drawn to a request (below) gives each event `natural`: its span's length at the clip's
+  own pace, from the request. Fitting starts from it, so a move sped up once is not sped up again.
 - `texts` are the clip's own words and when they apply (`from`, `to`, seconds). The tool reads
   and checks them; nothing speaks or shows them yet.
 - With a clip per format, the clips must agree on length and events (names, spans, times within
   half a frame): the formats share one timeline. Each format's clip may have its own `texts`.
-- Timing, for now: the clip plays at its own speed. A cued line waits until the clip reaches its
-  event; `compose` notes a line that starts later after its event than the scene's `lead`. The
-  scene lasts until both the clip and the voice are done; past the clip's end, a still of its last
-  frame holds.
+- The tool plays a clip as it was drawn. A cued line waits until the clip reaches its event, and
+  the scene lasts until both the clip and the voice are done; past the clip's end, a still of its
+  last frame holds. `compose` says whether the clip is drawn to the voice, and notes each line that
+  waits for its event longer than a frame or starts later after it than the scene's `lead`.
 - Captions are the narration lines, split as the subtitles are, in the area social apps leave
   clear. Each stays through the pause after its words, at most 1 s.
 - Every check on a clip runs before any narration is made, so `check` fails in a second with the
   reason: a clip or its JSON missing, JSON the schema refuses, a length that does not match, the
-  formats' clips disagreeing, or a cue that names no event. `src/clip.test.ts` covers each.
+  formats' clips disagreeing, a cue that names no event or goes back. `src/clip.test.ts` covers each.
+
+### Fitting a clip to the voice
+
+The voice sets the clock; the clip is drawn again to fit it. The tool never retimes video itself:
+
+```
+npm run video -- request <video>     measure the voice, write <clip>.request.json beside each clip
+(the clip's maker draws it again to the request, and writes its JSON)
+npm run video -- build <video>       "Clip <id>: drawn to the voice"
+```
+
+`request` reads only the JSON, so it works before the clip is drawn at all. `videos/clip-demo`
+runs the whole loop: `node videos/clip-demo/make-clip.ts --request` plays the clip's maker.
+
+How the fit (`src/fit.ts`) shares the time, in whole frames of the video's `fps`:
+
+- Each line cued to an event fixes when the clip reaches it: when the voice gets to that line.
+  The spans between two fixed events share the time between them.
+- Short of time, holds shrink first (to one frame), then moves play faster, up to
+  `timing.moves.fastest` times their own speed (default 2). Past that the voice waits.
+- With time to spare, holds take it, in proportion to their own length, and moves keep their
+  speed. With no hold to take it, moves slow down to `timing.moves.slowest` (default 0.5), and past
+  that a hold follows the last of them.
+- After the last cued event, the clip ends with the voice and `tail`: holds shrink or grow to get
+  there, and moves keep their own speed.
+- Events land on whole frames, so a cued line starts up to a frame after the voice's own time.
+
+The request (`ai-videos-request`, version 1) lists every span, in order, from the first event:
+
+```json
+{ "event": "slide", "span": "move", "natural": 1.5, "at": 5.033, "duration": 4.4, "move": 3 }
+```
+
+The clip drawn to it starts each span at `at` and lasts `duration` there. A hold shows its picture
+that long; a move plays its motion over `move` seconds and holds its last frame for the rest. The
+spans add up to the request's `duration` (`frames` at `fps`), which is the scene's length. The
+drawn clip's JSON puts each event at its span's `at`, keeps its `natural`, and lasts `duration`.
+The request also lists the lines (`at`, and `waits` where the voice waits for the clip), for
+reading. `src/fit.test.ts` shows each rule.
 
 ## Writing a scene template
 
@@ -151,6 +194,8 @@ Portrait scenes keep reading text inside x 120–888 and y 288–1248, the area 
   their length, not by word timestamps.
 - Two videos with the same folder name share `build/<name>/` and, without `--out`, `out/<name>/`:
   build one at a time, or give the outside one its own `--out`.
+- A clip with long holds gets HyperFrames' "sparse keyframes" warning at render: few keyframes make
+  preview seeking slow; rendering is unaffected.
 - A clip scene with more than a few captions gets HyperFrames' `timeline_track_too_dense` warning
   (a caption is a timed element), as a long page gets `composition_file_too_large`. Both are size
   hints, not faults.
