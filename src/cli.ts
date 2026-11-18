@@ -76,7 +76,9 @@ function fitAll(video: LoadedVideo, clips: Map<string, SceneClips>, spoken: Spok
   const fits = new Map<string, Fit>();
   for (const [i, scene] of video.script.scenes.entries()) {
     const clip = clips.get(scene.id);
-    if (clip) fits.set(scene.id, fitClip(clip.events, clip.duration, spoken[i]!, { fps, ...timing, ...timing.moves }));
+    if (clip && scene.scene === "clip") {
+      fits.set(scene.id, fitClip(clip.events, clip.duration, spoken[i]!, { fps, ...timing, ...timing.moves }, scene.limits));
+    }
   }
   return fits;
 }
@@ -144,7 +146,7 @@ async function main() {
         log(`  ${s.event.padEnd(14)} ${s.span}  ${s.natural.toFixed(2)}s -> ${s.duration.toFixed(2)}s at ${s.at.toFixed(2)}s${motion}`);
       }
       for (const [n, line] of fit.lines.entries()) {
-        if (line.waits > 0) log(`  line ${n + 1} waits ${line.waits.toFixed(2)}s for "${line.cue}": its moves are at their fastest`);
+        if (line.waits > 0) log(`  line ${n + 1} waits ${line.waits.toFixed(2)}s for "${line.cue}": moves at their fastest, holds at their least`);
       }
       for (const c of new Set(Object.values(clip.byFormat))) {
         const file = requestFileOf(c.file);

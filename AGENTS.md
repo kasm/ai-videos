@@ -89,6 +89,9 @@ inside the picture.
     clip:                              # or one path for every format: clip: clips/demo.mp4
       landscape: clips/demo-16x9.mp4   # relative to the video folder; ../ is fine
       portrait: clips/demo-9x16.mp4
+    limits:                            # optional: single events' own, over timing.moves (see Fitting)
+      slide: { fastest: 3 }            # a move: slowest and fastest, multiples of its own speed
+      start: { least: 2 }              # a hold: the shortest it may shrink to, seconds
     narration:
       - text: Here it slides, and a line can wait for it.
         cue: slide                     # an event's name; omit to follow on from the line before
@@ -158,6 +161,11 @@ How the fit (`src/fit.ts`) shares the time, in whole frames of the video's `fps`
   that a hold follows the last of them.
 - After the last cued event, the clip ends with the voice and `tail`: holds shrink or grow to get
   there, and moves keep their own speed.
+- A clip scene's `limits` give single events their own: a move its `slowest` and `fastest` instead
+  of `timing.moves`' (the fly-around faster than the rest), a hold the `least` it shrinks to
+  instead of a frame (a picture shown 2 s before the next line, the voice waiting for it). A
+  `least` longer than the hold makes it that long. `check` fails on a limit that names no event,
+  or `least` on a move and `slowest` or `fastest` on a hold.
 - Events land on whole frames, so a cued line starts up to a frame after the voice's own time.
 
 The request (`ai-videos-request`, version 1) lists every span, in order, from the first event:

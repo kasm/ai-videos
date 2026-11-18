@@ -9,8 +9,13 @@
 // play slower, down to `slowest`, and past that a hold follows them. After the last cue the clip
 // ends with the scene: holds shrink to end it with the voice (and the tail), but moves keep their
 // speed, as no voice is waiting for them.
+//
+// One event may have limits of its own, over those (`limits` in a clip scene): a move its own
+// `slowest` and `fastest`, a hold the `least` it shrinks to instead of a frame. A hold's `least`
+// longer than its own length makes it that long: it is what the hold must show.
 import path from "node:path";
 import type { ClipEvent } from "./clip.ts";
+import type { EventLimitsScript } from "./script.ts";
 
 /** A narration line as the fit needs it: measured, in seconds. */
 export interface FitLine {
@@ -104,13 +109,14 @@ function share(spans: Span[], total: number): Share[] {
   const movesOwn = sum(of(moves, "own"));
 
   if (total <= sum(of(holds, "own")) + movesOwn) {
-    // Short of time: holds shrink first, then moves speed up.
-    if (total - movesOwn >= holds.length) {
-      set(holds, spread(total - movesOwn, of(holds, "least"), of(holds, "own").map((x) => x - 1)));
+    // Short of time: holds shrink first, each to its least, then moves speed up.
+    const holdsLeast = of(holds, "least");
+    if (total - movesOwn >= sum(holdsLeast)) {
+      set(holds, spread(total - movesOwn, holdsLeast, of(holds, "own").map((x, k) => x - holdsLeast[k]!)));
     } else {
-      set(holds, of(holds, "least"));
+      set(holds, holdsLeast);
       const least = of(moves, "least");
-      set(moves, spread(total - holds.length, least, of(moves, "own").map((x, k) => x - least[k]!)), true);
+      set(moves, spread(total - sum(holdsLeast), least, of(moves, "own").map((x, k) => x - least[k]!)), true);
     }
   } else if (holds.length) {
     // Time to spare, and holds to take it, in proportion to their own length.
@@ -130,15 +136,28 @@ function share(spans: Span[], total: number): Share[] {
   return out;
 }
 
-/** The request for one clip scene: how long each span should last for the voice to land on its events. */
-export function fitClip(events: ClipEvent[], clipDuration: number, lines: FitLine[], timing: FitTiming): Fit {
+/**
+ * The request for one clip scene: how long each span should last for the voice to land on its
+ * events. `limits` are single events' own (loadClips has checked each names an event of its kind).
+ */
+export function fitClip(
+  events: ClipEvent[],
+  clipDuration: number,
+  lines: FitLine[],
+  timing: FitTiming,
+  limits: Record<string, EventLimitsScript> = {},
+): Fit {
   const F = timing.fps;
   const natural = naturalLengths(events, clipDuration);
   const spans: Span[] = events.map((e, i) => {
     const own = Math.max(1, Math.round(natural[i]! * F));
-    if (e.span === "hold") return { move: false, own, least: 1, most: Infinity };
-    const least = Math.min(own, Math.max(1, Math.ceil((natural[i]! * F) / timing.fastest - EPS)));
-    const most = Math.max(own, Math.floor((natural[i]! * F) / timing.slowest + EPS));
+    const limit = limits[e.name] ?? {};
+    if (e.span === "hold") {
+      const least = Math.max(1, Math.round((limit.least ?? 0) * F));
+      return { move: false, own: Math.max(own, least), least, most: Infinity };
+    }
+    const least = Math.min(own, Math.max(1, Math.ceil((natural[i]! * F) / (limit.fastest ?? timing.fastest) - EPS)));
+    const most = Math.max(own, Math.floor((natural[i]! * F) / (limit.slowest ?? timing.slowest) + EPS));
     return { move: true, own, least, most };
   });
   const shares: Share[] = new Array(events.length);

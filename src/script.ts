@@ -68,6 +68,17 @@ const ClipLine = z.strictObject({
 
 const clipFile = z.string().min(1);
 
+/** Limits for one event's span, over the video's `timing.moves` (see "Fitting a clip to the voice"). */
+const EventLimits = z.strictObject({
+  /** A move: the slowest it may play, as a multiple of its own speed. */
+  slowest: z.number().positive().max(1).optional(),
+  /** A move: the fastest it may play, as a multiple of its own speed. */
+  fastest: z.number().min(1).max(10).optional(),
+  /** A hold: the shortest it may shrink to, seconds (else a frame). */
+  least: z.number().min(0).optional(),
+});
+export type EventLimitsScript = z.infer<typeof EventLimits>;
+
 const ClipScene = z.strictObject({
   id: slug,
   scene: z.literal("clip"),
@@ -81,6 +92,8 @@ const ClipScene = z.strictObject({
       .strictObject({ landscape: clipFile.optional(), portrait: clipFile.optional() })
       .refine((c) => c.landscape || c.portrait, { message: "name a clip for landscape, portrait or both" }),
   ]),
+  /** Limits for single events of the clip, by name: one move faster than the rest, a hold kept longer. */
+  limits: z.record(z.string(), EventLimits).default({}),
   narration: z.array(ClipLine).min(1),
 });
 export type ClipSceneScript = z.infer<typeof ClipScene>;

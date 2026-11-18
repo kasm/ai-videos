@@ -47,6 +47,28 @@ test("a move plays at most `fastest` times its speed, and then the voice waits",
   assertAddsUp(fit);
 });
 
+test("one move's own `fastest` holds it alone; the others keep the clip's", () => {
+  // The fly takes 4 s and the slide 2 s; the voice gets to the end 0.9 s after the fly starts.
+  const events = [hold("start", 0), move("fly", 1), move("slide", 5), hold("end", 7)];
+  const fit = fitClip(events, 8, [line(0.5, "fly"), line(0.5, "end")], TIMING, { fly: { fastest: 4 } });
+  assert.equal(span(fit, "fly").move, 1, "the fly at its own fastest, 4 times its speed");
+  assert.equal(span(fit, "slide").move, 2 / TIMING.fastest, "the slide at the clip's");
+  assert.equal(fit.lines[1]!.waits, 1.1, "the voice waits for the rest");
+  assertAddsUp(fit);
+});
+
+test("a hold shrinks no further than its own `least`: the moves speed up first, then the voice waits", () => {
+  // "there" holds 2 s and must show 1.5 s of it; the voice gets to "rise" 0.9 s after the slide starts.
+  const events = [hold("start", 0), move("slide", 1), hold("there", 2), move("rise", 4), hold("up", 5)];
+  const lines = [line(0.5, "slide"), line(0.5, "rise")];
+  assert.equal(frames(span(fitClip(events, 6, lines, TIMING), "there").duration), 1, "with no limit, a frame");
+  const fit = fitClip(events, 6, lines, TIMING, { there: { least: 1.5 } });
+  assert.equal(span(fit, "there").duration, 1.5);
+  assert.equal(span(fit, "slide").move, 0.5, "the slide at its fastest");
+  assert.equal(fit.lines[1]!.waits, 1.1);
+  assertAddsUp(fit);
+});
+
 test("a move with no hold after it slows down, within `slowest`", () => {
   // The slide's 1 s has to fill 1.4 s, and no hold is there to take the extra.
   const fit = fitClip([hold("start", 0), move("slide", 1), move("rise", 2), hold("up", 3)], 4, [line(1, "slide"), line(1, "rise")], TIMING);

@@ -65,6 +65,29 @@ test("a cue before one an earlier line named: a clip plays forward", async () =>
   );
 });
 
+/** The demo's video.yaml with `limits` for its scene (after its clips, before its narration). */
+const withLimits = (limits: string) => async (dir: string) => {
+  const file = path.join(dir, "video.yaml");
+  await writeFile(file, (await readFile(file, "utf8")).replace("    narration:", `    limits:\n${limits}\n    narration:`));
+};
+
+test("limits for single events load when each names an event of its kind", async () => {
+  await demo("limits", withLimits("      slide: { fastest: 3 }\n      across: { least: 2 }"));
+  const scene = (await loadVideo(path.join(scratch, "limits"))).script.scenes[0]!;
+  assert.deepEqual(scene.scene === "clip" && scene.limits, { slide: { fastest: 3 }, across: { least: 2 } });
+});
+
+test("a limit that names no event", async () => {
+  await assert.rejects(
+    demo("limit-no-event", withLimits("      orbit: { fastest: 3 }")),
+    /limits: "orbit" is not an event of demo-16x9\.json \(its events: start, slide, across, rise, up\)/,
+  );
+});
+
+test("a limit of another kind: a hold's least on a move", async () => {
+  await assert.rejects(demo("limit-kind", withLimits("      slide: { least: 2 }")), /limits: "slide" is a move: it takes slowest and fastest, not least/);
+});
+
 test("the JSON alone, before its clip is drawn, is enough for a request", async () => {
   const dir = path.join(scratch, "json-only");
   await cp(DEMO, dir, { recursive: true, filter: (src) => !src.endsWith(".mp4") && !src.endsWith(".ts") });

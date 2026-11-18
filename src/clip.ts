@@ -155,7 +155,8 @@ function agree(sceneId: string, a: Clip, b: Clip, fps: number): void {
  * Every clip scene's clips, read and checked before any narration is made: each clip and its JSON
  * exist, the JSON passes the schema and matches the clip's length, the formats' clips agree, and
  * every narration cue names one of the events, never one before an earlier line's (a clip plays
- * forward). With `readVideo: false` only the JSON is read: the clips may not be drawn yet.
+ * forward), and every limit names an event of its kind (`least` a hold, `slowest` and `fastest` a
+ * move). With `readVideo: false` only the JSON is read: the clips may not be drawn yet.
  */
 export async function loadClips(
   video: LoadedVideo,
@@ -196,6 +197,13 @@ export async function loadClips(
         throw new Error(`Scene "${scene.id}", line ${n}: cue "${event.name}" comes before "${reached.name}", cued earlier; a clip plays forward`);
       }
       reached = event;
+    }
+    for (const [name, limits] of Object.entries(scene.limits)) {
+      const event = events.find((e) => e.name === name);
+      const where = `Scene "${scene.id}", limits: "${name}"`;
+      if (!event) throw new Error(`${where} is not an event of ${path.basename(first!.dataFile)} (its events: ${events.map((e) => e.name).join(", ")})`);
+      const wrong = Object.keys(limits).filter((key) => (event.span === "hold" ? key !== "least" : key === "least"));
+      if (wrong.length) throw new Error(`${where} is a ${event.span}: it takes ${event.span === "hold" ? "least" : "slowest and fastest"}, not ${wrong.join(" or ")}`);
     }
     clips.set(scene.id, { byFormat, duration: first!.data.duration, events });
   }
