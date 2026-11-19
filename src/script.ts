@@ -79,23 +79,37 @@ const EventLimits = z.strictObject({
 });
 export type EventLimitsScript = z.infer<typeof EventLimits>;
 
-const ClipScene = z.strictObject({
-  id: slug,
-  scene: z.literal("clip"),
-  /**
-   * The video file to play, relative to the video folder: one for every format, or one per format.
-   * Beside each lies its JSON (the same name, ending in .json).
-   */
-  clip: z.union([
-    clipFile,
-    z
-      .strictObject({ landscape: clipFile.optional(), portrait: clipFile.optional() })
-      .refine((c) => c.landscape || c.portrait, { message: "name a clip for landscape, portrait or both" }),
-  ]),
-  /** Limits for single events of the clip, by name: one move faster than the rest, a hold kept longer. */
-  limits: z.record(z.string(), EventLimits).default({}),
-  narration: z.array(ClipLine).min(1),
-});
+/** What a project's maker draws, in its own words (a RayCraft tutorial's name). It goes on a command line. */
+export const MakerName = z.string().regex(/^[a-z0-9][a-z0-9-]*$/, "use lowercase letters, digits and dashes: it goes on a command line");
+
+const ClipScene = z
+  .strictObject({
+    id: slug,
+    scene: z.literal("clip"),
+    /**
+     * A clip drawn elsewhere: the video file to play, relative to the video folder, one for every
+     * format or one per format. Beside each lies its JSON (the same name, ending in .json).
+     */
+    clip: z
+      .union([
+        clipFile,
+        z
+          .strictObject({ landscape: clipFile.optional(), portrait: clipFile.optional() })
+          .refine((c) => c.landscape || c.portrait, { message: "name a clip for landscape, portrait or both" }),
+      ])
+      .optional(),
+    /**
+     * A made clip: what the project's maker draws. `make` calls the maker, and the clip's files are
+     * the folder's clips/<id>-<format>.* (madeFiles, src/clip.ts).
+     */
+    make: MakerName.optional(),
+    /** Limits for single events of the clip, by name: one move faster than the rest, a hold kept longer. */
+    limits: z.record(z.string(), EventLimits).default({}),
+    narration: z.array(ClipLine).min(1),
+  })
+  .refine((s) => (s.clip === undefined) !== (s.make === undefined), {
+    message: "a clip scene gives clip: (a clip drawn elsewhere) or make: (one the project's maker draws), one of the two",
+  });
 export type ClipSceneScript = z.infer<typeof ClipScene>;
 
 const Timing = z.strictObject({

@@ -2,6 +2,7 @@
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
+import { requestFileOf } from "./fit.ts";
 import { run } from "./render.ts";
 import type { FormatName, LoadedVideo } from "./script.ts";
 
@@ -51,6 +52,15 @@ export type ClipEvent = ClipJson["events"][number];
 export function dataFileOf(clipFile: string): string {
   const ext = path.extname(clipFile);
   return `${clipFile.slice(0, clipFile.length - ext.length)}.json`;
+}
+
+/** A made clip's file, relative to its video folder: by the scene's id, one per format (AGENTS.md, "A video folder"). */
+export const madeClipOf = (sceneId: string, format: FormatName) => `clips/${sceneId}-${format}.mp4`;
+
+/** A made clip's files in its video folder `dir`: the clip, its data and its request. */
+export function madeFiles(dir: string, sceneId: string, format: FormatName) {
+  const clip = path.join(dir, madeClipOf(sceneId, format));
+  return { clip, data: dataFileOf(clip), request: requestFileOf(clip) };
 }
 
 /** Reads and validates a clip's JSON. Errors name the file and every reason. */
@@ -111,14 +121,16 @@ export interface SceneClips {
 
 const exists = (file: string) => stat(file).then((s) => s.isFile(), () => false);
 
-async function loadClip(sceneId: string, dir: string, rel: string, readVideo: boolean): Promise<Clip> {
+async function loadClip(sceneId: string, dir: string, rel: string, readVideo: boolean, made: boolean): Promise<Clip> {
   const file = path.resolve(dir, rel);
-  if (readVideo && !(await exists(file))) throw new Error(`Scene "${sceneId}": clip ${rel} is not at ${file}`);
+  // A made clip's files are written by `make`, so that is what to run when one is missing.
+  const hint = made ? ` It is made: "npm run video -- make <video>" writes it.` : "";
+  if (readVideo && !(await exists(file))) throw new Error(`Scene "${sceneId}": clip ${rel} is not at ${file}.${hint}`);
   const dataFile = dataFileOf(file);
   if (!(await exists(dataFile))) {
     throw new Error(
       `Scene "${sceneId}": clip ${rel} has no JSON beside it (${dataFile}). ` +
-        `The JSON says what made the clip, its events and its texts; see "Clips" in the tool's AGENTS.md.`,
+        (hint ? hint.trim() : `The JSON says what made the clip, its events and its texts; see "Clips" in the tool's AGENTS.md.`),
     );
   }
   const data = await readClipData(dataFile);
@@ -173,9 +185,10 @@ export async function loadClips(
     const byFormat: Partial<Record<FormatName, Clip>> = {};
     const loaded = new Map<string, Clip>();
     for (const format of formats) {
-      const rel = typeof scene.clip === "string" ? scene.clip : scene.clip[format];
+      // The schema lets a clip scene give exactly one of `make` and `clip`.
+      const rel = scene.make !== undefined ? madeClipOf(scene.id, format) : typeof scene.clip === "string" ? scene.clip : scene.clip?.[format];
       if (!rel) throw new Error(`Scene "${scene.id}" has no clip for ${format}`);
-      const clip = loaded.get(rel) ?? (await loadClip(scene.id, video.dir, rel, readVideo));
+      const clip = loaded.get(rel) ?? (await loadClip(scene.id, video.dir, rel, readVideo, scene.make !== undefined));
       loaded.set(rel, clip);
       byFormat[format] = clip;
     }

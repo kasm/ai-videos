@@ -6,10 +6,12 @@ import { parseArgs } from "node:util";
 import { loadClips, type SceneClips } from "./clip.ts";
 import { compose } from "./compose.ts";
 import { drawnTo, fitClip, requestDocument, requestFileOf, type Fit } from "./fit.ts";
+import { commandLine, madeScenes, makerCalls, makerOf, runShell } from "./make.ts";
+import type { MakerCall } from "./maker.ts";
 import { hyperframes, normalizeLoudness, renderProject } from "./render.ts";
 import { loadVideo, type FormatName, type LoadedVideo } from "./script.ts";
 import { toSrt } from "./srt.ts";
-import { buildTimeline, narrate, type SpokenLine } from "./timeline.ts";
+import { buildTimeline, narrate, type SpokenLine, type Timeline } from "./timeline.ts";
 import { KokoroProvider, speak } from "./tts.ts";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
@@ -24,6 +26,9 @@ A video is a folder holding a video.yaml: a bare name is a folder in this tool's
 anything with a slash is a path, relative to where the command is run.
 
 Commands
+  make <video>     The whole video, inside its folder: the maker's data for each made clip, the
+                   fit to the voice, the maker's drawing, check and build. Writes the folder's
+                   clips/, build/ and out/ (AGENTS.md, "make")
   build <video>    Narrate, compose, render and post-process a video into out/<name>/
   compose <video>  Narrate and generate the HyperFrames project in build/<name>/ (no render)
   check <video>    Compose, then run HyperFrames' lint and layout checks
@@ -35,6 +40,7 @@ Commands
 Options
   --format <landscape|portrait>   Only this format (default: every format in the script)
   --draft                         Fast, lower-quality render for iteration
+  --fit                           make only: stop after the fit, to try the lines and the timing
   --out <folder>                  build only: write the finished files here instead of out/<name>/
 `;
 
@@ -49,14 +55,20 @@ function videoDir(arg: string): string {
   return dir;
 }
 
-/** The script, its clips (checked before any narration is made, so a bad one fails at once) and the measured voice. */
-async function load(dir: string, only: string | undefined, readVideo: boolean) {
-  const video = await loadVideo(dir);
-  log(`Video: ${video.dir}`);
+/** The formats to make: the one --format names, else every one the script asks for. */
+function formatsOf(video: LoadedVideo, only: string | undefined): FormatName[] {
   const formats = (only ? [only] : video.script.formats) as FormatName[];
   for (const f of formats) {
     if (f !== "landscape" && f !== "portrait") throw new Error(`Unknown format "${f}"`);
   }
+  return formats;
+}
+
+/** The script, its clips (checked before any narration is made, so a bad one fails at once) and the measured voice. */
+async function load(dir: string, only: string | undefined, readVideo: boolean) {
+  const video = await loadVideo(dir);
+  log(`Video: ${video.dir}`);
+  const formats = formatsOf(video, only);
   const clips = await loadClips(video, formats, { readVideo });
   for (const [id, scene] of clips) {
     for (const [format, clip] of Object.entries(scene.byFormat)) {
@@ -83,20 +95,135 @@ function fitAll(video: LoadedVideo, clips: Map<string, SceneClips>, spoken: Spok
   return fits;
 }
 
-async function prepare(dir: string, only: string | undefined, arg: string) {
+/** Composes each format into `<buildDir>/<format>`, and says which clip scenes are not drawn to the voice. */
+async function prepare(dir: string, only: string | undefined, arg: string, buildDir: (video: LoadedVideo) => string) {
   const { video, formats, clips, spoken } = await load(dir, only, true);
   const timeline = buildTimeline(video.script, clips, spoken, log);
   log(`Timeline: ${timeline.duration.toFixed(2)}s at ${timeline.fps} fps`);
+  const undrawn: string[] = [];
   for (const [id, fit] of fitAll(video, clips, spoken)) {
     const clip = clips.get(id)!;
     if (drawnTo(fit, clip.events, clip.duration, video.script.fps)) log(`Clip ${id}: drawn to the voice`);
-    else log(`Clip ${id}: not drawn to the voice (it would last ${fit.duration.toFixed(2)}s, not ${clip.duration}s); "npm run video -- request ${arg}" writes how long each span should last`);
+    else {
+      undrawn.push(id);
+      log(`Clip ${id}: not drawn to the voice (it would last ${fit.duration.toFixed(2)}s, not ${clip.duration}s); "npm run video -- request ${arg}" writes how long each span should last`);
+    }
   }
   const projects: Record<string, string> = {};
   for (const format of formats) {
-    projects[format] = await compose(ROOT, video, clips, timeline, format);
+    projects[format] = await compose(ROOT, video, clips, timeline, format, buildDir(video));
   }
-  return { video, timeline, formats, projects };
+  return { video, timeline, formats, projects, undrawn };
+}
+
+/** Prints each fit, and writes it as a request beside each of its scene's clips. */
+async function writeRequests(video: LoadedVideo, clips: Map<string, SceneClips>, fits: Map<string, Fit>) {
+  for (const [id, fit] of fits) {
+    const clip = clips.get(id)!;
+    log(`\nRequest for ${id}: ${fit.duration.toFixed(3)}s, ${fit.frames} frames (the clip's own pace: ${clip.duration}s)`);
+    for (const s of fit.spans) {
+      const motion = s.move !== undefined && s.move < s.duration ? `, moving ${s.move.toFixed(2)}s then holding` : "";
+      log(`  ${s.event.padEnd(14)} ${s.span}  ${s.natural.toFixed(2)}s -> ${s.duration.toFixed(2)}s at ${s.at.toFixed(2)}s${motion}`);
+    }
+    for (const [n, line] of fit.lines.entries()) {
+      if (line.waits > 0) log(`  line ${n + 1} waits ${line.waits.toFixed(2)}s for "${line.cue}": moves at their fastest, holds at their least`);
+    }
+    for (const c of new Set(Object.values(clip.byFormat))) {
+      const file = requestFileOf(c.file);
+      // The script, as a path from the request: the same on every run, however the tool was started.
+      const script = path.relative(path.dirname(file), video.file).split(path.sep).join("/");
+      const meta = { from: `${script}, scene ${id}`, clip: path.basename(c.dataFile), fps: video.script.fps };
+      await writeFile(file, `${JSON.stringify(requestDocument(fit, meta), null, 2)}\n`);
+      log(`  ${file}`);
+    }
+  }
+}
+
+/** HyperFrames' lint and layout checks on each format's project: false when one finds errors. */
+async function checkProjects(formats: FormatName[], projects: Record<string, string>): Promise<boolean> {
+  let passed = true;
+  for (const format of formats) {
+    log(`\nCheck (${format})`);
+    // Scrolled-off text is geometrically outside the social safe areas by design; the scene parks
+    // each cue inside them, so the portrait check skips that audit rather than drown in warnings.
+    const args = format === "portrait" ? ["check", "--safe-zone", "off"] : ["check"];
+    if ((await hyperframes(ROOT, projects[format]!, args)) !== 0) passed = false;
+  }
+  return passed;
+}
+
+/** Renders each format, brings it to the script's loudness, and writes it and the subtitles into `outDir`. */
+async function render(
+  video: LoadedVideo,
+  timeline: Timeline,
+  formats: FormatName[],
+  projects: Record<string, string>,
+  outDir: string,
+  draft: boolean,
+) {
+  await mkdir(outDir, { recursive: true });
+  const suffix = draft ? "-draft" : "";
+  for (const format of formats) {
+    const raw = path.join(projects[format]!, "renders", "raw.mp4");
+    const final = path.join(outDir, `${video.slug}-${format}${suffix}.mp4`);
+    log(`\nRender (${format}${draft ? ", draft" : ""})`);
+    await renderProject(ROOT, projects[format]!, raw, { fps: timeline.fps, draft });
+    log(`Loudness (${format}, ${video.script.loudness} LUFS)`);
+    await normalizeLoudness(raw, final, video.script.loudness);
+    log(`  ${final}`);
+  }
+  const srt = path.join(outDir, `${video.slug}.srt`);
+  await writeFile(srt, toSrt(timeline));
+  log(`\nSubtitles: ${srt}`);
+}
+
+/**
+ * `make`: the maker's data for each made clip, the fit to the voice, the maker's drawing, check and
+ * build, in that order, stopping at the first that fails. All it writes is in the video's folder
+ * (clips/, build/, out/), but for the voice cache, which stays in the tool.
+ */
+async function make(dir: string, arg: string, only: string | undefined, opts: { fit: boolean; draft: boolean }) {
+  const video = await loadVideo(dir);
+  const formats = formatsOf(video, only);
+  const maker = makerOf(video);
+  const made = new Set(madeScenes(video).map((s) => s.id));
+  const steps = opts.fit ? 2 : 5;
+  const begin = (n: number, what: string) => log(`\n== ${n}/${steps}: ${what}\n`);
+
+  const callMaker = async (step: MakerCall["step"]) => {
+    if (!maker) return log("No made clip.");
+    for (const { scene, call } of makerCalls(video, formats, step)) {
+      const line = commandLine(maker.maker, call);
+      log(`${line}\n  (in ${maker.dir})`);
+      const code = await runShell(line, maker.dir);
+      if (code !== 0) {
+        const what = step === "data" ? "writing its data" : "drawing it";
+        throw new Error(`\nStopped: the maker failed on scene "${scene}" (${call.format}), ${what}, with exit code ${code}; it says why above.`);
+      }
+    }
+  };
+
+  begin(1, "the made clips' data");
+  if (maker) await mkdir(path.join(video.dir, "clips"), { recursive: true });
+  await callMaker("data");
+
+  begin(2, "the fit to the voice");
+  // Requests for made clips only: make draws no other, and one drawn elsewhere may lie outside the folder.
+  const { clips, spoken } = await load(dir, only, false);
+  await writeRequests(video, clips, new Map([...fitAll(video, clips, spoken)].filter(([id]) => made.has(id))));
+  if (opts.fit) return;
+
+  begin(3, "the made clips, drawn to the voice");
+  await callMaker("draw");
+
+  begin(4, "check");
+  const { timeline, projects, undrawn } = await prepare(dir, only, arg, (v) => path.join(v.dir, "build"));
+  const broken = undrawn.filter((id) => made.has(id));
+  if (broken.length) throw new Error(`\nStopped: the maker drew ${broken.join(", ")}, but not to the request.`);
+  if (!(await checkProjects(formats, projects))) throw new Error("\nStopped: check found errors (above).");
+
+  begin(5, "the video");
+  await render(video, timeline, formats, projects, path.join(video.dir, "out"), opts.draft);
 }
 
 async function main() {
@@ -105,6 +232,7 @@ async function main() {
     options: {
       format: { type: "string" },
       draft: { type: "boolean", default: false },
+      fit: { type: "boolean", default: false },
       out: { type: "string" },
       help: { type: "boolean", short: "h", default: false },
     },
@@ -128,53 +256,31 @@ async function main() {
     return log(`Samples written to ${dir}`);
   }
 
-  if (!["build", "compose", "check", "preview", "request"].includes(command)) throw new Error(`Unknown command "${command}"\n\n${HELP}`);
+  if (!["make", "build", "compose", "check", "preview", "request"].includes(command)) throw new Error(`Unknown command "${command}"\n\n${HELP}`);
   if (!arg) {
     throw new Error(`"${command}" needs a video: a name in videos/ or a folder's path, e.g. npm run video -- ${command} scroll-demo`);
   }
-  if (values.out !== undefined && command !== "build") throw new Error(`--out is for build; ${command} writes only to build/`);
+  if (values.out !== undefined && command !== "build") {
+    throw new Error(`--out is for build; ${command === "make" ? "make writes into the video's folder, out/" : `${command} writes only to build/`}`);
+  }
+  if (values.fit && command !== "make") throw new Error("--fit is for make; the fit alone is request");
+
+  if (command === "make") return make(videoDir(arg), arg, values.format, { fit: values.fit, draft: values.draft });
 
   if (command === "request") {
     // Only the clips' JSON is read: the clips themselves may not be drawn yet.
     const { video, clips, spoken } = await load(videoDir(arg), values.format, false);
     if (clips.size === 0) throw new Error(`${video.file} has no clip scene to fit`);
-    for (const [id, fit] of fitAll(video, clips, spoken)) {
-      const clip = clips.get(id)!;
-      log(`\nRequest for ${id}: ${fit.duration.toFixed(3)}s, ${fit.frames} frames (the clip's own pace: ${clip.duration}s)`);
-      for (const s of fit.spans) {
-        const motion = s.move !== undefined && s.move < s.duration ? `, moving ${s.move.toFixed(2)}s then holding` : "";
-        log(`  ${s.event.padEnd(14)} ${s.span}  ${s.natural.toFixed(2)}s -> ${s.duration.toFixed(2)}s at ${s.at.toFixed(2)}s${motion}`);
-      }
-      for (const [n, line] of fit.lines.entries()) {
-        if (line.waits > 0) log(`  line ${n + 1} waits ${line.waits.toFixed(2)}s for "${line.cue}": moves at their fastest, holds at their least`);
-      }
-      for (const c of new Set(Object.values(clip.byFormat))) {
-        const file = requestFileOf(c.file);
-        // The script, as a path from the request: the same on every run, however the tool was started.
-        const script = path.relative(path.dirname(file), video.file).split(path.sep).join("/");
-        const meta = { from: `${script}, scene ${id}`, clip: path.basename(c.dataFile), fps: video.script.fps };
-        await writeFile(file, `${JSON.stringify(requestDocument(fit, meta), null, 2)}\n`);
-        log(`  ${file}`);
-      }
-    }
-    return;
+    return writeRequests(video, clips, fitAll(video, clips, spoken));
   }
 
-  const { video, timeline, formats, projects } = await prepare(videoDir(arg), values.format, arg);
+  const { video, timeline, formats, projects } = await prepare(videoDir(arg), values.format, arg, (v) => path.join(ROOT, "build", v.slug));
 
   if (command === "compose") {
     return log(`Projects: ${Object.values(projects).join(", ")}`);
   }
   if (command === "check") {
-    let failed = false;
-    for (const format of formats) {
-      log(`\nCheck (${format})`);
-      // Scrolled-off text is geometrically outside the social safe areas by design; the scene parks
-      // each cue inside them, so the portrait check skips that audit rather than drown in warnings.
-      const args = format === "portrait" ? ["check", "--safe-zone", "off"] : ["check"];
-      if ((await hyperframes(ROOT, projects[format]!, args)) !== 0) failed = true;
-    }
-    if (failed) process.exitCode = 1;
+    if (!(await checkProjects(formats, projects))) process.exitCode = 1;
     return;
   }
   if (command === "preview") {
@@ -183,20 +289,7 @@ async function main() {
   }
 
   const outDir = values.out !== undefined ? path.resolve(CALLER, values.out) : path.join(ROOT, "out", video.slug);
-  await mkdir(outDir, { recursive: true });
-  const suffix = values.draft ? "-draft" : "";
-  for (const format of formats) {
-    const raw = path.join(projects[format]!, "renders", "raw.mp4");
-    const final = path.join(outDir, `${video.slug}-${format}${suffix}.mp4`);
-    log(`\nRender (${format}${values.draft ? ", draft" : ""})`);
-    await renderProject(ROOT, projects[format]!, raw, { fps: timeline.fps, draft: values.draft });
-    log(`Loudness (${format}, ${video.script.loudness} LUFS)`);
-    await normalizeLoudness(raw, final, video.script.loudness);
-    log(`  ${final}`);
-  }
-  const srt = path.join(outDir, `${video.slug}.srt`);
-  await writeFile(srt, toSrt(timeline));
-  log(`\nSubtitles: ${srt}`);
+  await render(video, timeline, formats, projects, outDir, values.draft);
 }
 
 main().catch((err: unknown) => {

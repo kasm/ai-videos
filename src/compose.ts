@@ -141,15 +141,21 @@ async function clipScene(project: string, scene: ClipSceneScript, timed: TimedSc
   };
 }
 
+/**
+ * Writes the HyperFrames project for one format into `<buildDir>/<format>` and returns that folder:
+ * the tool's build/<name>/ for the single commands, the video folder's build/ for `make`. The scene
+ * templates come from the tool, `root`.
+ */
 export async function compose(
   root: string,
   video: LoadedVideo,
   clips: Map<string, SceneClips>,
   timeline: Timeline,
   format: FormatName,
+  buildDir: string,
 ): Promise<string> {
   const { width, height } = FORMATS[format];
-  const project = path.join(root, "build", video.slug, format);
+  const project = path.join(buildDir, format);
   // Clear only what we generate: HyperFrames keeps a helper process alive in the project
   // folder for a few minutes after a check, so the folder itself can't be removed on Windows.
   for (const sub of ["compositions", "assets"]) {

@@ -1,8 +1,7 @@
-# Test video for clip scenes: a clip drawn by make-clip.ts, narrated line by line on its events.
-# After changing a line, fit the clip to the voice again, then build:
-#   npm run video -- request clip-demo
-#   node videos/clip-demo/make-clip.ts --request
-#   npm run video -- build clip-demo
+# Test video for clip scenes: a made clip, drawn by the project's maker (videos/make-clip.ts),
+# narrated line by line on its events. After changing a line:
+#   npm run video -- make clip-demo --fit   the fit to the voice, in seconds, nothing drawn
+#   npm run video -- make clip-demo         the clip drawn to the voice, checked and built: out/
 title: A clip on cue
 voice: af_heart
 fps: 30
@@ -11,9 +10,7 @@ formats: [landscape, portrait]
 scenes:
   - id: square
     scene: clip
-    clip:
-      landscape: clips/demo-16x9.mp4
-      portrait: clips/demo-9x16.mp4
+    make: square                       # its files: clips/square-landscape.mp4 and the rest
     narration:
       - text: "This square is a clip: a short video file, with a little JSON beside it."
         cue: start

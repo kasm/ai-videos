@@ -101,3 +101,26 @@ test("a bad setting in a video.yaml is reported against the video.yaml, not the 
   const dir = await project("bad-video", SAMPLE, `${SCENES}loudness: 5\n`);
   await assert.rejects(loadVideo(path.join(dir, "intro")), /intro[\\/]video\.yaml is not a valid video script/);
 });
+
+/** A video with one clip scene, given these lines in place of its clip. */
+const clipScene = (lines: string) => `
+title: A test
+scenes:
+  - id: one
+    scene: clip
+${lines}
+    narration:
+      - text: Hello.
+`;
+
+test("a clip scene gives clip: or make:, one of the two", async () => {
+  const made = await loadVideo(path.join(await project("made", undefined, clipScene("    make: first-shadow")), "intro"));
+  const scene = made.script.scenes[0]!;
+  assert.equal(scene.scene === "clip" && scene.make, "first-shadow");
+  const neither = await project("neither", undefined, clipScene(""));
+  await assert.rejects(loadVideo(path.join(neither, "intro")), /clip: \(a clip drawn elsewhere\) or make: \(one the project's maker draws\), one of the two/);
+  const both = await project("both", undefined, clipScene("    make: first-shadow\n    clip: a.mp4"));
+  await assert.rejects(loadVideo(path.join(both, "intro")), /one of the two/);
+  const badName = await project("bad-name", undefined, clipScene("    make: First Shadow"));
+  await assert.rejects(loadVideo(path.join(badName, "intro")), /it goes on a command line/);
+});

@@ -1,0 +1,3 @@
+# This tool's own videos as a project (AGENTS.md, "Projects"): what the folders here share. Only
+# the maker so far, so every other setting is each video.yaml's or the tool's default.
+maker: node make-clip.ts   # draws clip-demo's square; run in this folder

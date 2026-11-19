@@ -6,6 +6,8 @@ HTML to MP4 frame by frame. Everything runs locally on Node; there is no Python 
 ## Commands
 
 ```
+npm run video -- make <video>              the whole video, inside its folder (see Projects, make)
+npm run video -- make <video> --fit        only the made clips' data and the fit, in seconds
 npm run video -- build <video>             narrate, render every format, write out/<name>/
 npm run video -- build <video> --draft     fast low-quality render for iteration
 npm run video -- build <video> --format portrait
@@ -31,7 +33,9 @@ npm --prefix d:/m/web/ai_videos run video -- build media/videos/intro --out medi
 The folder's name is the video's `<name>`: it names `build/<name>/` and the finished files
 (`<name>-landscape.mp4`, `<name>.srt`), so it uses lowercase letters, digits and dashes. Pages,
 styles and `assets/` are found relative to the folder; scene templates, voices and the TTS cache
-always come from this tool. The build and the cache stay here; only `--out` writes elsewhere.
+always come from this tool. The single commands keep the build here, and only `build`'s `--out`
+writes the finished files elsewhere; `make` writes the build and the finished files inside the
+video's folder. The TTS cache always stays here.
 
 ## Layout
 
@@ -40,7 +44,8 @@ always come from this tool. The build and the cache stay here; only `--out` writ
 | `videos/<name>/video.yaml` | The script: scenes, narration lines, cues. Source of truth for a video. |
 | `videos/<name>/page.html`, `page.css` | The page a `page-scroll` scene shows. |
 | `videos/<name>/assets/` | The page's pictures, copied into the build; the page refers to them as `assets/<file>`. |
-| `videos/clip-demo/` | The `clip` scene's demo: two small clips, their JSON and requests, and `make-clip.ts`, which draws them. |
+| `videos/project.yaml`, `videos/make-clip.ts` | The folder's videos as a project (see Projects): its project file, and its maker, which draws clip-demo's square with ffmpeg. |
+| `videos/clip-demo/` | The `clip` scene's demo: a made clip (`make: square`); `make clip-demo` writes its `clips/`, `build/` and `out/`. |
 | `scenes/<name>/scene.html` | Reusable scene templates (HyperFrames sub-compositions with `{{placeholders}}`): `page-scroll`, `clip`. |
 | `src/` | The pipeline: `script` → `clip` → `tts` → `timeline` (and `fit`, for `request`) → `compose` → `render` → `srt`. |
 | `build/` | Generated HyperFrames projects. Never edit; regenerated on every run. |
@@ -51,8 +56,7 @@ always come from this tool. The build and the cache stay here; only `--out` writ
 
 A project (RayCraft, or this tool's `videos/`) keeps its videos in one folder, a video folder
 each, and beside them one project file with what they share. This section is the contract between
-the tool and a project. `setup`, `new` and `make` are still to come; the files, the project file
-and the maker's call are fixed here first, and the project file is read already.
+the tool and a project. `setup` and `new` are still to come.
 
 ### The project file
 
@@ -116,7 +120,26 @@ per format:
   reason on stderr, and `make` stops there.
 - The schema is `MakerCall` in `src/maker.ts`: `makerArgs` writes a call, and
   `readMakerCall(process.argv.slice(2))` reads one in a maker written in TypeScript and refuses
-  anything the tool would not send. `src/maker.test.ts` shows both.
+  anything the tool would not send. `src/maker.test.ts` shows both. `videos/make-clip.ts` is a
+  small maker that follows it.
+
+### `make`
+
+`npm run video -- make <video>` makes the whole video in five steps, in this order, and stops at
+the first that fails (`src/cli.ts`, `make`; the calls are `src/make.ts`):
+
+1. The data: the maker's step one for each made clip, in each format.
+2. The fit: the voice spoken (from the cache when a line has not changed) and measured, and each
+   made clip fitted to it, as `request` does: the table, and `clips/<scene>-<format>.request.json`.
+   `--fit` stops here, in seconds, to try the lines and `timing` before anything is drawn.
+3. The drawing: the maker's step two for each made clip, in each format.
+4. The checks: `build/<format>/` composed and checked, as `check` does. A made clip not drawn to its
+   request, or a check's error, stops it.
+5. The video: each format rendered, at the script's loudness, into `out/`, with the subtitles.
+
+It writes only inside the video's folder (`clips/`, `build/`, `out/`), but for the voice cache, which
+stays in the tool. A clip scene with `clip:` paths plays as it was drawn: `make` writes it no request.
+`--format` makes one format, and `--draft` renders fast. With no made clip, steps 1 and 3 do nothing.
 
 ### Offline
 
@@ -173,12 +196,14 @@ A scene is a `page-scroll` (a page, below) or a `clip` (a video file, see Clips)
 ## Clips
 
 A `clip` scene plays a video file, muted, with the narration as captions over it. The clip comes
-from elsewhere (another project draws it); the tool reads the JSON beside it and never looks
-inside the picture.
+from elsewhere: a project's maker draws it (`make:`, see Projects), or it was drawn by other means
+(`clip:` paths). The tool reads the JSON beside it and never looks inside the picture.
 
 ```yaml
   - id: square
     scene: clip
+    make: square                       # a made clip: clips/square-<format>.mp4, drawn by the maker
+    # or a clip drawn elsewhere, in place of make:
     clip:                              # or one path for every format: clip: clips/demo.mp4
       landscape: clips/demo-16x9.mp4   # relative to the video folder; ../ is fine
       portrait: clips/demo-9x16.mp4
@@ -232,7 +257,9 @@ Beside each clip lies its JSON: the same path with `.json` for the extension
 
 ### Fitting a clip to the voice
 
-The voice sets the clock; the clip is drawn again to fit it. The tool never retimes video itself:
+The voice sets the clock; the clip is drawn again to fit it. The tool never retimes video itself.
+For a made clip, `make` runs the whole loop (`npm run video -- make clip-demo`). For a clip drawn
+elsewhere it takes three commands:
 
 ```
 npm run video -- request <video>     measure the voice, write <clip>.request.json beside each clip
@@ -240,8 +267,7 @@ npm run video -- request <video>     measure the voice, write <clip>.request.jso
 npm run video -- build <video>       "Clip <id>: drawn to the voice"
 ```
 
-`request` reads only the JSON, so it works before the clip is drawn at all. `videos/clip-demo`
-runs the whole loop: `node videos/clip-demo/make-clip.ts --request` plays the clip's maker.
+`request` reads only the JSON, so it works before the clip is drawn at all.
 
 How the fit (`src/fit.ts`) shares the time, in whole frames of the video's `fps`:
 
@@ -293,8 +319,9 @@ Portrait scenes keep reading text inside x 120–888 and y 288–1248, the area 
 - HyperFrames telemetry is disabled on this machine (`npx hyperframes telemetry disable`).
 - Subtitles come from the script text and line timings; long lines are split in proportion to
   their length, not by word timestamps.
-- Two videos with the same folder name share `build/<name>/` and, without `--out`, `out/<name>/`:
-  build one at a time, or give the outside one its own `--out`.
+- With the single commands, two videos with the same folder name share `build/<name>/` and,
+  without `--out`, `out/<name>/`: build one at a time, or give the outside one its own `--out`.
+  `make` writes into each video's own folder.
 - A clip with long holds gets HyperFrames' "sparse keyframes" warning at render: few keyframes make
   preview seeking slow; rendering is unaffected.
 - A clip scene with more than a few captions gets HyperFrames' `timeline_track_too_dense` warning

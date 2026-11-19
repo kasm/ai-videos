@@ -4,10 +4,7 @@
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { z } from "zod";
-import { FORMATS, type FormatName } from "./script.ts";
-
-/** What to draw, in the maker's own words (a RayCraft tutorial's name). It goes on a command line. */
-const name = z.string().regex(/^[a-z0-9][a-z0-9-]*$/, "use lowercase letters, digits and dashes: it goes on a command line");
+import { FORMATS, MakerName as name, type FormatName } from "./script.ts";
 
 /** The maker runs in the project file's folder, not the video's, so every file is named in full. */
 const file = z.string().refine((p) => path.isAbsolute(p), "give an absolute path");
