@@ -1,6 +1,7 @@
 // Generates a HyperFrames project (index.html + one file per scene) from script and timeline.
 import { copyFile, cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { bundle, FONTS_CSS, GSAP_SRC } from "./bundle.ts";
 import type { SceneClips } from "./clip.ts";
 import { run } from "./render.ts";
 import {
@@ -13,8 +14,6 @@ import {
 } from "./script.ts";
 import { captionsOf } from "./srt.ts";
 import type { TimedLine, TimedScene, Timeline } from "./timeline.ts";
-
-const GSAP = "https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js";
 
 const esc = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -162,12 +161,14 @@ export async function compose(
     await rm(path.join(project, sub), { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
   await mkdir(path.join(project, "compositions"), { recursive: true });
-  // The video's own pictures: a page refers to them as assets/<file>. assets/vo/ is the narration's.
+  // The video's own pictures: a page refers to them as assets/<file>. assets/vo/ is the narration's,
+  // assets/clips/ the clips', and assets/vendor/ GSAP's and the fonts' (bundle.ts).
   const pageAssets = path.join(video.dir, "assets");
   if (await stat(pageAssets).then((s) => s.isDirectory(), () => false)) {
     await cp(pageAssets, path.join(project, "assets"), { recursive: true });
   }
   await mkdir(path.join(project, "assets", "vo"), { recursive: true });
+  await bundle(root, project);
 
   const hosts: string[] = [];
   const audio: string[] = [];
@@ -202,7 +203,8 @@ export async function compose(
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=${width}, height=${height}" />
     <title>${esc(video.script.title)}</title>
-    <script src="${GSAP}"></script>
+    <link rel="stylesheet" href="${FONTS_CSS}" />
+    <script src="${GSAP_SRC}"></script>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       html, body { margin: 0; width: ${width}px; height: ${height}px; overflow: hidden; background: #0c1222; }

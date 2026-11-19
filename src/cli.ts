@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdir, writeFile, copyFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
+import { checkPages } from "./bundle.ts";
 import { loadClips, type SceneClips } from "./clip.ts";
 import { compose } from "./compose.ts";
 import { drawnTo, fitClip, requestDocument, requestFileOf, type Fit } from "./fit.ts";
@@ -10,6 +11,7 @@ import { commandLine, madeScenes, makerCalls, makerOf, runShell } from "./make.t
 import type { MakerCall } from "./maker.ts";
 import { hyperframes, normalizeLoudness, renderProject } from "./render.ts";
 import { loadVideo, type FormatName, type LoadedVideo } from "./script.ts";
+import { cachePaths, cacheRoot, ready, setup, type Need } from "./setup.ts";
 import { toSrt } from "./srt.ts";
 import { buildTimeline, narrate, type SpokenLine, type Timeline } from "./timeline.ts";
 import { KokoroProvider, speak } from "./tts.ts";
@@ -17,7 +19,11 @@ import { KokoroProvider, speak } from "./tts.ts";
 const ROOT = path.resolve(import.meta.dirname, "..");
 // npm runs scripts in the package folder; paths on the command line are relative to where it was typed.
 const CALLER = process.env.INIT_CWD ?? process.cwd();
-const TTS_CACHE = path.join(ROOT, ".cache", "tts");
+const CACHE = cacheRoot(ROOT);
+const { tts: TTS_CACHE, models: MODELS } = cachePaths(CACHE);
+// HyperFrames asks npm for a newer version on every run, from a process that outlives ours; the
+// tool pins its version, and runs offline.
+process.env.HYPERFRAMES_NO_UPDATE_CHECK = "1";
 const log = (msg: string) => console.log(msg);
 
 const HELP = `Usage: npm run video -- <command> [video] [options]
@@ -26,6 +32,8 @@ A video is a folder holding a video.yaml: a bare name is a folder in this tool's
 anything with a slash is a path, relative to where the command is run.
 
 Commands
+  setup            Fetch once what the other commands need: the voice model and HyperFrames'
+                   Chrome. The only command that uses the network (AGENTS.md, "Offline")
   make <video>     The whole video, inside its folder: the maker's data for each made clip, the
                    fit to the voice, the maker's drawing, check and build. Writes the folder's
                    clips/, build/ and out/ (AGENTS.md, "make")
@@ -68,6 +76,7 @@ function formatsOf(video: LoadedVideo, only: string | undefined): FormatName[] {
 async function load(dir: string, only: string | undefined, readVideo: boolean) {
   const video = await loadVideo(dir);
   log(`Video: ${video.dir}`);
+  await checkPages(video);
   const formats = formatsOf(video, only);
   const clips = await loadClips(video, formats, { readVideo });
   for (const [id, scene] of clips) {
@@ -78,7 +87,7 @@ async function load(dir: string, only: string | undefined, readVideo: boolean) {
     }
   }
   log(`Narration (${video.script.voice})`);
-  const spoken = await narrate(video.script, new KokoroProvider(), TTS_CACHE, log);
+  const spoken = await narrate(video.script, new KokoroProvider(MODELS), TTS_CACHE, log);
   return { video, formats, clips, spoken };
 }
 
@@ -184,6 +193,7 @@ async function render(
  */
 async function make(dir: string, arg: string, only: string | undefined, opts: { fit: boolean; draft: boolean }) {
   const video = await loadVideo(dir);
+  await checkPages(video);
   const formats = formatsOf(video, only);
   const maker = makerOf(video);
   const made = new Set(madeScenes(video).map((s) => s.id));
@@ -239,10 +249,12 @@ async function main() {
   });
   const [command, arg] = positionals;
   if (values.help || !command) return log(HELP);
+  if (command === "setup") return setup(ROOT, CACHE, log);
 
   if (command === "voices") {
+    ready(ROOT, CACHE, ["voice"]);
     const text = arg ?? "This is a sample of my voice, so you can pick the one you like.";
-    const provider = new KokoroProvider();
+    const provider = new KokoroProvider(MODELS);
     const dir = path.join(ROOT, "out", "voice-samples");
     await mkdir(dir, { recursive: true });
     const wanted = ["af_heart", "af_bella", "af_nicole", "am_michael", "am_fenrir", "am_puck", "bf_emma", "bm_george", "bm_fable"];
@@ -264,6 +276,10 @@ async function main() {
     throw new Error(`--out is for build; ${command === "make" ? "make writes into the video's folder, out/" : `${command} writes only to build/`}`);
   }
   if (values.fit && command !== "make") throw new Error("--fit is for make; the fit alone is request");
+  // Before anything is written: what the command needs is on this disk, or it names what is not.
+  // Every command speaks; all but these draw or check with HyperFrames, in its Chrome.
+  const needs: Need[] = command === "compose" || command === "request" || values.fit ? ["voice"] : ["voice", "browser"];
+  Object.assign(process.env, ready(ROOT, CACHE, needs));
 
   if (command === "make") return make(videoDir(arg), arg, values.format, { fit: values.fit, draft: values.draft });
 

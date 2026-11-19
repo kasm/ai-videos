@@ -29,18 +29,56 @@ export interface SpokenLine {
   cached: boolean;
 }
 
-/** Kokoro-82M through ONNX Runtime in Node. Runs on CPU; the model downloads once. */
+/** The voice model, on Hugging Face, and the files transformers.js reads of it for the fp32 weights. */
+export const MODEL = "onnx-community/Kokoro-82M-v1.0-ONNX";
+export const MODEL_FILES = ["config.json", "tokenizer.json", "tokenizer_config.json", "onnx/model.onnx"];
+
+/** What transformers.js reports while it fetches the model: a file's progress in percent, or that it is done. */
+export interface ModelProgress {
+  status: string;
+  file?: string;
+  progress?: number;
+  total?: number;
+}
+
+/**
+ * Kokoro-82M through ONNX Runtime in Node, on the CPU. The model is read from `modelDir` alone (its
+ * files under the model's name); only `setup` makes a provider with `download`, which fetches what
+ * is not there. The voices come with kokoro-js, from npm.
+ */
 export class KokoroProvider implements TtsProvider {
   readonly id = "kokoro-82m-v1.0-onnx-fp32";
   #model: Promise<any> | undefined;
+  readonly #dir: string;
+  readonly #download: boolean;
+  readonly #progress: ((info: ModelProgress) => void) | undefined;
+
+  constructor(modelDir: string, opts: { download?: boolean; progress?: (info: ModelProgress) => void } = {}) {
+    this.#dir = modelDir;
+    this.#download = opts.download ?? false;
+    this.#progress = opts.progress;
+  }
 
   #load(): Promise<any> {
     this.#model ??= (async () => {
+      // kokoro-js loads through this same transformers.js, so its settings hold. setup downloads
+      // into its file cache, which keeps each file under the model's name in the folder; every
+      // other command reads that folder as local models, with the network off. Both lay the files
+      // out alike, and a file missing locally is "not found locally at <its path>".
+      const { env } = await import("@huggingface/transformers");
+      env.allowRemoteModels = this.#download;
+      env.allowLocalModels = !this.#download;
+      env.useFSCache = this.#download;
+      env.cacheDir = this.#dir;
+      env.localModelPath = this.#dir;
       const { KokoroTTS } = await import("kokoro-js");
-      return KokoroTTS.from_pretrained("onnx-community/Kokoro-82M-v1.0-ONNX", {
-        dtype: "fp32",
-        device: "cpu",
-      });
+      try {
+        return await KokoroTTS.from_pretrained(MODEL, { dtype: "fp32", device: "cpu", progress_callback: this.#progress });
+      } catch (err) {
+        if (this.#download) throw err;
+        const reason = err instanceof Error ? err.message : String(err);
+        throw new Error(`The voice model is not complete in ${this.#dir} (${reason}). Run "npm run video -- setup" once, with the network on.`);
+      }
     })();
     return this.#model;
   }

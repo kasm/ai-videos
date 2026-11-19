@@ -9,10 +9,11 @@ interface RunResult {
   stderr: string;
 }
 
-export function run(cmd: string, args: string[], opts: { cwd?: string; inherit?: boolean } = {}): Promise<RunResult> {
+export function run(cmd: string, args: string[], opts: { cwd?: string; inherit?: boolean; env?: NodeJS.ProcessEnv } = {}): Promise<RunResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, {
       cwd: opts.cwd,
+      env: opts.env,
       stdio: opts.inherit ? "inherit" : ["ignore", "pipe", "pipe"],
       windowsHide: true,
     });
@@ -25,10 +26,12 @@ export function run(cmd: string, args: string[], opts: { cwd?: string; inherit?:
   });
 }
 
+/** The HyperFrames CLI the tool pins, run with this Node (never npx, which could fetch another). */
+export const hyperframesBin = (root: string) => path.join(root, "node_modules", "hyperframes", "bin", "hyperframes.mjs");
+
 /** Runs a HyperFrames CLI command inside a generated project, streaming its output. */
 export async function hyperframes(root: string, project: string, args: string[]): Promise<number> {
-  const bin = path.join(root, "node_modules", "hyperframes", "bin", "hyperframes.mjs");
-  const { code } = await run(process.execPath, [bin, ...args], { cwd: project, inherit: true });
+  const { code } = await run(process.execPath, [hyperframesBin(root), ...args], { cwd: project, inherit: true });
   return code;
 }
 

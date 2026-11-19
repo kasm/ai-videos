@@ -6,6 +6,7 @@ HTML to MP4 frame by frame. Everything runs locally on Node; there is no Python 
 ## Commands
 
 ```
+npm run video -- setup                     once: fetch the voice model and HyperFrames' Chrome (see Offline)
 npm run video -- make <video>              the whole video, inside its folder (see Projects, make)
 npm run video -- make <video> --fit        only the made clips' data and the fit, in seconds
 npm run video -- build <video>             narrate, render every format, write out/<name>/
@@ -47,16 +48,20 @@ video's folder. The TTS cache always stays here.
 | `videos/project.yaml`, `videos/make-clip.ts` | The folder's videos as a project (see Projects): its project file, and its maker, which draws clip-demo's square with ffmpeg. |
 | `videos/clip-demo/` | The `clip` scene's demo: a made clip (`make: square`); `make clip-demo` writes its `clips/`, `build/` and `out/`. |
 | `scenes/<name>/scene.html` | Reusable scene templates (HyperFrames sub-compositions with `{{placeholders}}`): `page-scroll`, `clip`. |
-| `src/` | The pipeline: `script` → `clip` → `tts` → `timeline` (and `fit`, for `request`) → `compose` → `render` → `srt`. |
+| `src/` | The pipeline: `script` → `clip` → `tts` → `timeline` (and `fit`, for `request`) → `compose` (with `bundle`) → `render` → `srt`; `setup`, what the commands need on the disk. |
 | `build/` | Generated HyperFrames projects. Never edit; regenerated on every run. |
 | `out/` | Finished videos and subtitles. |
 | `.cache/tts/` | Narration audio, keyed by text, voice and speed. |
+| `.cache/models/` | The voice model, fetched by `setup`. |
+| `.cache/setup.json` | Where `setup` found HyperFrames' Chrome, and for which HyperFrames. |
+
+`AI_VIDEOS_CACHE` moves the whole `.cache/` elsewhere (the tests give it an empty folder).
 
 ## Projects
 
 A project (RayCraft, or this tool's `videos/`) keeps its videos in one folder, a video folder
 each, and beside them one project file with what they share. This section is the contract between
-the tool and a project. `setup` and `new` are still to come.
+the tool and a project. `new` is still to come.
 
 ### The project file
 
@@ -143,11 +148,25 @@ stays in the tool. A clip scene with `clip:` paths plays as it was drawn: `make`
 
 ### Offline
 
-Only `setup` uses the network: it fetches once what a video needs (the voice model, fonts, GSAP).
-After it every other command runs with the network off, and one that finds something missing names
-it and stops instead of fetching it. Until `setup` exists, the voice model and GSAP come from the
-network on first use. A cloud service (a voice, an avatar) would be a command of its own, run
-before `make` and writing files into the folder as a maker does, so that `make` stays offline.
+Only `setup` uses the network. It fetches once what no other command may fetch:
+
+- the voice model (`onnx-community/Kokoro-82M-v1.0-ONNX`, about 325 MB), into `.cache/models/`;
+- HyperFrames' Chrome (chrome-headless-shell), which HyperFrames keeps in its own cache
+  (`~/.cache/hyperframes/`); `setup` records where, and for which HyperFrames, in `.cache/setup.json`.
+
+The rest comes with `npm ci`: the voices (in kokoro-js), and GSAP and the fonts, which each build
+carries in `assets/vendor/` (`src/bundle.ts`), so a build names no URL. Running `setup` again keeps
+what is there and only checks it.
+
+Every other command first checks that what it needs is on the disk (`src/setup.ts`): the voice
+model's files, and for anything HyperFrames draws or checks, its Chrome. A piece missing stops the
+command before it writes anything, naming the piece and where it should be, with "run setup":
+nothing is fetched. HyperFrames gets its Chrome by path (`HYPERFRAMES_BROWSER_PATH`), so it never
+downloads one, and runs with its update check off. A page that would make the render go online is
+refused as well (see Writing a video). `src/setup.test.ts` and `src/bundle.test.ts` show each case.
+
+A cloud service (a voice, an avatar) would be a command of its own, run before `make` and writing
+files into the folder as a maker does, so that `make` stays offline.
 
 ### What an AI writes
 
@@ -188,8 +207,11 @@ A scene is a `page-scroll` (a page, below) or a `clip` (a video file, see Clips)
 - Page CSS: every rule starts with `.page`; portrait overrides start with
   `[data-format="portrait"] .page`. Size everything in `em` (the scene sets the base size).
 - Nothing meant to be read goes below `0.84em` (28 px): video is watched on phones.
-- Fonts available by name: Inter (400, 700, 900) and JetBrains Mono, plus the rest of the
-  HyperFrames bundle. Any other font needs an `@font-face` to a file in the project.
+- Fonts available by name: Inter (400, 700, 900) and JetBrains Mono (400, 700), upright; every
+  build carries them. Any other font needs an `@font-face` in the page, its `src` a file in the
+  video's `assets/`. Nothing a page shows comes from the network: a page that names another font,
+  or loads a URL (a picture, a stylesheet, a font file), stops every command before the narration,
+  with the font or the URL named.
 - A cue block must fit between the focus line and the bottom of the safe area: about 780 px tall
   in landscape and 950 px in portrait.
 
@@ -311,12 +333,15 @@ Portrait scenes keep reading text inside x 120–888 and y 288–1248, the area 
 ## Known quirks
 
 - HyperFrames is pinned to an exact version in `package.json`; it releases several times a day.
-  Upgrade deliberately and re-run `check` and a build afterwards.
+  Upgrade deliberately, then run `setup` (the new version may pin another Chrome), `check` and a
+  build. GSAP is pinned to the version HyperFrames pins (`gsap` in `package.json`).
 - After `check`, HyperFrames keeps a helper process in the build folder for a few minutes, so that
   folder cannot be deleted on Windows until it exits. `compose` clears only its own subfolders.
 - The portrait check runs with `--safe-zone off`: scrolled-off page text is outside the social safe
   areas by design, and the scene parks each cue inside them.
-- HyperFrames telemetry is disabled on this machine (`npx hyperframes telemetry disable`).
+- HyperFrames telemetry is disabled on this machine (`npx hyperframes telemetry disable`). Its update
+  check, which asks npm from a process that outlives the command, is off for every run of the tool
+  (`HYPERFRAMES_NO_UPDATE_CHECK`, set in `src/cli.ts`).
 - Subtitles come from the script text and line timings; long lines are split in proportion to
   their length, not by word timestamps.
 - With the single commands, two videos with the same folder name share `build/<name>/` and,
