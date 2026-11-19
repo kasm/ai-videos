@@ -9,6 +9,7 @@ import { compose } from "./compose.ts";
 import { drawnTo, fitClip, requestDocument, requestFileOf, type Fit } from "./fit.ts";
 import { commandLine, madeScenes, makerCalls, makerOf, runShell } from "./make.ts";
 import type { MakerCall } from "./maker.ts";
+import { newVideo } from "./new.ts";
 import { hyperframes, normalizeLoudness, renderProject } from "./render.ts";
 import { loadVideo, type FormatName, type LoadedVideo } from "./script.ts";
 import { cachePaths, cacheRoot, ready, setup, type Need } from "./setup.ts";
@@ -34,6 +35,8 @@ anything with a slash is a path, relative to where the command is run.
 Commands
   setup            Fetch once what the other commands need: the voice model and HyperFrames'
                    Chrome. The only command that uses the network (AGENTS.md, "Offline")
+  new <video>      A video's first video.yaml, never over one: the maker's data for its clip (the
+                   folder's name, or --make's), a line per text, cued to its event (AGENTS.md, "new")
   make <video>     The whole video, inside its folder: the maker's data for each made clip, the
                    fit to the voice, the maker's drawing, check and build. Writes the folder's
                    clips/, build/ and out/ (AGENTS.md, "make")
@@ -49,6 +52,7 @@ Options
   --format <landscape|portrait>   Only this format (default: every format in the script)
   --draft                         Fast, lower-quality render for iteration
   --fit                           make only: stop after the fit, to try the lines and the timing
+  --make <name>                   new only: what the maker draws, when it is not the folder's name
   --out <folder>                  build only: write the finished files here instead of out/<name>/
 `;
 
@@ -243,6 +247,7 @@ async function main() {
       format: { type: "string" },
       draft: { type: "boolean", default: false },
       fit: { type: "boolean", default: false },
+      make: { type: "string" },
       out: { type: "string" },
       help: { type: "boolean", short: "h", default: false },
     },
@@ -268,7 +273,7 @@ async function main() {
     return log(`Samples written to ${dir}`);
   }
 
-  if (!["make", "build", "compose", "check", "preview", "request"].includes(command)) throw new Error(`Unknown command "${command}"\n\n${HELP}`);
+  if (!["new", "make", "build", "compose", "check", "preview", "request"].includes(command)) throw new Error(`Unknown command "${command}"\n\n${HELP}`);
   if (!arg) {
     throw new Error(`"${command}" needs a video: a name in videos/ or a folder's path, e.g. npm run video -- ${command} scroll-demo`);
   }
@@ -276,6 +281,9 @@ async function main() {
     throw new Error(`--out is for build; ${command === "make" ? "make writes into the video's folder, out/" : `${command} writes only to build/`}`);
   }
   if (values.fit && command !== "make") throw new Error("--fit is for make; the fit alone is request");
+  if (values.make !== undefined && command !== "new") throw new Error("--make is for new; a script names its clip in make:");
+  // Only the maker's data: nothing spoken or drawn, so it needs nothing from setup.
+  if (command === "new") return void (await newVideo(videoDir(arg), { make: values.make, format: values.format }, log));
   // Before anything is written: what the command needs is on this disk, or it names what is not.
   // Every command speaks; all but these draw or check with HyperFrames, in its Chrome.
   const needs: Need[] = command === "compose" || command === "request" || values.fit ? ["voice"] : ["voice", "browser"];

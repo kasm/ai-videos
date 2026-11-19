@@ -4,7 +4,8 @@ import path from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
 
-const slug = z.string().regex(/^[a-z][a-z0-9-]*$/, "use lowercase letters, digits and dashes");
+/** A video's name and a scene's id: they name files and HyperFrames' compositions. */
+export const slug = z.string().regex(/^[a-z][a-z0-9-]*$/, "use lowercase letters, digits and dashes");
 
 const fraction = z.number().min(0).max(1);
 
@@ -231,10 +232,7 @@ export async function loadVideo(dir: string): Promise<LoadedVideo> {
   } catch {
     throw new Error(`No script found at ${file}`);
   }
-  const name = slug.safeParse(path.basename(dir));
-  if (!name.success) {
-    throw new Error(`${dir}: the folder's name names the video's files, so use lowercase letters, digits and dashes`);
-  }
+  const name = videoName(dir);
   const project = await readProject(path.dirname(path.resolve(dir)));
   // The project's settings are valid on their own (readProject), so whatever the schema refuses
   // below was written in the video.yaml.
@@ -249,5 +247,14 @@ export async function loadVideo(dir: string): Promise<LoadedVideo> {
   if (ids.includes("main") || ids.includes("root")) {
     throw new Error(`${file}: scene ids "main" and "root" are reserved`);
   }
-  return { slug: name.data, dir, file, project, script: result.data };
+  return { slug: name, dir, file, project, script: result.data };
+}
+
+/** The name of the video whose folder is `dir`: the folder's own, as it names the video's files. */
+export function videoName(dir: string): string {
+  const name = slug.safeParse(path.basename(path.resolve(dir)));
+  if (!name.success) {
+    throw new Error(`${dir}: the folder's name names the video's files, so use lowercase letters, digits and dashes`);
+  }
+  return name.data;
 }

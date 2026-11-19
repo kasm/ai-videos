@@ -7,6 +7,8 @@ HTML to MP4 frame by frame. Everything runs locally on Node; there is no Python 
 
 ```
 npm run video -- setup                     once: fetch the voice model and HyperFrames' Chrome (see Offline)
+npm run video -- new <video>               a first video.yaml, from its clip's texts (see Projects, new)
+npm run video -- new <video> --make <name> the same, for a clip not named as the folder
 npm run video -- make <video>              the whole video, inside its folder (see Projects, make)
 npm run video -- make <video> --fit        only the made clips' data and the fit, in seconds
 npm run video -- build <video>             narrate, render every format, write out/<name>/
@@ -48,7 +50,7 @@ video's folder. The TTS cache always stays here.
 | `videos/project.yaml`, `videos/make-clip.ts` | The folder's videos as a project (see Projects): its project file, and its maker, which draws clip-demo's square with ffmpeg. |
 | `videos/clip-demo/` | The `clip` scene's demo: a made clip (`make: square`); `make clip-demo` writes its `clips/`, `build/` and `out/`. |
 | `scenes/<name>/scene.html` | Reusable scene templates (HyperFrames sub-compositions with `{{placeholders}}`): `page-scroll`, `clip`. |
-| `src/` | The pipeline: `script` → `clip` → `tts` → `timeline` (and `fit`, for `request`) → `compose` (with `bundle`) → `render` → `srt`; `setup`, what the commands need on the disk. |
+| `src/` | The pipeline: `script` → `clip` → `tts` → `timeline` (and `fit`, for `request`) → `compose` (with `bundle`) → `render` → `srt`; `setup`, what the commands need on the disk; `new`, a first script. |
 | `build/` | Generated HyperFrames projects. Never edit; regenerated on every run. |
 | `out/` | Finished videos and subtitles. |
 | `.cache/tts/` | Narration audio, keyed by text, voice and speed. |
@@ -61,7 +63,7 @@ video's folder. The TTS cache always stays here.
 
 A project (RayCraft, or this tool's `videos/`) keeps its videos in one folder, a video folder
 each, and beside them one project file with what they share. This section is the contract between
-the tool and a project. `new` is still to come.
+the tool and a project.
 
 ### The project file
 
@@ -127,6 +129,22 @@ per format:
   `readMakerCall(process.argv.slice(2))` reads one in a maker written in TypeScript and refuses
   anything the tool would not send. `src/maker.test.ts` shows both. `videos/make-clip.ts` is a
   small maker that follows it.
+
+### `new`
+
+`npm run video -- new <video>` begins a video with no AI (`src/new.ts`). The folder needs a
+project file with a maker beside it; the folder itself may not exist yet.
+
+1. It runs the maker's step one for the clip, in the project's first format (or `--format`'s),
+   into the folder's `clips/`. The clip is the folder's name, or `--make <name>`'s.
+2. It writes `video.yaml`: a title (the folder's name) and one made clip scene, its id the clip's
+   name, with a line per text of the clip's data, in time order. Each line is cued to the event
+   its text begins at: the last event at or before the text's `from`.
+
+The script holds no setting: the voice, formats and the rest are read from the project file, as
+for any video. `new` never writes over a `video.yaml`. A clip whose data holds no text gets no
+script: write its lines by hand. `new` speaks and draws nothing, so it needs nothing from `setup`;
+`make --fit` then tries the lines. `src/new.test.ts` shows each case.
 
 ### `make`
 
