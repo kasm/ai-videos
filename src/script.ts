@@ -1,4 +1,4 @@
-// Loads and validates a video script (<video folder>/video.yaml).
+// Loads and validates a video script (<video folder>/video.yaml) and the project file beside its folder.
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { parse } from "yaml";
@@ -120,8 +120,11 @@ export const FORMATS = {
 } as const;
 export type FormatName = keyof typeof FORMATS;
 
-const Video = z.strictObject({
-  title: z.string().min(1),
+/**
+ * The settings a video.yaml shares with its project file (AGENTS.md, "Projects"): set in either,
+ * the video.yaml's win; set in neither, these defaults.
+ */
+const settings = {
   voice: z.string().default("af_heart"),
   speed: z.number().min(0.5).max(2).default(1),
   fps: z.union([z.literal(24), z.literal(25), z.literal(30), z.literal(60)]).default(30),
@@ -129,12 +132,65 @@ const Video = z.strictObject({
   /** How loud the finished soundtrack is, in LUFS: -14 is what YouTube and most platforms play at; lower is quieter. */
   loudness: z.number().min(-30).max(-9).default(-14),
   timing: Timing.prefault({}),
+};
+
+const Video = z.strictObject({
+  title: z.string().min(1),
+  ...settings,
   scenes: z.array(z.discriminatedUnion("scene", [PageScrollScene, ClipScene])).min(1),
 });
 
 export type VideoScript = z.infer<typeof Video>;
 export type SceneScript = VideoScript["scenes"][number];
 export type PageScrollSceneScript = z.infer<typeof PageScrollScene>;
+
+/** The project file's name. It lies beside the video folders: the parent of each. */
+export const PROJECT_FILE = "project.yaml";
+
+/** The project file: what a project's videos share, and the command that draws its clips. */
+export const ProjectFile = z.strictObject({
+  /** The project's maker, run in the project file's folder with a call appended (src/maker.ts). */
+  maker: z.string().min(1).optional(),
+  ...settings,
+});
+export type ProjectScript = z.infer<typeof ProjectFile>;
+
+export interface LoadedProject {
+  /** The folder that holds the project file and the video folders. The maker runs here. */
+  dir: string;
+  /** Its project.yaml. */
+  file: string;
+  script: ProjectScript;
+}
+
+/** Reads the project file in `dir`, or undefined when there is none: then a video stands alone. */
+export async function readProject(dir: string): Promise<LoadedProject | undefined> {
+  const file = path.join(dir, PROJECT_FILE);
+  let raw: string;
+  try {
+    raw = await readFile(file, "utf8");
+  } catch (e) {
+    if ((e as { code?: string }).code === "ENOENT") return undefined;
+    throw e;
+  }
+  // A file whose every line is a comment parses to null: a project that sets nothing yet.
+  const result = ProjectFile.safeParse(parse(raw) ?? {});
+  if (!result.success) {
+    throw new Error(`${file} is not a valid project file:\n${z.prettifyError(result.error)}`);
+  }
+  return { dir, file, script: result.data };
+}
+
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+
+/** `over` on top of `under`: tables merge key by key (timing.moves.fastest keeps timing.gap); anything else replaces. */
+function overlay(under: unknown, over: unknown): unknown {
+  if (!isRecord(under) || !isRecord(over)) return over === undefined ? under : over;
+  const out = { ...under };
+  for (const [key, value] of Object.entries(over)) out[key] = overlay(under[key], value);
+  return out;
+}
 
 export interface LoadedVideo {
   /** The video folder's name: it names the build folder and the finished files. */
@@ -143,10 +199,16 @@ export interface LoadedVideo {
   dir: string;
   /** Its video.yaml. */
   file: string;
+  /** The project file beside the folder, if there is one. */
+  project: LoadedProject | undefined;
+  /** The video.yaml over the project file's settings. */
   script: VideoScript;
 }
 
-/** Loads the video whose folder is `dir`: its video.yaml and, relative to it, everything it names. */
+/**
+ * Loads the video whose folder is `dir`: its video.yaml over the project file beside the folder
+ * (read, never copied into it) and, relative to it, everything it names.
+ */
 export async function loadVideo(dir: string): Promise<LoadedVideo> {
   const file = path.join(dir, "video.yaml");
   let raw: string;
@@ -159,7 +221,11 @@ export async function loadVideo(dir: string): Promise<LoadedVideo> {
   if (!name.success) {
     throw new Error(`${dir}: the folder's name names the video's files, so use lowercase letters, digits and dashes`);
   }
-  const result = Video.safeParse(parse(raw));
+  const project = await readProject(path.dirname(path.resolve(dir)));
+  // The project's settings are valid on their own (readProject), so whatever the schema refuses
+  // below was written in the video.yaml.
+  const { maker: _maker, ...shared }: Partial<ProjectScript> = project?.script ?? {};
+  const result = Video.safeParse(overlay(shared, parse(raw)));
   if (!result.success) {
     throw new Error(`${file} is not a valid video script:\n${z.prettifyError(result.error)}`);
   }
@@ -169,5 +235,5 @@ export async function loadVideo(dir: string): Promise<LoadedVideo> {
   if (ids.includes("main") || ids.includes("root")) {
     throw new Error(`${file}: scene ids "main" and "root" are reserved`);
   }
-  return { slug: name.data, dir, file, script: result.data };
+  return { slug: name.data, dir, file, project, script: result.data };
 }

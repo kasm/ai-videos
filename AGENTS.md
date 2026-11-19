@@ -47,6 +47,93 @@ always come from this tool. The build and the cache stay here; only `--out` writ
 | `out/` | Finished videos and subtitles. |
 | `.cache/tts/` | Narration audio, keyed by text, voice and speed. |
 
+## Projects
+
+A project (RayCraft, or this tool's `videos/`) keeps its videos in one folder, a video folder
+each, and beside them one project file with what they share. This section is the contract between
+the tool and a project. `setup`, `new` and `make` are still to come; the files, the project file
+and the maker's call are fixed here first, and the project file is read already.
+
+### The project file
+
+`project.yaml` in the folder that holds the video folders (`media/videos/project.yaml` for
+`media/videos/intro`). The schema is `ProjectFile` in `src/script.ts`:
+
+```yaml
+maker: npm run -s tutorial:video --   # draws a project's clips (below); run in this folder
+voice: af_heart
+loudness: -22
+formats: [landscape]
+```
+
+Beside `maker` it holds any of the settings a `video.yaml` has: `voice`, `speed`, `fps`, `formats`,
+`loudness` and `timing`. Every command reads it when it loads a video, and a video keeps no copy:
+
+- A setting its `video.yaml` writes overrides the project's, key by key: `timing: { moves:
+  { fastest: 1 } }` keeps the project's `timing.gap`. A list (`formats`) is replaced whole.
+- A setting neither writes takes the tool's default.
+- A folder with no project file beside it stands alone, on its `video.yaml` and the defaults.
+- A project file may set only these (`title` or `scenes` in it is refused), and is checked on its
+  own, so an error names the file that holds the mistake. `src/script.test.ts` shows each rule.
+
+### A video folder
+
+The folder holds its script and everything made from it. The project's `.gitignore` keeps the
+made parts out of git; nothing made is edited by hand.
+
+| Path | What it is | Written by | In git |
+| --- | --- | --- | --- |
+| `video.yaml` | The script. | You or an AI; `new` writes a first one, a line per caption, each cued to its event. | yes |
+| `page.html`, `page.css`, `assets/` | A `page-scroll` scene's page. | You or an AI. | yes |
+| `clips/<scene>-<format>.json` | A made clip's data: its events and texts, at its own pace. | The maker, step one. | no |
+| `clips/<scene>-<format>.request.json` | The clip fitted to the voice (see Fitting). | `make`, as `request` does. | no |
+| `clips/<scene>-<format>.mp4` | The clip drawn to the request; its JSON is written again. | The maker, step two. | no |
+| `build/<format>/` | The HyperFrames project. | `make`, as `compose` does. | no |
+| `out/<name>-<format>.mp4`, `out/<name>.srt` | The finished video and its subtitles. | `make`, as `build` does. | no |
+
+A made clip is a clip scene with `make: <name>` in place of `clip:`, the name of what the maker
+draws (in RayCraft, a tutorial); its files are the `clips/` ones above, by the scene's id. A clip
+scene with `clip:` paths plays a clip drawn elsewhere, as before.
+
+### The maker
+
+`make` runs the project file's `maker` in the project file's folder, through the shell, with a
+call appended: the name, a format, and every file as an absolute path. A made clip takes two calls
+per format:
+
+```
+<maker> <name> --format=landscape --data=<clip's JSON>
+<maker> <name> --format=landscape --width=1920 --height=1080 --request=<request> --clip=<mp4> --data=<clip's JSON>
+```
+
+- Step one writes the clip's data (`ai-videos-clip`, see Clips) to `--data` without drawing it.
+- Step two draws the clip to the request (see Fitting) at `--width` × `--height` into `--clip`,
+  and writes its data again to `--data`, each event with its `natural`.
+- The format names a layout. Its size comes in the call (`FORMATS` in `src/script.ts`: landscape
+  1920×1080, portrait 1080×1920), so a maker keeps no table of its own.
+- A maker writes the files it is given, plus caches of its own beside the clip, named after it
+  (`<clip>.mp4.frames`). It exits 0 when they are written; otherwise it exits non-zero with the
+  reason on stderr, and `make` stops there.
+- The schema is `MakerCall` in `src/maker.ts`: `makerArgs` writes a call, and
+  `readMakerCall(process.argv.slice(2))` reads one in a maker written in TypeScript and refuses
+  anything the tool would not send. `src/maker.test.ts` shows both.
+
+### Offline
+
+Only `setup` uses the network: it fetches once what a video needs (the voice model, fonts, GSAP).
+After it every other command runs with the network off, and one that finds something missing names
+it and stops instead of fetching it. Until `setup` exists, the voice model and GSAP come from the
+network on first use. A cloud service (a voice, an avatar) would be a command of its own, run
+before `make` and writing files into the folder as a maker does, so that `make` stays offline.
+
+### What an AI writes
+
+An AI session writes sources: a `video.yaml` (its lines, cues and limits), a page and its assets,
+or a project's own sources (a RayCraft tutorial). It never writes a made file, and it is never a
+step of `make`: no command calls a model but the voice on this machine. The project file's
+settings are the user's; an AI changes them only when asked. A video can begin without an AI:
+`new` writes its first script from the clip's own texts.
+
 ## How loud
 
 The build's last step brings the whole soundtrack to the script's `loudness` (LUFS, default -14,
