@@ -1,0 +1,108 @@
+# Cartoons: notes for AI assistants
+
+Simple 2D cartoons with talking characters. Each cartoon is written as a
+scenario; the video tool (`../ai_videos`, a repo of its own) turns it into
+a video with a spoken voice, offline and with no AI. The plan is RayCraft's
+`docs/plans/anime.md`.
+
+## Where things are
+
+- `videos/project.yaml`: what every cartoon shares, read by the tool (the
+  maker's command, the voice, the format).
+- `videos/<name>/`: one cartoon.
+  - `scenario.yaml`: its source, written by hand or by an AI session.
+  - `video.yaml`: the tool's script (the spoken lines and their cues). The
+    tool's `new` writes the first one from the scenario's lines; after that
+    it is edited by hand.
+  - `clips/`, `build/`, `out/`: made, not in git, never edited.
+- `src/`: the maker, the command the tool runs to get a cartoon's clip.
+  - `scenario.ts`: the scenario's schema and its checks.
+  - `timeline.ts`: beats and lines as the clip's events and texts.
+  - `call.ts`: the tool's call to the maker.
+  - `make.ts`: the maker itself.
+
+## Running
+
+Node 24. From this folder:
+
+- `npm test`: the tests (`node --test`); `npm run typecheck`.
+- `npm run -s video -- new videos/<name>`: writes `video.yaml` from the
+  scenario's lines. It never writes over one.
+- `npm run -s video -- make videos/<name> --fit`: speaks the lines and
+  prints how the clip fits them, before anything is drawn.
+
+`video` is the tool's command line, found at `../ai_videos`. The contract
+between the tool and this project is the tool's `AGENTS.md`, "Projects".
+
+## The scenario
+
+`videos/<name>/scenario.yaml`; `videos/hello/scenario.yaml` is the smallest
+whole one. A key the format does not have is refused, and an error names
+the file and the place.
+
+```yaml
+characters:
+  pip:
+    parts:
+      body:
+        - { shape: rect, at: [0, -170], size: [220, 340], round: 110, fill: "#f2a33a" }
+      mouth:
+        - { shape: ellipse, at: [0, -170], size: [70, 18], fill: "#5b2333" }
+
+backgrounds:
+  meadow:
+    fill: "#bfe3ff"
+    shapes:
+      - { shape: rect, at: [960, 950], size: [1920, 260], fill: "#7cc36a" }
+
+scenes:
+  - background: meadow
+    places:
+      pip: [-200, 900]
+    beats:
+      - name: walks-in
+        takes: 4
+        walk: { who: pip, to: [960, 900] }
+        says:
+          - { who: narrator, text: "This is Pip. Pip walks into the meadow." }
+      - name: stops
+        takes: 3
+```
+
+- **The stage** is 1920 by 1080 pixels: x goes right and y goes down from
+  the top-left corner. A point is `[x, y]`.
+- **A shape** is a `rect` or an `ellipse`: `at` is its centre, `size` its
+  width and height, `fill` its colour as `#rrggbb`. A `rect` may have
+  `round`, its corners' radius.
+- **A character** is its named `parts` (body, eyes, mouth), each a list of
+  shapes. Parts are drawn in the order written. Their shapes are measured
+  from the point between the character's feet, so `[0, -170]` is 170
+  pixels above the ground.
+- **A background** fills the stage with `fill`, then draws its `shapes` in
+  stage coordinates.
+- **A scene** has one `background`, the `places` where its characters stand
+  as it begins (the point between the feet; a place outside the stage
+  keeps a character out of sight), and its `beats`. Scenes follow each
+  other in one clip.
+- **A beat** is one moment, and one event of the clip for the tool. Its
+  `name` (lowercase letters, digits and dashes) is unique in the scenario.
+  `takes` is its length in seconds at the scenario's own pace: the tool
+  stretches a beat when its lines take longer to say.
+  - With `walk: { who, to }` the beat is a move: the character goes from
+    where it stands to `to`. Without it nothing moves, and the beat is a
+    hold.
+  - `says` lists the lines said during the beat, each with `who` (a
+    character's name, or `narrator`, whom nobody draws) and `text`. Several
+    lines share the beat's time equally, in the order written.
+
+## Rules
+
+- **Names** are lowercase letters, digits and dashes, a letter first.
+- **The scenario is the only source.** The maker keeps no settings of its
+  own, and nothing made is edited by hand.
+- **The maker's step one draws nothing** and gives the same data for the
+  same scenario: the tool runs it on every `make`.
+- **The tool's sources are not imported.** `call.ts` reads the tool's call
+  itself, so this repo's tests run without the tool.
+- **Not built yet:** the maker's step two (drawing the clip), so only `new`
+  and `make --fit` work.

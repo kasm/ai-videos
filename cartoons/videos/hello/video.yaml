@@ -1,0 +1,13 @@
+# The first script, written by `new` from the clip's own texts: a line each, cued to the event it
+# begins at. The voice, formats and loudness are the project file's, beside this folder; a setting
+# written here overrides it. After changing a line, `make <this folder> --fit` tries the timing.
+title: hello
+scenes:
+  - id: hello
+    scene: clip
+    make: hello
+    narration:
+      - text: This is Pip. Pip walks into the meadow.
+        cue: walks-in
+      - text: And here, Pip stops.
+        cue: stops

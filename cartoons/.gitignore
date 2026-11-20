@@ -1,0 +1,5 @@
+node_modules/
+# What the video tool and the maker write into a video folder: made, never edited by hand.
+videos/*/clips/
+videos/*/build/
+videos/*/out/

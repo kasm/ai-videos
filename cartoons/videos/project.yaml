@@ -1,0 +1,5 @@
+# What every cartoon here shares, read by the video tool (its AGENTS.md, "The project file").
+maker: node ../src/make.ts   # draws a cartoon's clip from its scenario; the tool runs it in this folder
+voice: af_heart
+fps: 30
+formats: [landscape]         # the stage is 1920 by 1080; a portrait cartoon would need a layout of its own
