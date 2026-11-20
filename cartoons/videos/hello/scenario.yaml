@@ -24,11 +24,11 @@ backgrounds:
 scenes:
   - background: meadow
     places:
-      pip: [-200, 900] # left of the stage, out of sight
+      pip: [-200, 880] # left of the stage, out of sight
     beats:
       - name: walks-in
         takes: 4
-        walk: { who: pip, to: [960, 900] }
+        walk: { who: pip, to: [960, 880] }
         says:
           - { who: narrator, text: "This is Pip. Pip walks into the meadow." }
       - name: stops

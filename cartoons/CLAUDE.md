@@ -17,8 +17,11 @@ a video with a spoken voice, offline and with no AI. The plan is RayCraft's
   - `clips/`, `build/`, `out/`: made, not in git, never edited.
 - `src/`: the maker, the command the tool runs to get a cartoon's clip.
   - `scenario.ts`: the scenario's schema and its checks.
-  - `timeline.ts`: beats and lines as the clip's events and texts.
-  - `call.ts`: the tool's call to the maker.
+  - `timeline.ts`: beats and lines as the clip's events and texts, and
+    which moment each frame shows.
+  - `picture.ts`: one moment's picture, as an SVG.
+  - `draw.ts`: the frames as pixels (resvg) and as the clip (ffmpeg).
+  - `call.ts`, `request.ts`: the tool's call to the maker, and its request.
   - `make.ts`: the maker itself.
 
 ## Running
@@ -30,9 +33,34 @@ Node 24. From this folder:
   scenario's lines. It never writes over one.
 - `npm run -s video -- make videos/<name> --fit`: speaks the lines and
   prints how the clip fits them, before anything is drawn.
+- `npm run -s video -- make videos/<name>`: the whole video, into
+  `videos/<name>/out/<name>-landscape.mp4`, with its subtitles beside it.
 
 `video` is the tool's command line, found at `../ai_videos`. The contract
 between the tool and this project is the tool's `AGENTS.md`, "Projects".
+Drawing needs `ffmpeg` on the PATH.
+
+## How a cartoon is drawn
+
+The tool measures the voice and asks for the clip in whole frames: when
+each beat begins, how long it lasts, and how long a move's motion takes
+(the request, `clips/<name>-landscape.request.json`). The maker then:
+
+1. finds each frame's moment: which beat, and how far through its move
+   (`moments`, `timeline.ts`);
+2. writes that moment's picture as an SVG (`frameSvg`, `picture.ts`);
+3. turns the SVG into pixels with resvg, and pipes them to ffmpeg
+   (`draw.ts`). A frame whose SVG is the one before it is not drawn again.
+
+A walk goes from the character's place to its end, slow at both ends, in
+a whole number of steps: the character rises a little in the middle of
+each. Its look is the maker's (`STEP`, `BOUNCE` in `picture.ts`), not the
+scenario's.
+
+The picture depends only on the scenario and the request, so two runs
+draw the same frames. `clips/<name>-landscape.mp4.frames` holds a hash of
+each frame's pixels, a line a frame: compare two runs' files to see it,
+or to find the frame where they part.
 
 ## The scenario
 
@@ -58,11 +86,11 @@ backgrounds:
 scenes:
   - background: meadow
     places:
-      pip: [-200, 900]
+      pip: [-200, 880]
     beats:
       - name: walks-in
         takes: 4
-        walk: { who: pip, to: [960, 900] }
+        walk: { who: pip, to: [960, 880] }
         says:
           - { who: narrator, text: "This is Pip. Pip walks into the meadow." }
       - name: stops
@@ -70,7 +98,10 @@ scenes:
 ```
 
 - **The stage** is 1920 by 1080 pixels: x goes right and y goes down from
-  the top-left corner. A point is `[x, y]`.
+  the top-left corner. A point is `[x, y]`. The tool shows the spoken line
+  as a caption over the bottom of the picture (a one-line caption, as
+  measured in `hello`, covers about y 890 to 990): keep feet and faces
+  above it.
 - **A shape** is a `rect` or an `ellipse`: `at` is its centre, `size` its
   width and height, `fill` its colour as `#rrggbb`. A `rect` may have
   `round`, its corners' radius.
@@ -104,5 +135,6 @@ scenes:
   same scenario: the tool runs it on every `make`.
 - **The tool's sources are not imported.** `call.ts` reads the tool's call
   itself, so this repo's tests run without the tool.
-- **Not built yet:** the maker's step two (drawing the clip), so only `new`
-  and `make --fit` work.
+- **A frame's picture is a pure function** of the scenario and the moment:
+  no clock, no random number, no font of the machine (a picture holds no
+  text; captions are the tool's).
