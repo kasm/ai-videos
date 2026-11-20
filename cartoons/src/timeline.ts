@@ -1,5 +1,6 @@
 // A scenario's beats as the clip's timeline: the events and texts the video tool fits the voice to
 // (the tool's AGENTS.md, "Clips"), at the scenario's own pace or as the tool's request times them.
+import { moments as frames } from "ai-videos/frames";
 import type { Request } from "./request.ts";
 import { moveOf, type Beat, type Scenario } from "./scenario.ts";
 
@@ -69,41 +70,14 @@ export function timeline(scenario: Scenario, request?: Request): Timeline {
 }
 
 /**
- * Whose mouth is open in each frame of the clip, and how wide: each line's track laid on the frames
- * it names, for its speaker alone. A line with no speaker is the narrator's, whom nobody draws, so
- * it opens no mouth; a speaker the scenario does not draw (a voice off stage) opens none either,
- * as the picture looks up its own characters only.
- */
-function mouths(request: Request): Record<string, number>[] {
-  const open = Array.from({ length: request.frames }, (): Record<string, number> => ({}));
-  for (const { speaker, mouth } of request.lines) {
-    if (speaker === undefined) continue;
-    mouth?.open.forEach((value, k) => {
-      const at = open[mouth.frame + k];
-      // One speaker's line may end in the frame their next begins in: the wider mouth shows.
-      if (at && value > 0) at[speaker] = Math.max(at[speaker] ?? 0, value);
-    });
-  }
-  return open;
-}
-
-/**
- * The moment each frame of the requested clip shows. The tool puts every beat on a whole frame; a
- * move's motion takes its `move` seconds from there and then stays at its end, and the next beat
- * begins where it ended. Each speaker's mouth follows their lines' voice, whatever the beat.
+ * The moment each frame of the requested clip shows, as the tool's shared code finds it (its
+ * AGENTS.md, "The maker's shared code"): a span is a beat here. The tool puts every beat on a whole
+ * frame; a move's motion takes its `move` seconds from there and then stays at its end, and the
+ * next beat begins where it ended. Each speaker's mouth follows their lines' voice, whatever the
+ * beat: a line with no speaker is the narrator's, whom nobody draws, so it opens no mouth, and a
+ * speaker the scenario does not draw (a voice off stage) opens none either, as the picture looks
+ * up its own characters only.
  */
 export function moments(request: Request): Moment[] {
-  const open = mouths(request);
-  const starts = request.spans.map((span) => Math.round(span.at * request.fps));
-  const frames: Moment[] = [];
-  request.spans.forEach((span, beat) => {
-    const start = starts[beat]!;
-    const end = starts[beat + 1] ?? request.frames;
-    if (start !== frames.length || end <= start) throw new Error(`the request's span "${span.event}" does not follow the one before it on a whole frame`);
-    for (let frame = start; frame < end; frame++) {
-      const progress = span.span === "move" ? Math.min(1, (frame - start) / request.fps / (span.move ?? span.duration)) : 0;
-      frames.push({ beat, progress, time: frame / request.fps, into: (frame - start) / request.fps, mouths: open[frame]! });
-    }
-  });
-  return frames;
+  return frames(request).map(({ span, ...at }) => ({ beat: span, ...at }));
 }

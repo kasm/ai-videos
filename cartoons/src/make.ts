@@ -3,8 +3,8 @@
 // scenario.yaml there.
 //   step one: the scenario's beats and lines as the clip's data, nothing drawn
 //   step two: the clip drawn to the tool's request (draw.ts), and its data again, as the request times it
-import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { writeClipData } from "ai-videos/frames";
 import { readCall } from "./call.ts";
 import { drawClip } from "./draw.ts";
 import { readRequest } from "./request.ts";
@@ -28,19 +28,14 @@ async function main() {
   }
   // The clip's data (ai-videos-clip, the tool's src/clip.ts). A character's text names it as the
   // speaker, for its voice and its mouth; the narrator's names nobody, and keeps the project's voice.
-  const data = {
-    format: "ai-videos-clip",
-    version: 1,
-    made: {
-      by: "cartoons: src/make.ts",
-      from: `${source.replaceAll("\\", "/")}${call.step === "draw" ? `, drawn to ${path.basename(call.request)}` : ""}`,
-    },
+  writeClipData(call.data, {
+    by: "cartoons: src/make.ts",
+    from: source.replaceAll("\\", "/"),
+    request: call.step === "draw" ? call.request : undefined,
     duration: time.duration,
     events: time.events,
-    texts: time.lines.map(({ who, text, from, to }) => ({ text, ...(who === NARRATOR ? {} : { speaker: who }), from, to })),
-  };
-  mkdirSync(path.dirname(call.data), { recursive: true });
-  writeFileSync(call.data, `${JSON.stringify(data, null, 2)}\n`);
+    texts: time.lines.map(({ who, text, from, to }) => ({ text, speaker: who === NARRATOR ? undefined : who, from, to })),
+  });
   console.log(`  ${wrote}`);
 }
 

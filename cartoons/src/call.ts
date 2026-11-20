@@ -4,7 +4,8 @@
 //       step one: the clip's data at its own pace, nothing drawn
 //   <name> --format=landscape --width=1920 --height=1080 --request=<json> --clip=<mp4> --data=<json>
 //       step two: the clip drawn to the request, and its data again
-// Read here, not imported from the tool, so that this repo runs without the tool's sources.
+// Read here, not imported from the tool: its src/maker.ts needs the tool's packages, and this repo
+// imports only the module the tool exports (ai-videos/frames).
 import path from "node:path";
 import { parseArgs } from "node:util";
 

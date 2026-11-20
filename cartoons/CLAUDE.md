@@ -25,9 +25,12 @@ a video with a spoken voice, offline and with no AI. The plan is RayCraft's
     which moment each frame shows, with whose mouth is open and how wide.
   - `picture.ts`: one moment's picture, as an SVG: who stands where, facing
     which way, with the arm, the eyes and the mouth how.
-  - `draw.ts`: the frames as pixels (resvg) and as the clip (ffmpeg).
+  - `draw.ts`: the frames as pixels (resvg), given to the tool's encoder.
   - `call.ts`, `request.ts`: the tool's call to the maker, and its request.
   - `make.ts`: the maker itself.
+  - What every maker does the same comes from the tool, `ai-videos/frames`
+    (its `src/frames.ts`; its `AGENTS.md`, "The maker's shared code"):
+    which moment each frame shows, the encoder, and the clip's data written.
 
 ## Running
 
@@ -44,7 +47,9 @@ Node 24. From this folder:
 
 `video` is the tool's command line, found at `../ai_videos`. The contract
 between the tool and this project is the tool's `AGENTS.md`, "Projects".
-Drawing needs `ffmpeg` on the PATH.
+The tool is also a package here, a link to that folder (`"ai-videos":
+"file:../ai_videos"`; `npm install` makes it), so the tests need the
+folder too. Drawing needs `ffmpeg` on the PATH.
 
 ## How a cartoon is drawn
 
@@ -57,10 +62,11 @@ to 1 wide. The maker then:
 
 1. finds each frame's moment: which beat, how far through its move, the
    time in the clip and in the beat, and whose mouth is open, how wide
-   (`moments`, `timeline.ts`);
+   (`moments`, `timeline.ts`: the tool's, a span being a beat);
 2. writes that moment's picture as an SVG (`frameSvg`, `picture.ts`);
-3. turns the SVG into pixels with resvg, and pipes them to ffmpeg
-   (`draw.ts`). A frame whose SVG is the one before it is not drawn again.
+3. turns the SVG into pixels with resvg, and gives them to the tool's
+   encoder, which pipes them to ffmpeg (`draw.ts`). A frame whose SVG is
+   the one before it is not drawn again.
 
 A walk goes from the character's place to its end, slow at both ends, in
 a whole number of steps: the character rises a little in the middle of
@@ -244,8 +250,10 @@ scenes:
   own, and nothing made is edited by hand.
 - **The maker's step one draws nothing** and gives the same data for the
   same scenario: the tool runs it on every `make`.
-- **The tool's sources are not imported.** `call.ts` reads the tool's call
-  itself, so this repo's tests run without the tool.
+- **Of the tool's sources, only the shared maker module is imported**
+  (`ai-videos/frames`, the one its `package.json` exports; it needs none of
+  the tool's packages). `call.ts` reads the tool's call itself, and
+  `request.ts` checks its request.
 - **A frame's picture is a pure function** of the scenario and the moment:
   no clock, no random number, no font of the machine (a picture holds no
   text; captions are the tool's).
