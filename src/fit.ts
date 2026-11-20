@@ -15,6 +15,7 @@
 // longer than its own length makes it that long: it is what the hold must show.
 import path from "node:path";
 import type { ClipEvent } from "./clip.ts";
+import { mouthTrack, type MouthTrack, type Voice } from "./mouth.ts";
 import type { EventLimitsScript } from "./script.ts";
 
 /** A narration line as the fit needs it: measured, in seconds. */
@@ -23,6 +24,8 @@ export interface FitLine {
   cue?: string;
   pause: number;
   duration: number;
+  /** Its voice, for the line's mouth track; a line without it gets none. */
+  voice?: Voice;
 }
 
 export interface FitTiming {
@@ -56,8 +59,20 @@ export interface Fit {
   /** The same, in seconds. */
   duration: number;
   spans: RequestSpan[];
-  /** When each line starts, from the scene's start, and how long the voice waits for the clip there. */
-  lines: { text: string; cue?: string; at: number; waits: number }[];
+  lines: PlacedLine[];
+}
+
+/** A line as the fit places it, in seconds from the scene's start. */
+export interface PlacedLine {
+  text: string;
+  cue?: string;
+  /** When its voice begins, and how long the voice waits for the clip there. */
+  at: number;
+  waits: number;
+  /** The voice's length. */
+  duration: number;
+  /** How open a mouth is in each frame the line sounds in (mouth.ts), when the line came with its voice. */
+  mouth?: MouthTrack;
 }
 
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
@@ -184,7 +199,14 @@ export function fitClip(
       frame = at;
       t = at / F;
     }
-    placed.push({ text: line.text, ...(line.cue ? { cue: line.cue } : {}), at: round(t), waits: round(waits) });
+    placed.push({
+      text: line.text,
+      ...(line.cue ? { cue: line.cue } : {}),
+      at: round(t),
+      waits: round(waits),
+      duration: round(line.duration),
+      ...(line.voice ? { mouth: mouthTrack(line.voice, t, F) } : {}),
+    });
     t += line.duration + timing.gap;
   }
 
@@ -230,6 +252,17 @@ export function requestDocument(fit: Fit, meta: { from: string; clip: string; fp
     spans: fit.spans,
     lines: fit.lines,
   };
+}
+
+/**
+ * The request's text: JSON a person can read too. A list of numbers (a line's mouth track, a
+ * number a frame) stays on one line.
+ */
+export function requestText(document: ReturnType<typeof requestDocument>): string {
+  // In JSON a line break is never inside a string, so a list found this way is a real one.
+  const lists = /\[\n\s*(-?[\d.e+-]+(?:,\n\s*-?[\d.e+-]+)*)\n\s*\]/g;
+  const text = JSON.stringify(document, null, 2).replace(lists, (_, list: string) => `[${list.split(/,\s*/).join(", ")}]`);
+  return `${text}\n`;
 }
 
 /** Whether a clip is drawn to this fit already: each event where the fit puts it, and the same length, to half a frame. */

@@ -6,7 +6,7 @@ import { parseArgs } from "node:util";
 import { checkPages } from "./bundle.ts";
 import { loadClips, type SceneClips } from "./clip.ts";
 import { compose } from "./compose.ts";
-import { drawnTo, fitClip, requestDocument, requestFileOf, type Fit } from "./fit.ts";
+import { drawnTo, fitClip, requestDocument, requestFileOf, requestText, type Fit, type FitLine } from "./fit.ts";
 import { commandLine, madeScenes, makerCalls, makerOf, runShell } from "./make.ts";
 import type { MakerCall } from "./maker.ts";
 import { newVideo } from "./new.ts";
@@ -15,7 +15,7 @@ import { loadVideo, type FormatName, type LoadedVideo } from "./script.ts";
 import { cachePaths, cacheRoot, ready, setup, type Need } from "./setup.ts";
 import { toSrt } from "./srt.ts";
 import { buildTimeline, narrate, type SpokenLine, type Timeline } from "./timeline.ts";
-import { KokoroProvider, speak } from "./tts.ts";
+import { KokoroProvider, readWav, speak } from "./tts.ts";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 // npm runs scripts in the package folder; paths on the command line are relative to where it was typed.
@@ -95,14 +95,19 @@ async function load(dir: string, only: string | undefined, readVideo: boolean) {
   return { video, formats, clips, spoken };
 }
 
-/** Each clip scene fitted to the measured voice. */
-function fitAll(video: LoadedVideo, clips: Map<string, SceneClips>, spoken: SpokenLine[][]): Map<string, Fit> {
+/**
+ * Each clip scene fitted to the measured voice. For a request (`mouths`), each line's voice is
+ * read back from the cache as well, and the fit gives the line its mouth track.
+ */
+async function fitAll(video: LoadedVideo, clips: Map<string, SceneClips>, spoken: SpokenLine[][], mouths = false): Promise<Map<string, Fit>> {
   const { fps, timing } = video.script;
   const fits = new Map<string, Fit>();
   for (const [i, scene] of video.script.scenes.entries()) {
     const clip = clips.get(scene.id);
     if (clip && scene.scene === "clip") {
-      fits.set(scene.id, fitClip(clip.events, clip.duration, spoken[i]!, { fps, ...timing, ...timing.moves }, scene.limits));
+      let lines: FitLine[] = spoken[i]!;
+      if (mouths) lines = await Promise.all(spoken[i]!.map(async (line) => ({ ...line, voice: await readWav(line.audioFile) })));
+      fits.set(scene.id, fitClip(clip.events, clip.duration, lines, { fps, ...timing, ...timing.moves }, scene.limits));
     }
   }
   return fits;
@@ -114,7 +119,7 @@ async function prepare(dir: string, only: string | undefined, arg: string, build
   const timeline = buildTimeline(video.script, clips, spoken, log);
   log(`Timeline: ${timeline.duration.toFixed(2)}s at ${timeline.fps} fps`);
   const undrawn: string[] = [];
-  for (const [id, fit] of fitAll(video, clips, spoken)) {
+  for (const [id, fit] of await fitAll(video, clips, spoken)) {
     const clip = clips.get(id)!;
     if (drawnTo(fit, clip.events, clip.duration, video.script.fps)) log(`Clip ${id}: drawn to the voice`);
     else {
@@ -146,7 +151,7 @@ async function writeRequests(video: LoadedVideo, clips: Map<string, SceneClips>,
       // The script, as a path from the request: the same on every run, however the tool was started.
       const script = path.relative(path.dirname(file), video.file).split(path.sep).join("/");
       const meta = { from: `${script}, scene ${id}`, clip: path.basename(c.dataFile), fps: video.script.fps };
-      await writeFile(file, `${JSON.stringify(requestDocument(fit, meta), null, 2)}\n`);
+      await writeFile(file, requestText(requestDocument(fit, meta)));
       log(`  ${file}`);
     }
   }
@@ -224,7 +229,7 @@ async function make(dir: string, arg: string, only: string | undefined, opts: { 
   begin(2, "the fit to the voice");
   // Requests for made clips only: make draws no other, and one drawn elsewhere may lie outside the folder.
   const { clips, spoken } = await load(dir, only, false);
-  await writeRequests(video, clips, new Map([...fitAll(video, clips, spoken)].filter(([id]) => made.has(id))));
+  await writeRequests(video, clips, new Map([...(await fitAll(video, clips, spoken, true))].filter(([id]) => made.has(id))));
   if (opts.fit) return;
 
   begin(3, "the made clips, drawn to the voice");
@@ -295,7 +300,7 @@ async function main() {
     // Only the clips' JSON is read: the clips themselves may not be drawn yet.
     const { video, clips, spoken } = await load(videoDir(arg), values.format, false);
     if (clips.size === 0) throw new Error(`${video.file} has no clip scene to fit`);
-    return writeRequests(video, clips, fitAll(video, clips, spoken));
+    return writeRequests(video, clips, await fitAll(video, clips, spoken, true));
   }
 
   const { video, timeline, formats, projects } = await prepare(videoDir(arg), values.format, arg, (v) => path.join(ROOT, "build", v.slug));

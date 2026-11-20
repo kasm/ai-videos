@@ -50,7 +50,7 @@ video's folder. The TTS cache always stays here.
 | `videos/project.yaml`, `videos/make-clip.ts` | The folder's videos as a project (see Projects): its project file, and its maker, which draws clip-demo's square with ffmpeg. |
 | `videos/clip-demo/` | The `clip` scene's demo: a made clip (`make: square`); `make clip-demo` writes its `clips/`, `build/` and `out/`. |
 | `scenes/<name>/scene.html` | Reusable scene templates (HyperFrames sub-compositions with `{{placeholders}}`): `page-scroll`, `clip`. |
-| `src/` | The pipeline: `script` → `clip` → `tts` → `timeline` (and `fit`, for `request`) → `compose` (with `bundle`) → `render` → `srt`; `setup`, what the commands need on the disk; `new`, a first script. |
+| `src/` | The pipeline: `script` → `clip` → `tts` → `timeline` (and `fit` with `mouth`, for `request`) → `compose` (with `bundle`) → `render` → `srt`; `setup`, what the commands need on the disk; `new`, a first script. |
 | `build/` | Generated HyperFrames projects. Never edit; regenerated on every run. |
 | `out/` | Finished videos and subtitles. |
 | `.cache/tts/` | Narration audio, keyed by text, voice and speed. |
@@ -337,8 +337,26 @@ The clip drawn to it starts each span at `at` and lasts `duration` there. A hold
 that long; a move plays its motion over `move` seconds and holds its last frame for the rest. The
 spans add up to the request's `duration` (`frames` at `fps`), which is the scene's length. The
 drawn clip's JSON puts each event at its span's `at`, keeps its `natural`, and lasts `duration`.
-The request also lists the lines (`at`, and `waits` where the voice waits for the clip), for
-reading. `src/fit.test.ts` shows each rule.
+`src/fit.test.ts` shows each rule.
+
+The request also lists the lines, in the script's order, each with its voice as measured:
+
+```json
+{ "text": "Here it slides.", "cue": "slide", "at": 5.033, "waits": 0, "duration": 1.544,
+  "mouth": { "frame": 151, "open": [0.31, 1, 0.82, 0, 0, 0.64, 0.9, 0.12] } }
+```
+
+- `at` is when the voice begins the line, from the clip's start, and `waits` how long it waits
+  there for the clip. `duration` is the voice's length: the line sounds from `at` for `duration`.
+- `mouth` is how open a mouth is while the line sounds, a number for each frame of the clip (the
+  request's `fps`): `open[k]` is for frame `frame + k`, and `frame` is the frame the line begins in.
+  0 is closed and 1 is the line's loudest frame. A maker with a talking character draws its mouth
+  from it; in a frame no line's track covers, nobody speaks.
+- The track follows the voice's loudness, not its phonemes (`src/mouth.ts`): a frame's loudness is
+  compared with the line's loudest, on the decibel scale, and 30 dB under it is closed. So the
+  mouth is closed in the pauses between a line's sentences. `src/mouth.test.ts` shows it.
+- `duration` and `mouth` are optional, and the version stays 1: a maker that draws no mouth
+  (RayCraft's) reads the request as before, and a request written by other means may leave them out.
 
 ## Writing a scene template
 

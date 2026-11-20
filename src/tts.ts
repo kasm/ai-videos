@@ -134,6 +134,14 @@ function encodeWav(samples: Float32Array, sampleRate: number): Buffer {
   return Buffer.concat([header, data]);
 }
 
+/** A cached line's samples again, as `encodeWav` wrote them: 16-bit mono after a 44-byte header. */
+export async function readWav(file: string): Promise<TtsAudio> {
+  const buf = await readFile(file);
+  const samples = new Float32Array(buf.readUInt32LE(40) / 2);
+  for (let i = 0; i < samples.length; i++) samples[i] = buf.readInt16LE(44 + i * 2) / 32767;
+  return { samples, sampleRate: buf.readUInt32LE(24) };
+}
+
 async function wavDuration(file: string): Promise<number> {
   const buf = await readFile(file);
   const byteRate = buf.readUInt32LE(28);
