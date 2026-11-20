@@ -9,6 +9,9 @@ import { FORMATS as SIZES, type FormatName } from "./script.ts";
 
 export const VIDEOS = path.resolve(import.meta.dirname, "..", "videos");
 
+/** The demo's frame rate (its video.yaml): its own events fall on whole frames of it. */
+const FPS = 30;
+
 /** Runs the demo's maker (videos/make-clip.ts) with a call, as `make` does. */
 async function maker(call: MakerCall) {
   const { code, stderr } = await run(process.execPath, [path.join(VIDEOS, "make-clip.ts"), ...makerArgs(call)], { cwd: VIDEOS });
@@ -21,7 +24,7 @@ function ownPace(data: ClipJson) {
     const length = (data.events[i + 1]?.at ?? data.duration) - e.at;
     return { event: e.name, span: e.span, natural: length, at: e.at, duration: length };
   });
-  return { format: "ai-videos-request", version: 1, duration: data.duration, spans };
+  return { format: "ai-videos-request", version: 1, fps: FPS, duration: data.duration, frames: Math.round(data.duration * FPS), spans };
 }
 
 /** The demo's script in `dir`, its clips drawn there: both of the maker's steps, the formats at once. */

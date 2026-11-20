@@ -47,10 +47,10 @@ video's folder. The TTS cache always stays here.
 | `videos/<name>/video.yaml` | The script: scenes, narration lines, cues. Source of truth for a video. |
 | `videos/<name>/page.html`, `page.css` | The page a `page-scroll` scene shows. |
 | `videos/<name>/assets/` | The page's pictures, copied into the build; the page refers to them as `assets/<file>`. |
-| `videos/project.yaml`, `videos/make-clip.ts` | The folder's videos as a project (see Projects): its project file, and its maker, which draws clip-demo's square with ffmpeg. |
+| `videos/project.yaml`, `videos/make-clip.ts` | The folder's videos as a project (see Projects): its project file, and its maker, which draws clip-demo's square. |
 | `videos/clip-demo/` | The `clip` scene's demo: a made clip (`make: square`); `make clip-demo` writes its `clips/`, `build/` and `out/`. |
 | `scenes/<name>/scene.html` | Reusable scene templates (HyperFrames sub-compositions with `{{placeholders}}`): `page-scroll`, `clip`. |
-| `src/` | The pipeline: `script` → `clip` → `tts` → `timeline` (and `fit` with `mouth`, for `request`) → `compose` (with `bundle`) → `render` → `srt`; `setup`, what the commands need on the disk; `new`, a first script. |
+| `src/` | The pipeline: `script` → `clip` → `tts` → `timeline` (and `fit` with `mouth`, for `request`) → `compose` (with `bundle`) → `render` → `srt`; `setup`, what the commands need on the disk; `new`, a first script; `frames`, what a maker draws with (see The maker's shared code). |
 | `build/` | Generated HyperFrames projects. Never edit; regenerated on every run. |
 | `out/` | Finished videos and subtitles. |
 | `.cache/tts/` | Narration audio, keyed by text, voice and speed. |
@@ -155,6 +155,50 @@ per format:
   `readMakerCall(process.argv.slice(2))` reads one in a maker written in TypeScript and refuses
   anything the tool would not send. `src/maker.test.ts` shows both. `videos/make-clip.ts` is a
   small maker that follows it.
+
+### The maker's shared code
+
+What a maker has of its own is the picture: what a moment looks like. The rest of step two is the
+same in every maker, and `src/frames.ts` holds it: which moment each frame of the request shows,
+the frames encoded into the clip, and the clip's data written back. A maker in TypeScript uses it
+instead of repeating it; the contract stays the files above, so a maker in another language, or
+one that draws by other means, follows those alone.
+
+- **From another repository** the tool is a folder package: `"ai-videos": "file:<path to this
+  folder>"` in the project's `package.json`, then `import { moments, encoder, writeClipData }
+  from "ai-videos/frames"`. It is the only module `package.json` exports, and it imports nothing
+  but Node's own modules, so the project needs none of the tool's packages. Node 24 runs it as it
+  is written. The tool's own maker imports the file (`../src/frames.ts`).
+- **`moments(request)`** gives one moment for each of the request's `frames`, in order:
+  - `span`: which of the request's spans the frame is in, counted from 0. Each span begins on
+    the frame its `at` names; a request whose spans do not follow each other on whole frames is
+    refused.
+  - `progress`: how far through the span's motion, 0 to 1. A move goes evenly from 0 over its
+    `move` seconds (its `duration`, when the request gives no `move`) and stays at 1 for the
+    rest; a hold is at 0. Easing is the maker's, and so is what the spans before it left behind.
+  - `time` and `into`: the seconds since the clip began, and since the span did.
+  - `mouths`: how open each speaker's mouth is, by name, above 0 to 1, from the lines' tracks. A
+    speaker it does not name has a closed mouth; a line with no speaker opens none. Where two of
+    one speaker's lines meet in a frame, the wider mouth shows.
+- **`encoder(clip, { width, height, fps, crf })`** starts ffmpeg (on the PATH) writing `clip`,
+  its folder made first:
+  - `await frame(pixels)` adds a frame: `width` × `height` pixels in rows from the top, four
+    bytes each (red, green, blue, alpha), sRGB and opaque. A frame of another size is refused. A
+    hold gives the same buffer again, and is not hashed again.
+  - `await end()` waits for ffmpeg, fails if it failed, and returns the number of frames. It
+    writes `<clip>.frames` beside the clip: a hash of each frame's pixels, a line a frame. Two
+    runs that drew the same pictures have the same file; where they differ, the line is the frame.
+  - The clip is H.264, 4:2:0, marked BT.709, with nothing in it that differs by run (dates, the
+    encoder's name). `crf` is the quality, lower is closer to the pixels: a maker chooses it
+    (`videos/make-clip.ts` 24; a drawing with fine lines, 17).
+- **`writeClipData(file, { by, from, request, duration, events, texts })`** writes the clip's
+  JSON (see Clips) for either step, its keys in the schema's order. With `request`, the
+  request's file, `made.from` ends with `, drawn to <its name>`. The times are the maker's:
+  for step two, each event at its span's `at` with the span's `natural`, and the request's
+  `duration`.
+- Reading the call and the request stays the maker's (`readMakerCall` for the tool's own; a
+  project checks the request as far as it draws from it). `src/frames.test.ts` shows each of
+  the three, and that their types are the ones `fit` writes and `clip` reads.
 
 ### `new`
 
