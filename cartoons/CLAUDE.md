@@ -18,7 +18,7 @@ a video with a spoken voice, offline and with no AI. The plan is RayCraft's
 - `src/`: the maker, the command the tool runs to get a cartoon's clip.
   - `scenario.ts`: the scenario's schema and its checks.
   - `timeline.ts`: beats and lines as the clip's events and texts, and
-    which moment each frame shows.
+    which moment each frame shows, with how open the mouth is.
   - `picture.ts`: one moment's picture, as an SVG.
   - `draw.ts`: the frames as pixels (resvg) and as the clip (ffmpeg).
   - `call.ts`, `request.ts`: the tool's call to the maker, and its request.
@@ -44,10 +44,13 @@ Drawing needs `ffmpeg` on the PATH.
 
 The tool measures the voice and asks for the clip in whole frames: when
 each beat begins, how long it lasts, and how long a move's motion takes
-(the request, `clips/<name>-landscape.request.json`). The maker then:
+(the request, `clips/<name>-landscape.request.json`). With each spoken
+line it gives a mouth track, taken from the voice's loudness: how open a
+mouth is in each frame the line sounds in, 0 closed to 1 wide. The maker
+then:
 
-1. finds each frame's moment: which beat, and how far through its move
-   (`moments`, `timeline.ts`);
+1. finds each frame's moment: which beat, how far through its move, and
+   how open the mouth is (`moments`, `timeline.ts`);
 2. writes that moment's picture as an SVG (`frameSvg`, `picture.ts`);
 3. turns the SVG into pixels with resvg, and pipes them to ffmpeg
    (`draw.ts`). A frame whose SVG is the one before it is not drawn again.
@@ -56,6 +59,13 @@ A walk goes from the character's place to its end, slow at both ends, in
 a whole number of steps: the character rises a little in the middle of
 each. Its look is the maker's (`STEP`, `BOUNCE` in `picture.ts`), not the
 scenario's.
+
+A mouth moves with the voice: the shapes of the part named `mouth` grow
+downwards as the track says (the top edge stays, the jaw drops), until wide
+open they are nearly as tall as wide (`MOUTH_OPEN`, `picture.ts`). Closed,
+in a line's pauses and between lines, the mouth is as the scenario writes
+it. The request does not name a line's speaker yet (the plan's step 4), so
+every character's mouth moves to every line, the narrator's too.
 
 The picture depends only on the scenario and the request, so two runs
 draw the same frames. `clips/<name>-landscape.mp4.frames` holds a hash of
@@ -108,7 +118,10 @@ scenes:
 - **A character** is its named `parts` (body, eyes, mouth), each a list of
   shapes. Parts are drawn in the order written. Their shapes are measured
   from the point between the character's feet, so `[0, -170]` is 170
-  pixels above the ground.
+  pixels above the ground. The part named `mouth` is the one that talks:
+  write it closed, as a flat shape, with room under it for the jaw to
+  drop (about 0.9 of its width). On a character with no `mouth` part
+  nothing opens.
 - **A background** fills the stage with `fill`, then draws its `shapes` in
   stage coordinates.
 - **A scene** has one `background`, the `places` where its characters stand

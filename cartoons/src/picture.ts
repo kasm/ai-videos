@@ -12,6 +12,10 @@ type Shape = Background["shapes"][number];
 const STEP = 150;
 const BOUNCE = 16;
 
+/** The part that talks, and how tall it is when wide open, as a share of its width: nearly round. */
+const MOUTH = "mouth";
+const MOUTH_OPEN = 0.9;
+
 /** 0 to 1, slow at both ends: a walk starts and stops softly. */
 const ease = (p: number) => 0.5 - 0.5 * Math.cos(Math.PI * p);
 
@@ -25,7 +29,7 @@ export interface Staging {
  * The scene of the moment's beat: its characters where the beats before left them, and the one who
  * walks now part of the way. A walk is a whole number of steps, so it ends with both feet down.
  */
-export function stagingAt(scenario: Scenario, moment: Moment): Staging {
+export function stagingAt(scenario: Scenario, moment: Pick<Moment, "beat" | "progress">): Staging {
   let first = 0; // the scene's first beat, counted through the scenario
   for (const scene of scenario.scenes) {
     if (moment.beat >= first + scene.beats.length) {
@@ -66,8 +70,23 @@ function shapeSvg(shape: Shape): string {
   return `<rect x="${n(x - w / 2)}" y="${n(y - h / 2)}" width="${n(w)}" height="${n(h)}"${round} fill="${shape.fill}"/>`;
 }
 
-const characterSvg = (character: Character, at: Point) =>
-  `<g transform="translate(${n(at[0])} ${n(at[1])})">${Object.values(character.parts).flat().map(shapeSvg).join("")}</g>`;
+/**
+ * A mouth's shape, `open` from 0 to 1: its top edge stays and the jaw drops, until the shape is
+ * MOUTH_OPEN of its width tall. Closed, it is the shape as the scenario writes it; one written
+ * taller than that stays as it is.
+ */
+function openMouth(shape: Shape, open: number): Shape {
+  const [w, h] = shape.size;
+  const tall = h + Math.max(0, MOUTH_OPEN * w - h) * open;
+  return { ...shape, at: [shape.at[0], shape.at[1] + (tall - h) / 2], size: [w, tall] };
+}
+
+/** A character's parts in the order written, its `mouth` part as open as `mouth` says. */
+const characterSvg = (character: Character, at: Point, mouth: number) =>
+  `<g transform="translate(${n(at[0])} ${n(at[1])})">${Object.entries(character.parts)
+    .flatMap(([part, shapes]) => (part === MOUTH && mouth > 0 ? shapes.map((shape) => openMouth(shape, mouth)) : shapes))
+    .map(shapeSvg)
+    .join("")}</g>`;
 
 /** The moment's picture as an SVG of the whole stage, `width` by `height` pixels. */
 export function frameSvg(scenario: Scenario, moment: Moment, { width, height }: { width: number; height: number }): string {
@@ -76,7 +95,8 @@ export function frameSvg(scenario: Scenario, moment: Moment, { width, height }: 
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${STAGE.width} ${STAGE.height}" width="${width}" height="${height}">`,
     `<rect width="${STAGE.width}" height="${STAGE.height}" fill="${background.fill}"/>`,
     ...background.shapes.map(shapeSvg),
-    ...characters.map(({ name, at }) => characterSvg(scenario.characters[name]!, at)),
+    // Every character's mouth moves with the voice, until the request says who speaks.
+    ...characters.map(({ name, at }) => characterSvg(scenario.characters[name]!, at, moment.mouth)),
     "</svg>",
   ].join("\n");
 }

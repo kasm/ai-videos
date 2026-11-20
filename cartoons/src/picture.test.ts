@@ -57,7 +57,7 @@ test("a later scene has its own background and places", () => {
 
 test("the picture is the stage as SVG: the background, its shapes, then each character's parts in order", () => {
   assert.equal(
-    frameSvg(scenario, { beat: 1, progress: 0 }, { width: 960, height: 540 }),
+    frameSvg(scenario, { beat: 1, progress: 0, mouth: 0 }, { width: 960, height: 540 }),
     [
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="960" height="540">',
       '<rect width="1920" height="1080" fill="#bfe3ff"/>',
@@ -69,8 +69,24 @@ test("the picture is the stage as SVG: the background, its shapes, then each cha
 });
 
 test("the same moment is the same text", () => {
-  const at = { beat: 0, progress: 0.37 };
+  const at = { beat: 0, progress: 0.37, mouth: 0.4 };
   const size = { width: 1920, height: 1080 };
   assert.equal(frameSvg(scenario, at, size), frameSvg(scenario, { ...at }, size));
-  assert.notEqual(frameSvg(scenario, at, size), frameSvg(scenario, { beat: 0, progress: 0.38 }, size));
+  assert.notEqual(frameSvg(scenario, at, size), frameSvg(scenario, { ...at, progress: 0.38 }, size));
+  assert.notEqual(frameSvg(scenario, at, size), frameSvg(scenario, { ...at, mouth: 0.41 }, size));
+});
+
+test("the mouth opens downwards: its top edge stays, and wide open it is nearly as tall as wide", () => {
+  // Pip's mouth is 40 wide and 10 tall, its top edge 95 above the ground.
+  const mouth = (open: number) => /<ellipse cx="0" cy="([-\d.]+)" rx="20" ry="([-\d.]+)" fill="#5b2333"\/>/.exec(frameSvg(scenario, { beat: 1, progress: 0, mouth: open }, { width: 960, height: 540 }))!.slice(1).map(Number);
+  assert.deepEqual(mouth(0), [-90, 5], "closed: as the scenario writes it");
+  assert.deepEqual(mouth(1), [-77, 18], "wide open: 36 tall, 0.9 of its width");
+  assert.deepEqual(mouth(0.5), [-83.5, 11.5], "half open: halfway");
+  for (const open of [0, 0.5, 1]) {
+    const [cy, ry] = mouth(open);
+    assert.equal(cy! - ry!, -95, "the top edge stays");
+  }
+  // Only the mouth moves: the rest of the picture is the closed one's.
+  const rest = (open: number) => frameSvg(scenario, { beat: 1, progress: 0, mouth: open }, { width: 960, height: 540 }).replace(/<ellipse[^>]*fill="#5b2333"\/>/, "");
+  assert.equal(rest(1), rest(0));
 });

@@ -46,23 +46,21 @@ test("portrait and a call the tool would not send are refused", () => {
 });
 
 // Step two, small and short: hello's walk in 8 frames with its motion in 6, then 4 frames of the stop.
+const SMALL = {
+  format: "ai-videos-request",
+  version: 1,
+  fps: 30,
+  duration: 0.4,
+  frames: 12,
+  spans: [
+    { event: "walks-in", span: "move", natural: 4, at: 0, duration: 0.267, move: 0.2 },
+    { event: "stops", span: "hold", natural: 3, at: 0.267, duration: 0.133 },
+  ],
+};
 const request = path.join(scratch, "small.request.json");
-writeFileSync(
-  request,
-  JSON.stringify({
-    format: "ai-videos-request",
-    version: 1,
-    fps: 30,
-    duration: 0.4,
-    frames: 12,
-    spans: [
-      { event: "walks-in", span: "move", natural: 4, at: 0, duration: 0.267, move: 0.2 },
-      { event: "stops", span: "hold", natural: 3, at: 0.267, duration: 0.133 },
-    ],
-  }),
-);
-const draw = (clip: string, size = ["--width=320", "--height=180"]) =>
-  maker("hello", "--format=landscape", ...size, `--request=${request}`, `--clip=${clip}`, `--data=${clip.replace(/\.mp4$/, ".json")}`);
+writeFileSync(request, JSON.stringify(SMALL));
+const draw = (clip: string, size = ["--width=320", "--height=180"], to = request) =>
+  maker("hello", "--format=landscape", ...size, `--request=${to}`, `--clip=${clip}`, `--data=${clip.replace(/\.mp4$/, ".json")}`);
 const framesOf = (clip: string) => readFileSync(`${clip}.frames`, "utf8").trim().split("\n");
 
 test("step two draws the clip to the request: a hash per frame, and the data as the request times it", () => {
@@ -93,6 +91,21 @@ test("a second run draws the same frames", () => {
   const again = path.join(scratch, "two", "hello-landscape.mp4");
   assert.equal(draw(again).status, 0);
   assert.deepEqual(framesOf(again), framesOf(path.join(scratch, "one", "hello-landscape.mp4")));
+});
+
+test("a line's mouth track opens Pip's mouth in its frames, and nowhere else", () => {
+  // The same request with a line spoken through the stop: open, closed for a pause, open as wide again.
+  const spoken = path.join(scratch, "spoken.request.json");
+  writeFileSync(spoken, JSON.stringify({ ...SMALL, lines: [{ text: "Hi. Pip.", at: 0.267, duration: 0.133, mouth: { frame: 8, open: [0.7, 0, 0.7] } }] }));
+  const clip = path.join(scratch, "four", "hello-landscape.mp4");
+  assert.equal(draw(clip, undefined, spoken).status, 0);
+  const frames = framesOf(clip);
+  const silent = framesOf(path.join(scratch, "one", "hello-landscape.mp4"));
+  assert.deepEqual(frames.slice(0, 8), silent.slice(0, 8), "the walk, before the line: as with no line");
+  assert.notEqual(frames[8], silent[8], "the mouth is open");
+  assert.equal(frames[9], silent[9], "closed in the pause");
+  assert.equal(frames[10], frames[8], "open as wide again: the same picture");
+  assert.equal(frames[11], silent[11], "closed after the line");
 });
 
 test("a size the stage does not fill, and a missing request, stop the maker", () => {

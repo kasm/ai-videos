@@ -12,10 +12,14 @@ export interface Timeline {
   lines: { who: string; text: string; from: number; to: number }[];
 }
 
-/** Where the picture is in the scenario: in which beat, counted through every scene, and how far through its move (0 to 1). */
+/**
+ * Where the picture is in the scenario: in which beat, counted through every scene, how far through
+ * its move (0 to 1), and how open the mouths are (0 closed to 1 wide).
+ */
 export interface Moment {
   beat: number;
   progress: number;
+  mouth: number;
 }
 
 /** Whole milliseconds, so times added up from fractions stay equal where they should. */
@@ -58,11 +62,29 @@ export function timeline(scenario: Scenario, request?: Request): Timeline {
 }
 
 /**
+ * How open the mouth is in each frame of the clip: every line's track laid on the frames it names,
+ * and closed where no line sounds. The request does not say who speaks yet, so there is one mouth
+ * for the whole picture.
+ */
+function mouths(request: Request): number[] {
+  const open = new Array<number>(request.frames).fill(0);
+  for (const { mouth } of request.lines) {
+    mouth?.open.forEach((value, k) => {
+      const frame = mouth.frame + k;
+      // A line may end in the frame the next begins in: the wider mouth shows.
+      if (frame < open.length) open[frame] = Math.max(open[frame]!, value);
+    });
+  }
+  return open;
+}
+
+/**
  * The moment each frame of the requested clip shows. The tool puts every beat on a whole frame; a
  * move's motion takes its `move` seconds from there and then stays at its end, and the next beat
- * begins where it ended.
+ * begins where it ended. The mouth follows the lines' voice, whatever the beat.
  */
 export function moments(request: Request): Moment[] {
+  const open = mouths(request);
   const starts = request.spans.map((span) => Math.round(span.at * request.fps));
   const frames: Moment[] = [];
   request.spans.forEach((span, beat) => {
@@ -71,7 +93,7 @@ export function moments(request: Request): Moment[] {
     if (start !== frames.length || end <= start) throw new Error(`the request's span "${span.event}" does not follow the one before it on a whole frame`);
     for (let frame = start; frame < end; frame++) {
       const progress = span.span === "move" ? Math.min(1, (frame - start) / request.fps / (span.move ?? span.duration)) : 0;
-      frames.push({ beat, progress });
+      frames.push({ beat, progress, mouth: open[frame]! });
     }
   });
   return frames;
