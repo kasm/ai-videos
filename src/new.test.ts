@@ -50,6 +50,51 @@ test("each text becomes a line cued to the event it begins at, in time order", (
   ]);
 });
 
+/** A maker whose step one writes this data: a script of its own in `dir`, as the project file names it. */
+async function makerOf(dir: string, data: ClipJson): Promise<string> {
+  const file = path.join(dir, "maker.mjs");
+  const write = `const data = process.argv.find((a) => a.startsWith("--data=")).slice(7);\n`;
+  await writeFile(file, `import { writeFileSync } from "node:fs";\n${write}writeFileSync(data, ${JSON.stringify(JSON.stringify(data))});\n`);
+  return `node "${file.split(path.sep).join("/")}"`;
+}
+
+test("a text's speaker becomes its line's, and new says which speakers the cast gives no voice", async () => {
+  const data: ClipJson = {
+    format: "ai-videos-clip",
+    version: 1,
+    made: { by: "a test", from: "this table" },
+    duration: 6,
+    events: [
+      { name: "meets", at: 0, span: "hold" },
+      { name: "plays", at: 3, span: "move" },
+    ],
+    texts: [
+      { text: "Two friends meet.", from: 0, to: 1 },
+      { text: "Hello!", speaker: "pip", from: 1, to: 2 },
+      { text: "Hello, Pip.", speaker: "mo", from: 2, to: 3 },
+      { text: "Shall we play?", speaker: "pip", from: 3, to: 6 },
+    ],
+  };
+  assert.deepEqual(linesOf(data), [
+    { text: "Two friends meet.", cue: "meets" },
+    { speaker: "pip", text: "Hello!", cue: "meets" },
+    { speaker: "mo", text: "Hello, Pip.", cue: "meets" },
+    { speaker: "pip", text: "Shall we play?", cue: "plays" },
+  ]);
+
+  // Written by new, the speaker is the line's first key, and the script loads once the cast names everyone.
+  const root = await project("speakers");
+  await writeFile(path.join(root, "project.yaml"), `maker: ${await makerOf(root, data)}\ncast:\n  pip: am_puck\n`);
+  const said: string[] = [];
+  const file = await newVideo(path.join(root, "friends"), {}, (msg) => said.push(msg));
+  assert.match(await readFile(file, "utf8"), /^ {6}- speaker: pip\n {8}text: Hello!\n {8}cue: meets$/m);
+  assert.deepEqual(parse(await readFile(file, "utf8")).scenes[0].narration, linesOf(data));
+  assert.match(said.at(-1)!, /no voice yet for mo: give each one under cast: in .*project\.yaml/);
+  await assert.rejects(loadVideo(path.join(root, "friends")), /"mo" is not in the cast \(pip\)/);
+  await writeFile(path.join(root, "project.yaml"), `maker: ${await makerOf(root, data)}\ncast:\n  pip: am_puck\n  mo: bf_emma\n`);
+  assert.deepEqual((await loadVideo(path.join(root, "friends"))).script.cast, { pip: "am_puck", mo: "bf_emma" });
+});
+
 test("new writes the clip's texts as lines, and none of the project's settings", async () => {
   const root = await project("demo", `maker: node "${MAKER}"\nvoice: am_michael\nloudness: -20\nformats: [portrait]\n`);
   const dir = path.join(root, "first-video");

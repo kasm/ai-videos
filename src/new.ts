@@ -11,21 +11,23 @@ import { FORMATS, PROJECT_FILE, readProject, slug, videoName, type FormatName } 
 
 /**
  * A line per text, cued to the event it begins at: the last one at or before its `from` (the first
- * event is at 0, so there is always one). In the clip's time order, so no cue goes back.
+ * event is at 0, so there is always one). In the clip's time order, so no cue goes back. A text
+ * with a speaker gives the line its speaker, written first, as in a play.
  */
-export function linesOf(data: ClipJson): { text: string; cue: string }[] {
+export function linesOf(data: ClipJson): { speaker?: string; text: string; cue: string }[] {
   return data.texts
     .toSorted((a, b) => a.from - b.from)
-    .map(({ text, from }) => {
+    .map(({ text, speaker, from }) => {
       // A millisecond's slack, for a maker that rounds an event's time and its text's apart.
       const event = data.events.findLast((e) => e.at <= from + 1e-3)!;
-      return { text, cue: event.name };
+      return { ...(speaker ? { speaker } : {}), text, cue: event.name };
     });
 }
 
 const HEADER = `# The first script, written by \`new\` from the clip's own texts: a line each, cued to the event it
 # begins at. The voice, formats and loudness are the project file's, beside this folder; a setting
-# written here overrides it. After changing a line, \`make <this folder> --fit\` tries the timing.
+# written here overrides it. A line's speaker takes its voice from the cast there; a line with none
+# is said in the project's voice. After changing a line, \`make <this folder> --fit\` tries the timing.
 `;
 
 /**
@@ -60,5 +62,9 @@ export async function newVideo(dir: string, opts: { make?: string; format?: stri
   // No folding: a line stays one line, as it is said.
   await writeFile(file, HEADER + stringify(script, { lineWidth: 0 }));
   log(`${file}: ${narration.length} lines, cued to ${narration.map((l) => l.cue).join(", ")}`);
+  // make refuses a speaker with no voice; said here, the cast is filled in before the first make.
+  const cast = project.script.cast;
+  const voiceless = [...new Set(narration.flatMap((l) => (l.speaker && !Object.hasOwn(cast, l.speaker) ? [l.speaker] : [])))];
+  if (voiceless.length) log(`  no voice yet for ${voiceless.join(", ")}: give each one under cast: in ${project.file}`);
   return file;
 }

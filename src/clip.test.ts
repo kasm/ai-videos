@@ -137,6 +137,15 @@ test("JSON the schema refuses: events out of order, a text past the end", async 
   );
 });
 
+test("a text may name its speaker, and a speaker that is not a name is refused", async () => {
+  const clips = await demo("speaker", (dir) => editJson(dir, "landscape", (d) => (d.texts[0].speaker = "pip")));
+  assert.equal(clips.get("square")!.byFormat.landscape!.data.texts[0]!.speaker, "pip");
+  await assert.rejects(
+    demo("bad-speaker", (dir) => editJson(dir, "landscape", (d) => (d.texts[0].speaker = "Pip the First"))),
+    (err: Error) => /not valid clip data/.test(err.message) && /at texts\[0\]\.speaker/.test(err.message),
+  );
+});
+
 test("JSON from another run: its length is not the clip's", async () => {
   await assert.rejects(
     demo("stale", (dir) => editJson(dir, "landscape", (d) => (d.duration = 12))),

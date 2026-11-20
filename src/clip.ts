@@ -4,7 +4,7 @@ import path from "node:path";
 import { z } from "zod";
 import { requestFileOf } from "./fit.ts";
 import { run } from "./render.ts";
-import type { FormatName, LoadedVideo } from "./script.ts";
+import { Speaker, type FormatName, type LoadedVideo } from "./script.ts";
 
 const name = z.string().regex(/^[a-z0-9][a-z0-9-]*$/, "use lowercase letters, digits and dashes");
 const seconds = z.number().min(0);
@@ -26,8 +26,11 @@ export const ClipData = z
      * span's `natural` length, its length at the clip's own pace, so fitting it again starts from that.
      */
     events: z.array(z.strictObject({ name, at: seconds, span: z.enum(SPAN_KINDS), natural: z.number().positive().optional() })).min(1),
-    /** The texts that go with the clip, each with when it applies: from and to, seconds. */
-    texts: z.array(z.strictObject({ text: z.string().min(1), from: seconds, to: seconds })).default([]),
+    /**
+     * The texts that go with the clip, each with when it applies (from and to, seconds) and, when
+     * one of the clip's characters says it, who: `new` writes the name as the line's speaker.
+     */
+    texts: z.array(z.strictObject({ text: z.string().min(1), speaker: Speaker.optional(), from: seconds, to: seconds })).default([]),
   })
   .superRefine((d, ctx) => {
     const issue = (message: string, at: (string | number)[]) => ctx.addIssue({ code: "custom", message, path: at });

@@ -111,3 +111,19 @@ test("the request's text keeps a mouth track on one line, and reads back as the 
   assert.match(text, /^ +"open": \[1, 1, 1, 1, 1, 1\]$/m);
   assert.equal(document.version, 1, "the version stays 1: a line's length and mouth are optional");
 });
+
+test("a request names each line's speaker, so a maker moves that mouth only; a line with none has no such key", () => {
+  const lines = [
+    { text: "Two friends meet.", cue: "start", pause: 0, duration: 0.2, voice: voice([0.2, 0.3]) },
+    { text: "Hello!", speaker: "pip", cue: "slide", pause: 0, duration: 0.2, voice: voice([0.2, 0.3]) },
+    { text: "Hello, Pip.", speaker: "mo", pause: 0, duration: 0.2, voice: voice([0.2, 0.3]) },
+  ];
+  const fit = fitClip(EVENTS, 4, lines, TIMING);
+  const document = requestDocument(fit, { from: "video.yaml, scene square", clip: "square.json", fps: FPS });
+  assert.deepEqual(document.lines.map((l) => [l.speaker, l.mouth?.open.length]), [[undefined, 6], ["pip", 6], ["mo", 6]]);
+  assert.deepEqual(Object.keys(document.lines[0]!), ["text", "cue", "at", "waits", "duration", "mouth"]);
+  assert.deepEqual(Object.keys(document.lines[1]!), ["text", "speaker", "cue", "at", "waits", "duration", "mouth"]);
+  assert.equal(document.version, 1, "the version stays 1: the speaker is optional too");
+  // Who speaks changes nothing in the timing.
+  assert.deepEqual(fitClip(EVENTS, 4, lines.map(({ speaker: _, ...line }) => line), TIMING).spans, fit.spans);
+});

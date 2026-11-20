@@ -1,6 +1,6 @@
 // Turns measured narration into a timeline: the voice sets the clock.
 import type { SceneClips } from "./clip.ts";
-import type { VideoScript } from "./script.ts";
+import { voiceOf, type VideoScript } from "./script.ts";
 import { speak, type TtsProvider } from "./tts.ts";
 
 /** A narration line, spoken and measured. */
@@ -8,6 +8,8 @@ export interface SpokenLine {
   /** 1-based position in the whole video. */
   n: number;
   text: string;
+  /** Who says it, when the script names a speaker. */
+  speaker?: string;
   cue?: string;
   /** Extra silence before the line, seconds. */
   pause: number;
@@ -59,9 +61,20 @@ export async function narrate(
     const lines: SpokenLine[] = [];
     for (const line of scene.narration) {
       n++;
-      const spoken = await speak(provider, cacheDir, { text: line.text, voice: line.voice ?? script.voice, speed: script.speed });
-      log(`  line ${n}: ${spoken.duration.toFixed(2)}s ${spoken.cached ? "(cached)" : "(generated)"}`);
-      lines.push({ n, text: line.text, cue: line.cue, pause: line.pause, audioFile: spoken.file, duration: spoken.duration });
+      const voice = voiceOf(script, line);
+      const spoken = await speak(provider, cacheDir, { text: line.text, voice, speed: script.speed });
+      // A line in another voice than the video's says whose, so a cast is checked by reading.
+      const who = voice === script.voice ? "" : ` (${[line.speaker, voice].filter(Boolean).join(", ")})`;
+      log(`  line ${n}${who}: ${spoken.duration.toFixed(2)}s ${spoken.cached ? "(cached)" : "(generated)"}`);
+      lines.push({
+        n,
+        text: line.text,
+        ...(line.speaker ? { speaker: line.speaker } : {}),
+        cue: line.cue,
+        pause: line.pause,
+        audioFile: spoken.file,
+        duration: spoken.duration,
+      });
     }
     scenes.push(lines);
   }

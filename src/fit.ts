@@ -21,6 +21,8 @@ import type { EventLimitsScript } from "./script.ts";
 /** A narration line as the fit needs it: measured, in seconds. */
 export interface FitLine {
   text: string;
+  /** Who says it, when the script names a speaker: the request passes it on. */
+  speaker?: string;
   cue?: string;
   pause: number;
   duration: number;
@@ -65,6 +67,8 @@ export interface Fit {
 /** A line as the fit places it, in seconds from the scene's start. */
 export interface PlacedLine {
   text: string;
+  /** Who says it: the one whose mouth the track moves. A line with none is nobody's on screen (a narrator's). */
+  speaker?: string;
   cue?: string;
   /** When its voice begins, and how long the voice waits for the clip there. */
   at: number;
@@ -201,6 +205,7 @@ export function fitClip(
     }
     placed.push({
       text: line.text,
+      ...(line.speaker ? { speaker: line.speaker } : {}),
       ...(line.cue ? { cue: line.cue } : {}),
       at: round(t),
       waits: round(waits),

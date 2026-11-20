@@ -7,6 +7,9 @@ import { z } from "zod";
 /** A video's name and a scene's id: they name files and HyperFrames' compositions. */
 export const slug = z.string().regex(/^[a-z][a-z0-9-]*$/, "use lowercase letters, digits and dashes");
 
+/** Who says a line: a name of the cast (`cast`, below), as a clip's maker names its characters. */
+export const Speaker = slug;
+
 const fraction = z.number().min(0).max(1);
 
 export const MARK_KINDS = ["circle", "underline", "arrow", "box", "check"] as const;
@@ -40,7 +43,9 @@ const Line = z.strictObject({
   draw: z.array(Mark).optional(),
   /** Extra silence before this line, seconds. The scroll to its cue happens in it, so the page is there first. */
   pause: z.number().min(0).max(5).default(0),
-  /** Per-line voice override. */
+  /** Who says it: a name of the cast, which gives the line its voice. Omit for the video's `voice`. */
+  speaker: Speaker.optional(),
+  /** Per-line voice override, over the speaker's. */
   voice: z.string().optional(),
 });
 
@@ -63,7 +68,9 @@ const ClipLine = z.strictObject({
   cue: z.string().optional(),
   /** Extra silence before this line, seconds. */
   pause: z.number().min(0).max(5).default(0),
-  /** Per-line voice override. */
+  /** Who says it: a name of the cast, which gives the line its voice. Omit for the video's `voice`. */
+  speaker: Speaker.optional(),
+  /** Per-line voice override, over the speaker's. */
   voice: z.string().optional(),
 });
 
@@ -140,7 +147,10 @@ export type FormatName = keyof typeof FORMATS;
  * the video.yaml's win; set in neither, these defaults.
  */
 const settings = {
+  /** The voice of every line that names no speaker (a narrator's). */
   voice: z.string().default("af_heart"),
+  /** The cast: each speaker's voice, by name. A line's `speaker` is one of these. */
+  cast: z.record(Speaker, z.string().min(1)).default({}),
   speed: z.number().min(0.5).max(2).default(1),
   fps: z.union([z.literal(24), z.literal(25), z.literal(30), z.literal(60)]).default(30),
   formats: z.array(z.enum(["landscape", "portrait"])).min(1).default(["landscape", "portrait"]),
@@ -149,14 +159,34 @@ const settings = {
   timing: Timing.prefault({}),
 };
 
-const Video = z.strictObject({
-  title: z.string().min(1),
-  ...settings,
-  scenes: z.array(z.discriminatedUnion("scene", [PageScrollScene, ClipScene])).min(1),
-});
+const Video = z
+  .strictObject({
+    title: z.string().min(1),
+    ...settings,
+    scenes: z.array(z.discriminatedUnion("scene", [PageScrollScene, ClipScene])).min(1),
+  })
+  .superRefine((video, ctx) => {
+    // A speaker with no voice is a mistake in the line or in the cast, never a line for the video's voice.
+    const cast = Object.keys(video.cast);
+    video.scenes.forEach((scene, i) =>
+      scene.narration.forEach(({ speaker }, k) => {
+        if (speaker === undefined || Object.hasOwn(video.cast, speaker)) return;
+        ctx.addIssue({
+          code: "custom",
+          message: `"${speaker}" is not in the cast (${cast.join(", ") || "it is empty"}): give "${speaker}" a voice under cast:, here or in the project file`,
+          path: ["scenes", i, "narration", k, "speaker"],
+        });
+      }),
+    );
+  });
 
 export type VideoScript = z.infer<typeof Video>;
 export type SceneScript = VideoScript["scenes"][number];
+
+/** The voice a line is said in: its own, else its speaker's in the cast, else the video's. */
+export function voiceOf(script: Pick<VideoScript, "voice" | "cast">, line: { speaker?: string; voice?: string }): string {
+  return line.voice ?? (line.speaker === undefined ? undefined : script.cast[line.speaker]) ?? script.voice;
+}
 export type PageScrollSceneScript = z.infer<typeof PageScrollScene>;
 
 /** The project file's name. It lies beside the video folders: the parent of each. */

@@ -72,13 +72,15 @@ the tool and a project.
 
 ```yaml
 maker: npm run -s tutorial:video --   # draws a project's clips (below); run in this folder
-voice: af_heart
+voice: af_heart                       # every line that names no speaker
+cast: { pip: am_puck, mo: bf_emma }   # optional: each speaker's voice (The cast, below)
 loudness: -22
 formats: [landscape]
 ```
 
-Beside `maker` it holds any of the settings a `video.yaml` has: `voice`, `speed`, `fps`, `formats`,
-`loudness` and `timing`. Every command reads it when it loads a video, and a video keeps no copy:
+Beside `maker` it holds any of the settings a `video.yaml` has: `voice`, `cast`, `speed`, `fps`,
+`formats`, `loudness` and `timing`. Every command reads it when it loads a video, and a video keeps
+no copy:
 
 - A setting its `video.yaml` writes overrides the project's, key by key: `timing: { moves:
   { fastest: 1 } }` keeps the project's `timing.gap`. A list (`formats`) is replaced whole.
@@ -86,6 +88,30 @@ Beside `maker` it holds any of the settings a `video.yaml` has: `voice`, `speed`
 - A folder with no project file beside it stands alone, on its `video.yaml` and the defaults.
 - A project file may set only these (`title` or `scenes` in it is refused), and is checked on its
   own, so an error names the file that holds the mistake. `src/script.test.ts` shows each rule.
+
+### The cast
+
+A video with several speakers gives each a voice in `cast`, by name (lowercase letters, digits and
+dashes), and a line says who speaks it:
+
+```yaml
+narration:
+  - text: Two friends meet.    # no speaker: the video's voice
+    cue: meets
+  - speaker: pip               # the cast's voice for pip
+    text: Hello!
+```
+
+- A line's voice is its own `voice` if it writes one, else its `speaker`'s in the cast, else the
+  video's `voice` (`voiceOf`, `src/script.ts`). A video with no speakers needs no cast.
+- The cast is a setting like the others: a `video.yaml`'s `cast` overrides the project's speaker by
+  speaker, and may add its own.
+- A speaker the cast does not name is refused when the video loads, with the line and the cast: it
+  is never said in the video's voice.
+- A clip's text may name its speaker (see Clips), `new` writes it into the line, and the request
+  passes it to the maker, which moves that character's mouth (see Fitting).
+- The narration's log names the speaker and voice of each line said in another voice than the
+  video's: `line 2 (pip, am_puck): 0.93s`.
 
 ### A video folder
 
@@ -139,10 +165,13 @@ project file with a maker beside it; the folder itself may not exist yet.
    into the folder's `clips/`. The clip is the folder's name, or `--make <name>`'s.
 2. It writes `video.yaml`: a title (the folder's name) and one made clip scene, its id the clip's
    name, with a line per text of the clip's data, in time order. Each line is cued to the event
-   its text begins at: the last event at or before the text's `from`.
+   its text begins at: the last event at or before the text's `from`. A text's `speaker` is its
+   line's.
 
 The script holds no setting: the voice, formats and the rest are read from the project file, as
-for any video. `new` never writes over a `video.yaml`. A clip whose data holds no text gets no
+for any video. So the speakers' voices go in the project's `cast`: `new` names each speaker it
+wrote that has no voice there yet, and `make` refuses the script until each has one.
+`new` never writes over a `video.yaml`. A clip whose data holds no text gets no
 script: write its lines by hand. `new` speaks and draws nothing, so it needs nothing from `setup`;
 `make --fit` then tries the lines. `src/new.test.ts` shows each case.
 
@@ -269,7 +298,10 @@ Beside each clip lies its JSON: the same path with `.json` for the extension
     { "name": "slide", "at": 5, "span": "move" },
     { "name": "across", "at": 6.5, "span": "hold" }
   ],
-  "texts": [{ "text": "A square waits on the left.", "from": 0, "to": 5 }]
+  "texts": [
+    { "text": "A square waits on the left.", "from": 0, "to": 5 },
+    { "text": "Here I go!", "speaker": "square", "from": 5, "to": 6.5 }
+  ]
 }
 ```
 
@@ -281,8 +313,10 @@ Beside each clip lies its JSON: the same path with `.json` for the extension
   the clip's order (a line may cue the event the line before it cued).
 - A clip drawn to a request (below) gives each event `natural`: its span's length at the clip's
   own pace, from the request. Fitting starts from it, so a move sped up once is not sped up again.
-- `texts` are the clip's own words and when they apply (`from`, `to`, seconds). The tool reads
-  and checks them; nothing speaks or shows them yet.
+- `texts` are the clip's own words and when they apply (`from`, `to`, seconds). A text one of the
+  clip's characters says names it as `speaker`; a text with none is a narrator's. The tool reads
+  and checks them, and `new` writes them as a video's first lines; `make` speaks the script's
+  lines, not these.
 - With a clip per format, the clips must agree on length and events (names, spans, times within
   half a frame): the formats share one timeline. Each format's clip may have its own `texts`.
 - The tool plays a clip as it was drawn. A cued line waits until the clip reaches its event, and
@@ -342,10 +376,12 @@ drawn clip's JSON puts each event at its span's `at`, keeps its `natural`, and l
 The request also lists the lines, in the script's order, each with its voice as measured:
 
 ```json
-{ "text": "Here it slides.", "cue": "slide", "at": 5.033, "waits": 0, "duration": 1.544,
+{ "text": "Here I go!", "speaker": "square", "cue": "slide", "at": 5.033, "waits": 0, "duration": 1.544,
   "mouth": { "frame": 151, "open": [0.31, 1, 0.82, 0, 0, 0.64, 0.9, 0.12] } }
 ```
 
+- `speaker` is who says the line, as the script names it: the track is that character's mouth. A
+  line with no speaker has no such key: nobody on screen says it, so its track moves no mouth.
 - `at` is when the voice begins the line, from the clip's start, and `waits` how long it waits
   there for the clip. `duration` is the voice's length: the line sounds from `at` for `duration`.
 - `mouth` is how open a mouth is while the line sounds, a number for each frame of the clip (the
@@ -355,8 +391,9 @@ The request also lists the lines, in the script's order, each with its voice as 
 - The track follows the voice's loudness, not its phonemes (`src/mouth.ts`): a frame's loudness is
   compared with the line's loudest, on the decibel scale, and 30 dB under it is closed. So the
   mouth is closed in the pauses between a line's sentences. `src/mouth.test.ts` shows it.
-- `duration` and `mouth` are optional, and the version stays 1: a maker that draws no mouth
-  (RayCraft's) reads the request as before, and a request written by other means may leave them out.
+- `speaker`, `duration` and `mouth` are optional, and the version stays 1: a maker that draws no
+  mouth (RayCraft's) reads the request as before, and a request written by other means may leave
+  them out.
 
 ## Writing a scene template
 
