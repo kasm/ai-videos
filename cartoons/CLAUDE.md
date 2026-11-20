@@ -8,7 +8,7 @@ a video with a spoken voice, offline and with no AI. The plan is RayCraft's
 ## Where things are
 
 - `videos/project.yaml`: what every cartoon shares, read by the tool (the
-  maker's command, the voice, the format).
+  maker's command, the narrator's voice, the cast's voices, the format).
 - `videos/<name>/`: one cartoon.
   - `scenario.yaml`: its source, written by hand or by an AI session.
   - `video.yaml`: the tool's script (the spoken lines and their cues). The
@@ -18,7 +18,7 @@ a video with a spoken voice, offline and with no AI. The plan is RayCraft's
 - `src/`: the maker, the command the tool runs to get a cartoon's clip.
   - `scenario.ts`: the scenario's schema and its checks.
   - `timeline.ts`: beats and lines as the clip's events and texts, and
-    which moment each frame shows, with how open the mouth is.
+    which moment each frame shows, with whose mouth is open and how wide.
   - `picture.ts`: one moment's picture, as an SVG.
   - `draw.ts`: the frames as pixels (resvg) and as the clip (ffmpeg).
   - `call.ts`, `request.ts`: the tool's call to the maker, and its request.
@@ -30,7 +30,8 @@ Node 24. From this folder:
 
 - `npm test`: the tests (`node --test`); `npm run typecheck`.
 - `npm run -s video -- new videos/<name>`: writes `video.yaml` from the
-  scenario's lines. It never writes over one.
+  scenario's lines, each character's with its `speaker`. It never writes
+  over one, and names a speaker the cast gives no voice yet.
 - `npm run -s video -- make videos/<name> --fit`: speaks the lines and
   prints how the clip fits them, before anything is drawn.
 - `npm run -s video -- make videos/<name>`: the whole video, into
@@ -45,12 +46,12 @@ Drawing needs `ffmpeg` on the PATH.
 The tool measures the voice and asks for the clip in whole frames: when
 each beat begins, how long it lasts, and how long a move's motion takes
 (the request, `clips/<name>-landscape.request.json`). With each spoken
-line it gives a mouth track, taken from the voice's loudness: how open a
-mouth is in each frame the line sounds in, 0 closed to 1 wide. The maker
-then:
+line it gives the line's speaker and a mouth track, taken from the voice's
+loudness: how open the mouth is in each frame the line sounds in, 0 closed
+to 1 wide. The maker then:
 
 1. finds each frame's moment: which beat, how far through its move, and
-   how open the mouth is (`moments`, `timeline.ts`);
+   whose mouth is open, how wide (`moments`, `timeline.ts`);
 2. writes that moment's picture as an SVG (`frameSvg`, `picture.ts`);
 3. turns the SVG into pixels with resvg, and pipes them to ffmpeg
    (`draw.ts`). A frame whose SVG is the one before it is not drawn again.
@@ -60,12 +61,42 @@ a whole number of steps: the character rises a little in the middle of
 each. Its look is the maker's (`STEP`, `BOUNCE` in `picture.ts`), not the
 scenario's.
 
-A mouth moves with the voice: the shapes of the part named `mouth` grow
-downwards as the track says (the top edge stays, the jaw drops), until wide
-open they are nearly as tall as wide (`MOUTH_OPEN`, `picture.ts`). Closed,
-in a line's pauses and between lines, the mouth is as the scenario writes
-it. The request does not name a line's speaker yet (the plan's step 4), so
-every character's mouth moves to every line, the narrator's too.
+A mouth moves with its character's voice: the shapes of the part named
+`mouth` grow downwards as the track says (the top edge stays, the jaw
+drops), until wide open they are nearly as tall as wide (`MOUTH_OPEN`,
+`picture.ts`). Closed, in a line's pauses and between lines, the mouth is
+as the scenario writes it. Only the speaker's mouth moves: a line's track
+opens the mouth of the character the request names as its `speaker`, and
+the narrator's line, which names nobody, opens none.
+
+## Voices
+
+Each speaker has a voice of its own, set in `videos/project.yaml` (the
+tool's `AGENTS.md`, "The cast"):
+
+```yaml
+voice: af_heart   # the narrator's, and any line that names no speaker
+cast:             # each character's voice, by its name in the scenarios
+  pip: am_puck
+  mo: bf_emma
+```
+
+- A scenario line's `who` goes through the tool and comes back: the
+  maker's step one writes a character's text with `speaker: <who>` (the
+  narrator's with none), `new` writes that into the line of `video.yaml`,
+  the tool says the line in the cast's voice for that speaker, and the
+  request names the speaker with the line's mouth track.
+- A character new to the project needs a voice in `cast` before `make`:
+  the tool refuses a speaker the cast does not name. A cartoon's own
+  `video.yaml` may give `cast:` too, over the project's, for a voice only
+  it uses.
+- `video.yaml` is the one the tool reads: change who says a line there
+  (`speaker:`), as well as in the scenario. A speaker the scenario does
+  not draw is a voice off stage: it is heard, and no mouth moves.
+- A voice is one of the tool's (Kokoro): `npm run -s video -- voices`
+  writes samples of several into the tool's `out/voice-samples/` and lists
+  every name. `make` prints the speaker and voice of each character's line.
+- `videos/meet` has two characters and the narrator, three voices.
 
 The picture depends only on the scenario and the request, so two runs
 draw the same frames. `clips/<name>-landscape.mp4.frames` holds a hash of
@@ -137,7 +168,9 @@ scenes:
     hold.
   - `says` lists the lines said during the beat, each with `who` (a
     character's name, or `narrator`, whom nobody draws) and `text`. Several
-    lines share the beat's time equally, in the order written.
+    lines share the beat's time equally, in the order written. A
+    character's line is said in its voice and moves its mouth (Voices,
+    above).
 
 ## Rules
 

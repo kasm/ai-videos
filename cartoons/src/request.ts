@@ -1,7 +1,7 @@
 // The video tool's request: the clip's beats fitted to the voice, in whole frames (the tool's
-// AGENTS.md, "Fitting a clip to the voice"; written by its src/fit.ts), and each line's mouth track,
-// taken from its voice. Only what the maker draws from is read here; the request's other keys (a
-// line's text and times, what made it) are for reading.
+// AGENTS.md, "Fitting a clip to the voice"; written by its src/fit.ts), and each line's speaker and
+// mouth track, taken from its voice. Only what the maker draws from is read here; the request's
+// other keys (a line's text and times, what made it) are for reading.
 import { readFileSync } from "node:fs";
 import { z } from "zod";
 
@@ -19,7 +19,9 @@ const Span = z.object({
 });
 
 const Line = z.object({
-  /** How open a mouth is while the line sounds: `open[k]` is for the clip's frame `frame + k`, 0 closed to 1 wide. */
+  /** Who says the line: the character whose mouth its track moves. A line with none is the narrator's. */
+  speaker: z.string().optional(),
+  /** How open the speaker's mouth is while the line sounds: `open[k]` is for the clip's frame `frame + k`, 0 closed to 1 wide. */
   mouth: z.object({ frame: z.number().int().min(0), open: z.array(z.number().min(0).max(1)) }).optional(),
 });
 
@@ -31,7 +33,7 @@ const Request = z.object({
   duration: z.number().positive(),
   frames: z.number().int().positive(),
   spans: z.array(Span).min(1),
-  /** The spoken lines. A request with none, or a line with no track, moves no mouth. */
+  /** The spoken lines. A request with none, or a line with no track or no speaker, moves no mouth. */
   lines: z.array(Line).default([]),
 });
 export type Request = z.infer<typeof Request>;

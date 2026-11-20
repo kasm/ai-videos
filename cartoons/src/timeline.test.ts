@@ -90,33 +90,58 @@ test("a request for other beats is refused", () => {
 test("every frame of the request has its moment: a move's motion, then its end until the next beat", () => {
   const frames = moments(request());
   assert.equal(frames.length, 135);
-  assert.deepEqual(frames[0], { beat: 0, progress: 0, mouth: 0 });
-  assert.deepEqual(frames[30], { beat: 0, progress: 0.5, mouth: 0 });
-  assert.deepEqual(frames[60], { beat: 0, progress: 1, mouth: 0 });
-  assert.deepEqual(frames[89], { beat: 0, progress: 1, mouth: 0 });
-  assert.deepEqual(frames[90], { beat: 1, progress: 0, mouth: 0 });
-  assert.deepEqual(frames[134], { beat: 1, progress: 0, mouth: 0 });
+  assert.deepEqual(frames[0], { beat: 0, progress: 0, mouths: {} });
+  assert.deepEqual(frames[30], { beat: 0, progress: 0.5, mouths: {} });
+  assert.deepEqual(frames[60], { beat: 0, progress: 1, mouths: {} });
+  assert.deepEqual(frames[89], { beat: 0, progress: 1, mouths: {} });
+  assert.deepEqual(frames[90], { beat: 1, progress: 0, mouths: {} });
+  assert.deepEqual(frames[134], { beat: 1, progress: 0, mouths: {} });
 });
 
-test("the mouth follows each line's track in the frames it names, and is closed in every other", () => {
+/** How open `who`'s mouth is in each frame of the request: 0 where the moment does not name them. */
+const mouthOf = (who: string, spoken: ReturnType<typeof request>) => moments(spoken).map((m) => m.mouths[who] ?? 0);
+
+test("a speaker's mouth follows each of their lines' tracks in the frames it names, and is closed in every other", () => {
   // Two lines: one from frame 18 with a pause in it, across the walk; one from frame 88, into the stop.
   const lines = [
-    { text: "One. Two.", at: 0.6, duration: 0.2, mouth: { frame: 18, open: [0.5, 1, 0, 0, 0.8, 0.3] } },
-    { text: "Three.", at: 2.95, duration: 0.1, mouth: { frame: 88, open: [0.2, 0.9, 1, 0.4] } },
-    { text: "A line with no track." },
+    { text: "One. Two.", speaker: "pip", at: 0.6, duration: 0.2, mouth: { frame: 18, open: [0.5, 1, 0, 0, 0.8, 0.3] } },
+    { text: "Three.", speaker: "pip", at: 2.95, duration: 0.1, mouth: { frame: 88, open: [0.2, 0.9, 1, 0.4] } },
+    { text: "A line with no track.", speaker: "pip" },
   ];
   const spoken = checkRequest({ ...request(), lines }, "test");
-  const mouth = moments(spoken).map((m) => m.mouth);
+  const mouth = mouthOf("pip", spoken);
   assert.deepEqual(mouth.slice(16, 26), [0, 0, 0.5, 1, 0, 0, 0.8, 0.3, 0, 0], "closed before the line, in its pause and after it");
   assert.deepEqual(mouth.slice(87, 93), [0, 0.2, 0.9, 1, 0.4, 0], "a line goes on from one beat into the next");
   assert.equal(mouth.filter((open) => open > 0).length, 8, "no other frame has the mouth open");
+  assert.deepEqual(moments(spoken)[20], { beat: 0, progress: 20 / 60, mouths: {} }, "a closed mouth is not named: the moment is the silent one");
   // The beats are as without the lines: the mouth changes nothing else.
   assert.deepEqual(moments(spoken).map(({ beat, progress }) => [beat, progress]), moments(request()).map(({ beat, progress }) => [beat, progress]));
 });
 
-test("two lines in one frame show the wider mouth, and a track past the clip's end is cut there", () => {
-  const lines = [{ mouth: { frame: 10, open: [0.6, 0.2] } }, { mouth: { frame: 11, open: [0.5, 0.7] } }, { mouth: { frame: 133, open: [0.1, 0.2, 0.3] } }];
-  const mouth = moments(checkRequest({ ...request(), lines }, "test")).map((m) => m.mouth);
+test("only the speaker's mouth moves: each line opens its own speaker's, and the narrator's opens nobody's", () => {
+  // Pip from frame 10, Mo from frame 12 (over Pip's last frame), the narrator from frame 20.
+  const lines = [
+    { text: "Hello!", speaker: "pip", mouth: { frame: 10, open: [0.6, 1, 0.4] } },
+    { text: "Hello, Pip.", speaker: "mo", mouth: { frame: 12, open: [0.7, 0.9] } },
+    { text: "And so they met.", mouth: { frame: 20, open: [1, 1, 1] } },
+  ];
+  const spoken = checkRequest({ ...request(), lines }, "test");
+  assert.deepEqual(mouthOf("pip", spoken).slice(9, 15), [0, 0.6, 1, 0.4, 0, 0]);
+  assert.deepEqual(mouthOf("mo", spoken).slice(9, 15), [0, 0, 0, 0.7, 0.9, 0]);
+  const frames = moments(spoken);
+  assert.deepEqual(frames[11]!.mouths, { pip: 1 }, "Pip alone");
+  assert.deepEqual(frames[12]!.mouths, { pip: 0.4, mo: 0.7 }, "both, each as wide as their own line says");
+  assert.deepEqual(frames[13]!.mouths, { mo: 0.9 }, "Mo alone");
+  assert.deepEqual(frames.slice(19, 24).map((m) => m.mouths), [{}, {}, {}, {}, {}], "the narrator speaks: every mouth is closed");
+});
+
+test("one speaker's two lines in one frame show the wider mouth, and a track past the clip's end is cut there", () => {
+  const lines = [
+    { speaker: "pip", mouth: { frame: 10, open: [0.6, 0.2] } },
+    { speaker: "pip", mouth: { frame: 11, open: [0.5, 0.7] } },
+    { speaker: "pip", mouth: { frame: 133, open: [0.1, 0.2, 0.3] } },
+  ];
+  const mouth = mouthOf("pip", checkRequest({ ...request(), lines }, "test"));
   assert.deepEqual(mouth.slice(10, 13), [0.6, 0.5, 0.7]);
   assert.equal(mouth.length, 135);
   assert.deepEqual(mouth.slice(133), [0.1, 0.2]);
@@ -127,6 +152,7 @@ test("a request with no lines is read, and a mouth track that is not one is refu
   assert.deepEqual(checkRequest(bare, "test").lines, []);
   assert.throws(() => checkRequest({ ...request(), lines: [{ mouth: { frame: 3, open: [0.2, 1.5] } }] }, "old.json"), /old\.json is not a request/);
   assert.throws(() => checkRequest({ ...request(), lines: [{ mouth: { frame: 0.5, open: [] } }] }, "old.json"), /old\.json is not a request/);
+  assert.throws(() => checkRequest({ ...request(), lines: [{ speaker: 7 }] }, "old.json"), /old\.json is not a request/);
 });
 
 test("a request whose beats do not follow each other from frame 0 is refused", () => {

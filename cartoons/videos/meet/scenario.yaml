@@ -1,0 +1,56 @@
+# Two characters, each with a voice of its own: Pip waits in the meadow, Mo walks in, and they talk.
+# The narrator's lines are said in the project's voice; Pip's and Mo's in the cast's
+# (../project.yaml). The format is in CLAUDE.md ("The scenario").
+
+characters:
+  pip:
+    parts: # drawn in this order; x right and y down from the point between the feet
+      body:
+        - { shape: rect, at: [0, -170], size: [220, 340], round: 110, fill: "#f2a33a" }
+      eyes:
+        - { shape: ellipse, at: [-45, -250], size: [48, 60], fill: "#ffffff" }
+        - { shape: ellipse, at: [45, -250], size: [48, 60], fill: "#ffffff" }
+        - { shape: ellipse, at: [-30, -246], size: [20, 26], fill: "#2b2d42" } # looking right, at Mo
+        - { shape: ellipse, at: [60, -246], size: [20, 26], fill: "#2b2d42" }
+      mouth:
+        - { shape: ellipse, at: [0, -170], size: [70, 18], fill: "#5b2333" }
+  mo:
+    parts: # taller and narrower than Pip, and blue
+      body:
+        - { shape: rect, at: [0, -215], size: [190, 430], round: 95, fill: "#6aa9e9" }
+      eyes:
+        - { shape: ellipse, at: [-40, -330], size: [44, 56], fill: "#ffffff" }
+        - { shape: ellipse, at: [40, -330], size: [44, 56], fill: "#ffffff" }
+        - { shape: ellipse, at: [-52, -326], size: [18, 24], fill: "#2b2d42" } # looking left, at Pip
+        - { shape: ellipse, at: [28, -326], size: [18, 24], fill: "#2b2d42" }
+      mouth:
+        - { shape: ellipse, at: [0, -250], size: [60, 16], fill: "#27324f" }
+
+backgrounds:
+  meadow:
+    fill: "#bfe3ff" # the sky
+    shapes:
+      - { shape: ellipse, at: [1560, 220], size: [180, 180], fill: "#ffd966" } # the sun
+      - { shape: rect, at: [960, 950], size: [1920, 260], fill: "#7cc36a" } # the grass
+
+scenes:
+  - background: meadow
+    places:
+      pip: [640, 880]
+      mo: [2140, 880] # right of the stage, out of sight
+    beats:
+      - name: waits
+        takes: 3
+        says:
+          - { who: narrator, text: "Pip is waiting in the meadow." }
+      - name: mo-walks-in
+        takes: 3
+        walk: { who: mo, to: [1280, 880] }
+        says:
+          - { who: pip, text: "Oh, someone is coming! Hello! Who are you?" } # long enough for the walk
+      - name: meets
+        takes: 6
+        says:
+          - { who: mo, text: "I am Mo. I live behind the hill." }
+          - { who: pip, text: "I am Pip. Shall we play?" }
+          - { who: mo, text: "Yes, let's play!" }

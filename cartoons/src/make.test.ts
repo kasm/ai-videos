@@ -32,6 +32,19 @@ test("step one writes hello's data: its beats as events, its lines as texts", ()
   });
 });
 
+test("step one names each character's text as its speaker, and the narrator's as nobody's", () => {
+  const data = path.join(scratch, "clips", "meet-landscape.json");
+  const run = maker("meet", "--format=landscape", `--data=${data}`);
+  assert.equal(run.status, 0, run.stderr);
+  assert.deepEqual(JSON.parse(readFileSync(data, "utf8")).texts, [
+    { text: "Pip is waiting in the meadow.", from: 0, to: 3 },
+    { text: "Oh, someone is coming! Hello! Who are you?", speaker: "pip", from: 3, to: 6 },
+    { text: "I am Mo. I live behind the hill.", speaker: "mo", from: 6, to: 8 },
+    { text: "I am Pip. Shall we play?", speaker: "pip", from: 8, to: 10 },
+    { text: "Yes, let's play!", speaker: "mo", from: 10, to: 12 },
+  ]);
+});
+
 test("a cartoon with no scenario stops the maker, with the reason", () => {
   const run = maker("nothing", "--format=landscape", `--data=${path.join(scratch, "nothing.json")}`);
   assert.equal(run.status, 1);
@@ -93,10 +106,18 @@ test("a second run draws the same frames", () => {
   assert.deepEqual(framesOf(again), framesOf(path.join(scratch, "one", "hello-landscape.mp4")));
 });
 
-test("a line's mouth track opens Pip's mouth in its frames, and nowhere else", () => {
+test("Pip's line opens Pip's mouth in its track's frames, and nowhere else; the narrator's opens none", () => {
   // The same request with a line spoken through the stop: open, closed for a pause, open as wide again.
+  const line = { text: "Hi. Pip.", at: 0.267, duration: 0.133, mouth: { frame: 8, open: [0.7, 0, 0.7] } };
   const spoken = path.join(scratch, "spoken.request.json");
-  writeFileSync(spoken, JSON.stringify({ ...SMALL, lines: [{ text: "Hi. Pip.", at: 0.267, duration: 0.133, mouth: { frame: 8, open: [0.7, 0, 0.7] } }] }));
+  writeFileSync(spoken, JSON.stringify({ ...SMALL, lines: [{ ...line, speaker: "pip" }] }));
+  // With no speaker the line is the narrator's: the same track, and the picture of no line at all.
+  const narrated = path.join(scratch, "narrated.request.json");
+  writeFileSync(narrated, JSON.stringify({ ...SMALL, lines: [line] }));
+  const told = path.join(scratch, "five", "hello-landscape.mp4");
+  assert.equal(draw(told, undefined, narrated).status, 0);
+  assert.deepEqual(framesOf(told), framesOf(path.join(scratch, "one", "hello-landscape.mp4")));
+
   const clip = path.join(scratch, "four", "hello-landscape.mp4");
   assert.equal(draw(clip, undefined, spoken).status, 0);
   const frames = framesOf(clip);

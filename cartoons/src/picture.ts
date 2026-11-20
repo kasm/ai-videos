@@ -95,8 +95,8 @@ export function frameSvg(scenario: Scenario, moment: Moment, { width, height }: 
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${STAGE.width} ${STAGE.height}" width="${width}" height="${height}">`,
     `<rect width="${STAGE.width}" height="${STAGE.height}" fill="${background.fill}"/>`,
     ...background.shapes.map(shapeSvg),
-    // Every character's mouth moves with the voice, until the request says who speaks.
-    ...characters.map(({ name, at }) => characterSvg(scenario.characters[name]!, at, moment.mouth)),
+    // Only a speaker's mouth moves: the others keep theirs closed, as the scenario writes it.
+    ...characters.map(({ name, at }) => characterSvg(scenario.characters[name]!, at, moment.mouths[name] ?? 0)),
     "</svg>",
   ].join("\n");
 }

@@ -14,12 +14,13 @@ export interface Timeline {
 
 /**
  * Where the picture is in the scenario: in which beat, counted through every scene, how far through
- * its move (0 to 1), and how open the mouths are (0 closed to 1 wide).
+ * its move (0 to 1), and whose mouth is open, how wide (above 0, to 1). A character it does not
+ * name has its mouth closed.
  */
 export interface Moment {
   beat: number;
   progress: number;
-  mouth: number;
+  mouths: Record<string, number>;
 }
 
 /** Whole milliseconds, so times added up from fractions stay equal where they should. */
@@ -62,17 +63,19 @@ export function timeline(scenario: Scenario, request?: Request): Timeline {
 }
 
 /**
- * How open the mouth is in each frame of the clip: every line's track laid on the frames it names,
- * and closed where no line sounds. The request does not say who speaks yet, so there is one mouth
- * for the whole picture.
+ * Whose mouth is open in each frame of the clip, and how wide: each line's track laid on the frames
+ * it names, for its speaker alone. A line with no speaker is the narrator's, whom nobody draws, so
+ * it opens no mouth; a speaker the scenario does not draw (a voice off stage) opens none either,
+ * as the picture looks up its own characters only.
  */
-function mouths(request: Request): number[] {
-  const open = new Array<number>(request.frames).fill(0);
-  for (const { mouth } of request.lines) {
+function mouths(request: Request): Record<string, number>[] {
+  const open = Array.from({ length: request.frames }, (): Record<string, number> => ({}));
+  for (const { speaker, mouth } of request.lines) {
+    if (speaker === undefined) continue;
     mouth?.open.forEach((value, k) => {
-      const frame = mouth.frame + k;
-      // A line may end in the frame the next begins in: the wider mouth shows.
-      if (frame < open.length) open[frame] = Math.max(open[frame]!, value);
+      const at = open[mouth.frame + k];
+      // One speaker's line may end in the frame their next begins in: the wider mouth shows.
+      if (at && value > 0) at[speaker] = Math.max(at[speaker] ?? 0, value);
     });
   }
   return open;
@@ -81,7 +84,7 @@ function mouths(request: Request): number[] {
 /**
  * The moment each frame of the requested clip shows. The tool puts every beat on a whole frame; a
  * move's motion takes its `move` seconds from there and then stays at its end, and the next beat
- * begins where it ended. The mouth follows the lines' voice, whatever the beat.
+ * begins where it ended. Each speaker's mouth follows their lines' voice, whatever the beat.
  */
 export function moments(request: Request): Moment[] {
   const open = mouths(request);
@@ -93,7 +96,7 @@ export function moments(request: Request): Moment[] {
     if (start !== frames.length || end <= start) throw new Error(`the request's span "${span.event}" does not follow the one before it on a whole frame`);
     for (let frame = start; frame < end; frame++) {
       const progress = span.span === "move" ? Math.min(1, (frame - start) / request.fps / (span.move ?? span.duration)) : 0;
-      frames.push({ beat, progress, mouth: open[frame]! });
+      frames.push({ beat, progress, mouths: open[frame]! });
     }
   });
   return frames;

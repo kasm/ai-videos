@@ -1,5 +1,8 @@
 # What every cartoon here shares, read by the video tool (its AGENTS.md, "The project file").
 maker: node ../src/make.ts   # draws a cartoon's clip from its scenario; the tool runs it in this folder
-voice: af_heart
+voice: af_heart              # the narrator's, and any line that names no speaker
+cast:                        # each character's voice, by its name in the scenarios
+  pip: am_puck
+  mo: bf_emma
 fps: 30
 formats: [landscape]         # the stage is 1920 by 1080; a portrait cartoon would need a layout of its own

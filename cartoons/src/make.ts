@@ -8,7 +8,7 @@ import path from "node:path";
 import { readCall } from "./call.ts";
 import { drawClip } from "./draw.ts";
 import { readRequest } from "./request.ts";
-import { readScenario } from "./scenario.ts";
+import { NARRATOR, readScenario } from "./scenario.ts";
 import { timeline } from "./timeline.ts";
 
 async function main() {
@@ -26,7 +26,8 @@ async function main() {
     const { frames, drawn } = await drawClip(scenario, request, call);
     wrote = `${shown(call.clip)}: ${frames} frames (${drawn} drawn) in ${((Date.now() - began) / 1000).toFixed(1)} s, to ${path.basename(call.request)}; and its JSON`;
   }
-  // The clip's data (ai-videos-clip, the tool's src/clip.ts). A text there has no speaker yet.
+  // The clip's data (ai-videos-clip, the tool's src/clip.ts). A character's text names it as the
+  // speaker, for its voice and its mouth; the narrator's names nobody, and keeps the project's voice.
   const data = {
     format: "ai-videos-clip",
     version: 1,
@@ -36,7 +37,7 @@ async function main() {
     },
     duration: time.duration,
     events: time.events,
-    texts: time.lines.map(({ text, from, to }) => ({ text, from, to })),
+    texts: time.lines.map(({ who, text, from, to }) => ({ text, ...(who === NARRATOR ? {} : { speaker: who }), from, to })),
   };
   mkdirSync(path.dirname(call.data), { recursive: true });
   writeFileSync(call.data, `${JSON.stringify(data, null, 2)}\n`);

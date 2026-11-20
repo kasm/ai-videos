@@ -12,6 +12,12 @@ const scenario = checkScenario(
           mouth: [{ shape: "ellipse", at: [0, -90], size: [40, 10], fill: "#5b2333" }],
         },
       },
+      mo: {
+        parts: {
+          body: [{ shape: "ellipse", at: [0, -120], size: [160, 240], fill: "#6aa9e9" }],
+          mouth: [{ shape: "rect", at: [0, -100], size: [60, 12], fill: "#27324f" }],
+        },
+      },
     },
     backgrounds: {
       meadow: { fill: "#bfe3ff", shapes: [{ shape: "rect", at: [960, 950], size: [1920, 260], fill: "#7cc36a" }] },
@@ -26,7 +32,7 @@ const scenario = checkScenario(
           { name: "stops", takes: 3 },
         ],
       },
-      { background: "night", places: { pip: [300, 800] }, beats: [{ name: "later", takes: 2 }] },
+      { background: "night", places: { pip: [300, 800], mo: [900, 800] }, beats: [{ name: "later", takes: 2 }] },
     ],
   },
   "test",
@@ -51,13 +57,13 @@ test("halfway through, the walker is halfway, and never below the ground", () =>
 test("a later scene has its own background and places", () => {
   const staging = stagingAt(scenario, { beat: 2, progress: 0 });
   assert.equal(staging.background.fill, "#101030");
-  assert.deepEqual(staging.characters, [{ name: "pip", at: [300, 800] }]);
+  assert.deepEqual(staging.characters, [{ name: "pip", at: [300, 800] }, { name: "mo", at: [900, 800] }]);
   assert.throws(() => stagingAt(scenario, { beat: 3, progress: 0 }), /no beat 3/);
 });
 
 test("the picture is the stage as SVG: the background, its shapes, then each character's parts in order", () => {
   assert.equal(
-    frameSvg(scenario, { beat: 1, progress: 0, mouth: 0 }, { width: 960, height: 540 }),
+    frameSvg(scenario, { beat: 1, progress: 0, mouths: {} }, { width: 960, height: 540 }),
     [
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="960" height="540">',
       '<rect width="1920" height="1080" fill="#bfe3ff"/>',
@@ -69,16 +75,16 @@ test("the picture is the stage as SVG: the background, its shapes, then each cha
 });
 
 test("the same moment is the same text", () => {
-  const at = { beat: 0, progress: 0.37, mouth: 0.4 };
+  const at = { beat: 0, progress: 0.37, mouths: { pip: 0.4 } };
   const size = { width: 1920, height: 1080 };
   assert.equal(frameSvg(scenario, at, size), frameSvg(scenario, { ...at }, size));
   assert.notEqual(frameSvg(scenario, at, size), frameSvg(scenario, { ...at, progress: 0.38 }, size));
-  assert.notEqual(frameSvg(scenario, at, size), frameSvg(scenario, { ...at, mouth: 0.41 }, size));
+  assert.notEqual(frameSvg(scenario, at, size), frameSvg(scenario, { ...at, mouths: { pip: 0.41 } }, size));
 });
 
 test("the mouth opens downwards: its top edge stays, and wide open it is nearly as tall as wide", () => {
   // Pip's mouth is 40 wide and 10 tall, its top edge 95 above the ground.
-  const mouth = (open: number) => /<ellipse cx="0" cy="([-\d.]+)" rx="20" ry="([-\d.]+)" fill="#5b2333"\/>/.exec(frameSvg(scenario, { beat: 1, progress: 0, mouth: open }, { width: 960, height: 540 }))!.slice(1).map(Number);
+  const mouth = (open: number) => /<ellipse cx="0" cy="([-\d.]+)" rx="20" ry="([-\d.]+)" fill="#5b2333"\/>/.exec(frameSvg(scenario, { beat: 1, progress: 0, mouths: { pip: open } }, { width: 960, height: 540 }))!.slice(1).map(Number);
   assert.deepEqual(mouth(0), [-90, 5], "closed: as the scenario writes it");
   assert.deepEqual(mouth(1), [-77, 18], "wide open: 36 tall, 0.9 of its width");
   assert.deepEqual(mouth(0.5), [-83.5, 11.5], "half open: halfway");
@@ -87,6 +93,26 @@ test("the mouth opens downwards: its top edge stays, and wide open it is nearly 
     assert.equal(cy! - ry!, -95, "the top edge stays");
   }
   // Only the mouth moves: the rest of the picture is the closed one's.
-  const rest = (open: number) => frameSvg(scenario, { beat: 1, progress: 0, mouth: open }, { width: 960, height: 540 }).replace(/<ellipse[^>]*fill="#5b2333"\/>/, "");
+  const rest = (open: number) => frameSvg(scenario, { beat: 1, progress: 0, mouths: { pip: open } }, { width: 960, height: 540 }).replace(/<ellipse[^>]*fill="#5b2333"\/>/, "");
   assert.equal(rest(1), rest(0));
+});
+
+test("only the mouth of a speaker the moment names opens: the other character's stays as written", () => {
+  // The night scene has both: Pip's mouth is the ellipse above, Mo's a rect 60 wide and 12 tall.
+  const svg = (mouths: Record<string, number>) => frameSvg(scenario, { beat: 2, progress: 0, mouths }, { width: 960, height: 540 });
+  const pip = (text: string) => /<ellipse[^>]*fill="#5b2333"\/>/.exec(text)![0];
+  const mo = (text: string) => /<rect[^>]*fill="#27324f"\/>/.exec(text)![0];
+  const closed = svg({});
+  assert.equal(mo(closed), '<rect x="-30" y="-106" width="60" height="12" fill="#27324f"/>');
+
+  const pipSpeaks = svg({ pip: 1 });
+  assert.notEqual(pip(pipSpeaks), pip(closed), "Pip's mouth is open");
+  assert.equal(mo(pipSpeaks), mo(closed), "Mo's is closed");
+  const moSpeaks = svg({ mo: 1 });
+  assert.equal(pip(moSpeaks), pip(closed), "Pip's is closed");
+  assert.equal(mo(moSpeaks), '<rect x="-30" y="-106" width="60" height="54" fill="#27324f"/>', "Mo's is open: 54 tall, its top edge where it was");
+  // Both at once, each as wide as its own; and a speaker the scenario does not draw changes nothing.
+  const both = svg({ pip: 1, mo: 1 });
+  assert.deepEqual([pip(both), mo(both)], [pip(pipSpeaks), mo(moSpeaks)]);
+  assert.equal(svg({ owl: 1 }), closed);
 });
