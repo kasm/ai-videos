@@ -1,6 +1,7 @@
 // One frame's picture: where everything is at a moment of the scenario, and that as an SVG. A pure
 // function of the scenario and the moment, so the same moment is the same text, and the same pixels.
-import { STAGE, type Scenario } from "./scenario.ts";
+// The scenario names moves and poses; how each looks (the numbers below) is the maker's.
+import { ARM, STAGE, moveOf, type Pose, type Scenario } from "./scenario.ts";
 import type { Moment } from "./timeline.ts";
 
 type Point = [number, number];
@@ -12,55 +13,150 @@ type Shape = Background["shapes"][number];
 const STEP = 150;
 const BOUNCE = 16;
 
+/** A jump's height, px: each hop goes up and comes down as a thrown ball does. */
+const JUMP = 120;
+
+/** How narrow a turning character gets halfway, as a share of its width: a paper cut-out seen edge-on. */
+const THIN = 0.04;
+
+/**
+ * The arm's angle in each pose, degrees from hanging down as written, for a character facing right:
+ * a negative angle lifts it forward, then up. A wave swings SWING to each side, WAVES times a second.
+ */
+const ARM_AT: Record<Pose, number> = { stand: 0, point: -90, wave: -155 };
+const SWING = 20;
+const WAVES = 2;
+/** How long an arm takes to reach a new pose, seconds. */
+const REACH = 0.3;
+
 /** The part that talks, and how tall it is when wide open, as a share of its width: nearly round. */
 const MOUTH = "mouth";
 const MOUTH_OPEN = 0.9;
 
+/**
+ * The part that blinks: once in every `every` seconds, for `takes` seconds, down to `shut` of its
+ * height.
+ */
+const EYES = "eyes";
+const BLINK = { every: 3.2, takes: 0.2, shut: 0.1 };
+
 /** 0 to 1, slow at both ends: a walk starts and stops softly. */
 const ease = (p: number) => 0.5 - 0.5 * Math.cos(Math.PI * p);
 
+/** One character on the stage at a moment. */
+export interface Actor {
+  name: string;
+  /** The point between its feet. */
+  at: Point;
+  /** 1 facing right, as written, and -1 mirrored; between them, how wide it is while it turns. */
+  facing: number;
+  /** Its arm's angle, degrees from hanging down. */
+  arm: number;
+  /** How open its eyes are: 1, or less in a blink. */
+  eyes: number;
+}
+
 export interface Staging {
   background: Background;
-  /** The characters the scene places, in the order written, each at the point between its feet. */
-  characters: { name: string; at: Point }[];
+  /** The characters the scene places, in the order written. */
+  characters: Actor[];
 }
 
 /**
- * The scene of the moment's beat: its characters where the beats before left them, and the one who
- * walks now part of the way. A walk is a whole number of steps, so it ends with both feet down.
+ * A number from 0 to 1 for a name and a count: the same in every run, and different for each
+ * character and each blink. FNV-1a, then MurmurHash3's last mix: without it the count, hashed last,
+ * hardly moves the high bits, and every blink would come at nearly the same place in its 3.2 s.
  */
-export function stagingAt(scenario: Scenario, moment: Pick<Moment, "beat" | "progress">): Staging {
+function chance(name: string, count: number): number {
+  let hash = 0x811c9dc5;
+  for (const letter of `${name}:${count}`) hash = Math.imul(hash ^ letter.codePointAt(0)!, 0x01000193);
+  hash = Math.imul(hash ^ (hash >>> 16), 0x85ebca6b);
+  hash = Math.imul(hash ^ (hash >>> 13), 0xc2b2ae35);
+  return ((hash ^ (hash >>> 16)) >>> 0) / 2 ** 32;
+}
+
+/**
+ * How open `name`'s eyes are at `time`: one blink in every BLINK.every seconds, somewhere in the
+ * middle of them, so blinks are neither regular nor close together. The lids go down, stay shut
+ * for the middle third of the blink (two frames at 30 a second), and go up.
+ */
+function eyesAt(name: string, time: number): number {
+  const count = Math.floor(time / BLINK.every);
+  const begins = (count + 0.2 + 0.6 * chance(name, count)) * BLINK.every;
+  const through = (time - begins) / BLINK.takes;
+  if (through <= 0 || through >= 1) return 1;
+  const open = Math.max(0, (Math.abs(2 * through - 1) - 1 / 3) * 1.5);
+  return BLINK.shut + (1 - BLINK.shut) * open;
+}
+
+/** A pose's arm angle at `time`: a wave swings around its own. */
+const armAt = (pose: Pose, time: number) => ARM_AT[pose] + (pose === "wave" ? SWING * Math.sin(2 * Math.PI * WAVES * time) : 0);
+
+/**
+ * The scene of the moment's beat: its characters where the beats before left them, facing and posed
+ * as those left them, and the moment's own beat part of the way. A walk is a whole number of steps
+ * and a jump a whole number of hops, so both end with the feet down.
+ */
+export function stagingAt(scenario: Scenario, moment: Pick<Moment, "beat" | "progress" | "time" | "into">): Staging {
   let first = 0; // the scene's first beat, counted through the scenario
   for (const scene of scenario.scenes) {
     if (moment.beat >= first + scene.beats.length) {
       first += scene.beats.length;
       continue;
     }
-    const places = new Map<string, Point>(Object.entries(scene.places).map(([who, at]) => [who, [...at]]));
+    // `was` is the pose the moment's beat found the character in: its arm goes from there.
+    const cast = new Map(
+      Object.entries(scene.places).map(([who, at]) => [who, { at: [...at] as Point, facing: scene.faces[who] === "left" ? -1 : 1, pose: "stand" as Pose, was: "stand" as Pose }]),
+    );
+    let backdrop = scene.background;
     for (const [i, beat] of scene.beats.entries()) {
       if (first + i > moment.beat) break;
-      const from = beat.walk && places.get(beat.walk.who);
-      if (!beat.walk || !from) continue;
-      const { who, to } = beat.walk;
-      if (first + i < moment.beat) {
-        places.set(who, [...to]);
-        continue;
+      const now = first + i === moment.beat;
+      if (beat.background !== undefined) backdrop = beat.background;
+      for (const [who, pose] of Object.entries(beat.pose)) {
+        const one = cast.get(who);
+        if (!one) continue;
+        if (!now) one.was = pose;
+        one.pose = pose;
       }
-      const [dx, dy] = [to[0] - from[0], to[1] - from[1]];
-      const p = ease(moment.progress);
-      const steps = Math.max(1, Math.round(Math.hypot(dx, dy) / STEP));
-      const rise = moment.progress >= 1 ? 0 : BOUNCE * Math.abs(Math.sin(Math.PI * steps * p));
-      places.set(who, [from[0] + dx * p, from[1] + dy * p - rise]);
+      const move = moveOf(beat);
+      const one = move && cast.get(move.who);
+      if (!one) continue;
+      const p = now ? moment.progress : 1;
+      if (beat.walk) {
+        const { to } = beat.walk;
+        const [dx, dy] = [to[0] - one.at[0], to[1] - one.at[1]];
+        const way = ease(p);
+        const steps = Math.max(1, Math.round(Math.hypot(dx, dy) / STEP));
+        const rise = p >= 1 ? 0 : BOUNCE * Math.abs(Math.sin(Math.PI * steps * way));
+        one.at = p >= 1 ? [...to] : [one.at[0] + dx * way, one.at[1] + dy * way - rise];
+      } else if (beat.turn) {
+        // A cut-out turned round: its width goes as the cosine, fastest edge-on, and never to nothing.
+        const width = Math.cos(Math.PI * p);
+        one.facing *= p >= 1 ? -1 : Math.abs(width) < THIN ? (p < 0.5 ? THIN : -THIN) : width;
+      } else if (beat.jump && p < 1) {
+        const hop = (p * beat.jump.times) % 1;
+        one.at = [one.at[0], one.at[1] - JUMP * 4 * hop * (1 - hop)];
+      }
     }
-    const background = scenario.backgrounds[scene.background];
-    if (!background) throw new Error(`no background is named "${scene.background}"`);
-    return { background, characters: [...places].map(([name, at]) => ({ name, at })) };
+    const background = scenario.backgrounds[backdrop];
+    if (!background) throw new Error(`no background is named "${backdrop}"`);
+    // The arm leaves its old pose and reaches the new one over REACH: a wave's swing fades with it.
+    const reached = ease(Math.min(1, moment.into / REACH));
+    const characters = [...cast].map(([name, { at, facing, pose, was }]) => ({
+      name,
+      at,
+      facing,
+      arm: pose === was ? armAt(pose, moment.time) : armAt(was, moment.time) * (1 - reached) + armAt(pose, moment.time) * reached,
+      eyes: eyesAt(name, moment.time),
+    }));
+    return { background, characters };
   }
   throw new Error(`the scenario has no beat ${moment.beat}`);
 }
 
-/** Hundredths of a pixel: enough for the picture, and the same text for the same place. */
-const n = (value: number) => String(Math.round(value * 100) / 100 + 0);
+/** Hundredths of a pixel (or one part in `per`): enough for the picture, and the same text for the same place. */
+const n = (value: number, per = 100) => String(Math.round(value * per) / per + 0);
 
 function shapeSvg(shape: Shape): string {
   const [x, y] = shape.at;
@@ -81,12 +177,34 @@ function openMouth(shape: Shape, open: number): Shape {
   return { ...shape, at: [shape.at[0], shape.at[1] + (tall - h) / 2], size: [w, tall] };
 }
 
-/** A character's parts in the order written, its `mouth` part as open as `mouth` says. */
-const characterSvg = (character: Character, at: Point, mouth: number) =>
-  `<g transform="translate(${n(at[0])} ${n(at[1])})">${Object.entries(character.parts)
-    .flatMap(([part, shapes]) => (part === MOUTH && mouth > 0 ? shapes.map((shape) => openMouth(shape, mouth)) : shapes))
-    .map(shapeSvg)
-    .join("")}</g>`;
+/**
+ * The eyes' shapes, `open` of their height: all close towards one line, the middle of the whole
+ * part, so a pupil stays inside its eye.
+ */
+function blink(shapes: Shape[], open: number): Shape[] {
+  const top = Math.min(...shapes.map((shape) => shape.at[1] - shape.size[1] / 2));
+  const bottom = Math.max(...shapes.map((shape) => shape.at[1] + shape.size[1] / 2));
+  const middle = (top + bottom) / 2;
+  return shapes.map((shape) => ({ ...shape, at: [shape.at[0], middle + (shape.at[1] - middle) * open], size: [shape.size[0], shape.size[1] * open] }));
+}
+
+/**
+ * A character's parts in the order written, around the point between its feet: mirrored when it
+ * faces left, its `mouth` as open as `mouth` says, its `eyes` as the blink leaves them, and its
+ * `arm` turned around the shoulder. A part that is as written is drawn as written.
+ */
+function characterSvg(character: Character, actor: Actor, mouth: number): string {
+  const facing = n(actor.facing, 10000);
+  const parts = Object.entries(character.parts).map(([part, shapes]) => {
+    if (part === MOUTH && mouth > 0) shapes = shapes.map((shape) => openMouth(shape, mouth));
+    if (part === EYES && actor.eyes < 1) shapes = blink(shapes, actor.eyes);
+    const svg = shapes.map(shapeSvg).join("");
+    const angle = n(actor.arm);
+    if (part !== ARM || !character.shoulder || angle === "0") return svg;
+    return `<g transform="rotate(${angle} ${n(character.shoulder[0])} ${n(character.shoulder[1])})">${svg}</g>`;
+  });
+  return `<g transform="translate(${n(actor.at[0])} ${n(actor.at[1])})${facing === "1" ? "" : ` scale(${facing} 1)`}">${parts.join("")}</g>`;
+}
 
 /** The moment's picture as an SVG of the whole stage, `width` by `height` pixels. */
 export function frameSvg(scenario: Scenario, moment: Moment, { width, height }: { width: number; height: number }): string {
@@ -96,7 +214,7 @@ export function frameSvg(scenario: Scenario, moment: Moment, { width, height }: 
     `<rect width="${STAGE.width}" height="${STAGE.height}" fill="${background.fill}"/>`,
     ...background.shapes.map(shapeSvg),
     // Only a speaker's mouth moves: the others keep theirs closed, as the scenario writes it.
-    ...characters.map(({ name, at }) => characterSvg(scenario.characters[name]!, at, moment.mouths[name] ?? 0)),
+    ...characters.map((actor) => characterSvg(scenario.characters[actor.name]!, actor, moment.mouths[actor.name] ?? 0)),
     "</svg>",
   ].join("\n");
 }

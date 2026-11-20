@@ -19,7 +19,8 @@ a video with a spoken voice, offline and with no AI. The plan is RayCraft's
   - `scenario.ts`: the scenario's schema and its checks.
   - `timeline.ts`: beats and lines as the clip's events and texts, and
     which moment each frame shows, with whose mouth is open and how wide.
-  - `picture.ts`: one moment's picture, as an SVG.
+  - `picture.ts`: one moment's picture, as an SVG: who stands where, facing
+    which way, with the arm, the eyes and the mouth how.
   - `draw.ts`: the frames as pixels (resvg) and as the clip (ffmpeg).
   - `call.ts`, `request.ts`: the tool's call to the maker, and its request.
   - `make.ts`: the maker itself.
@@ -50,8 +51,9 @@ line it gives the line's speaker and a mouth track, taken from the voice's
 loudness: how open the mouth is in each frame the line sounds in, 0 closed
 to 1 wide. The maker then:
 
-1. finds each frame's moment: which beat, how far through its move, and
-   whose mouth is open, how wide (`moments`, `timeline.ts`);
+1. finds each frame's moment: which beat, how far through its move, the
+   time in the clip and in the beat, and whose mouth is open, how wide
+   (`moments`, `timeline.ts`);
 2. writes that moment's picture as an SVG (`frameSvg`, `picture.ts`);
 3. turns the SVG into pixels with resvg, and pipes them to ffmpeg
    (`draw.ts`). A frame whose SVG is the one before it is not drawn again.
@@ -59,7 +61,25 @@ to 1 wide. The maker then:
 A walk goes from the character's place to its end, slow at both ends, in
 a whole number of steps: the character rises a little in the middle of
 each. Its look is the maker's (`STEP`, `BOUNCE` in `picture.ts`), not the
-scenario's.
+scenario's. So is the look of everything below: the scenario names a
+move or a pose, and `picture.ts` holds its numbers.
+
+A turn mirrors the character, left to right, like a paper cut-out turned
+round: it gets narrow, is seen edge-on halfway, and widens again facing
+the other way (`THIN`). A jump is hops in place, each up and down as a
+thrown ball goes (`JUMP`), and ends on the ground.
+
+A pose is where the arm is: the part named `arm` turns around the
+character's `shoulder`. It hangs as written (`stand`), is held straight
+forward (`point`), or is raised and swings (`wave`): `ARM`, `SWING`,
+`WAVES`. In the beat that changes the pose, the arm takes `REACH` seconds
+to get there; a wave goes on swinging through the beats after it, by the
+clip's time.
+
+Eyes blink: the shapes of the part named `eyes` close towards the part's
+middle line for a moment (`BLINK`), every few seconds. When is fixed by
+the character's name and the clip's time, so each character blinks at its
+own times, the same in every run.
 
 A mouth moves with its character's voice: the shapes of the part named
 `mouth` grow downwards as the track says (the top edge stays, the jaw
@@ -106,15 +126,19 @@ or to find the frame where they part.
 ## The scenario
 
 `videos/<name>/scenario.yaml`; `videos/hello/scenario.yaml` is the smallest
-whole one. A key the format does not have is refused, and an error names
-the file and the place.
+whole one, and `videos/sundown/scenario.yaml` uses everything: each pose,
+each move, and backgrounds that change. A key the format does not have is
+refused, and an error names the file and the place.
 
 ```yaml
 characters:
   pip:
+    shoulder: [100, -203]
     parts:
       body:
         - { shape: rect, at: [0, -170], size: [220, 340], round: 110, fill: "#f2a33a" }
+      arm:
+        - { shape: rect, at: [100, -150], size: [44, 150], round: 22, fill: "#d9861f" }
       mouth:
         - { shape: ellipse, at: [0, -170], size: [70, 18], fill: "#5b2333" }
 
@@ -123,19 +147,32 @@ backgrounds:
     fill: "#bfe3ff"
     shapes:
       - { shape: rect, at: [960, 950], size: [1920, 260], fill: "#7cc36a" }
+  night:
+    fill: "#1b2a4a"
 
 scenes:
   - background: meadow
     places:
-      pip: [-200, 880]
+      pip: [2100, 880]
+    faces: { pip: left }
     beats:
       - name: walks-in
         takes: 4
         walk: { who: pip, to: [960, 880] }
         says:
           - { who: narrator, text: "This is Pip. Pip walks into the meadow." }
-      - name: stops
+      - name: waves
         takes: 3
+        pose: { pip: wave }
+        says:
+          - { who: pip, text: "Hello!" }
+      - name: night-falls
+        takes: 2
+        background: night
+        pose: { pip: stand }
+      - name: jumps
+        takes: 1.2
+        jump: { who: pip, times: 2 }
 ```
 
 - **The stage** is 1920 by 1080 pixels: x goes right and y goes down from
@@ -146,26 +183,50 @@ scenes:
 - **A shape** is a `rect` or an `ellipse`: `at` is its centre, `size` its
   width and height, `fill` its colour as `#rrggbb`. A `rect` may have
   `round`, its corners' radius.
-- **A character** is its named `parts` (body, eyes, mouth), each a list of
-  shapes. Parts are drawn in the order written. Their shapes are measured
-  from the point between the character's feet, so `[0, -170]` is 170
-  pixels above the ground. The part named `mouth` is the one that talks:
-  write it closed, as a flat shape, with room under it for the jaw to
-  drop (about 0.9 of its width). On a character with no `mouth` part
-  nothing opens.
+- **A character** is its named `parts` (body, arm, eyes, mouth), each a
+  list of shapes. Parts are drawn in the order written. Their shapes are
+  measured from the point between the character's feet, so `[0, -170]` is
+  170 pixels above the ground. Write a character **facing right**: a turn
+  mirrors it. Three names mean something to the maker:
+  - `mouth` is the part that talks: write it closed, as a flat shape,
+    with room under it for the jaw to drop (about 0.9 of its width). On a
+    character with no `mouth` part nothing opens.
+  - `eyes` is the part that blinks, by itself. With no `eyes` part
+    nothing blinks.
+  - `arm` is the part that waves and points: write it hanging straight
+    down, on the character's front side (its right, as written), after
+    the body so it is drawn over it. A character with an `arm` has a
+    `shoulder: [x, y]` beside `parts`, the point the arm turns around:
+    the middle of the arm's upper end.
 - **A background** fills the stage with `fill`, then draws its `shapes` in
   stage coordinates.
-- **A scene** has one `background`, the `places` where its characters stand
-  as it begins (the point between the feet; a place outside the stage
-  keeps a character out of sight), and its `beats`. Scenes follow each
-  other in one clip.
+- **A scene** has the `background` it begins with, the `places` where its
+  characters stand as it begins (the point between the feet; a place
+  outside the stage keeps a character out of sight), and its `beats`.
+  `faces: { mo: left }` begins it with Mo mirrored; the others face
+  right, as written. Every character begins in the pose `stand`. Scenes
+  follow each other in one clip, and each begins anew: its own places,
+  everyone facing as it says, standing.
 - **A beat** is one moment, and one event of the clip for the tool. Its
   `name` (lowercase letters, digits and dashes) is unique in the scenario.
   `takes` is its length in seconds at the scenario's own pace: the tool
   stretches a beat when its lines take longer to say.
-  - With `walk: { who, to }` the beat is a move: the character goes from
-    where it stands to `to`. Without it nothing moves, and the beat is a
-    hold.
+  - A beat has at most one **move**, by a character the scene places.
+    With one, the beat is a move for the tool; without, a hold.
+    - `walk: { who, to }`: the character goes from where it stands to
+      `to`. A walk turns nobody: to walk back, turn first.
+    - `turn: { who }`: the character turns to face the other way, and
+      stays so. About half a second is a natural `takes`.
+    - `jump: { who, times }`: the character hops in place `times` times
+      (1 when left out). About 0.6 seconds a hop is natural.
+  - `pose: { pip: wave, mo: stand }` changes poses as the beat begins:
+    `stand`, `wave` or `point`. A pose stays until a later beat of the
+    scene changes it. `wave` and `point` need the character's `arm`.
+    A pose is not a move: a beat with only a pose is a hold, as long as
+    its lines.
+  - `background: night` changes the background as the beat begins, for
+    the rest of the scene or until another beat changes it. Everyone
+    stays where they are.
   - `says` lists the lines said during the beat, each with `who` (a
     character's name, or `narrator`, whom nobody draws) and `text`. Several
     lines share the beat's time equally, in the order written. A

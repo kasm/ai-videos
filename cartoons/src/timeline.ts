@@ -1,7 +1,7 @@
 // A scenario's beats as the clip's timeline: the events and texts the video tool fits the voice to
 // (the tool's AGENTS.md, "Clips"), at the scenario's own pace or as the tool's request times them.
 import type { Request } from "./request.ts";
-import type { Scenario } from "./scenario.ts";
+import { moveOf, type Beat, type Scenario } from "./scenario.ts";
 
 export interface Timeline {
   /** The clip's length, seconds: every beat's time, added up. */
@@ -15,11 +15,14 @@ export interface Timeline {
 /**
  * Where the picture is in the scenario: in which beat, counted through every scene, how far through
  * its move (0 to 1), and whose mouth is open, how wide (above 0, to 1). A character it does not
- * name has its mouth closed.
+ * name has its mouth closed. `time` is the seconds since the clip began (a wave's swing and the
+ * blinks go by it) and `into` the seconds since the beat did (an arm reaching its new pose).
  */
 export interface Moment {
   beat: number;
   progress: number;
+  time: number;
+  into: number;
   mouths: Record<string, number>;
 }
 
@@ -27,6 +30,9 @@ export interface Moment {
 const ms = (seconds: number) => Math.round(seconds * 1000) / 1000;
 
 const beatsOf = (scenario: Scenario) => scenario.scenes.flatMap((scene) => scene.beats);
+
+/** What a beat is to the tool: a move when someone walks, turns or jumps in it, a hold otherwise, however its poses change. */
+const spanOf = (beat: Beat) => (moveOf(beat) ? "move" : "hold");
 
 /**
  * Lays the scenes' beats end to end: each takes its own `takes`, or begins and lasts as `request`
@@ -40,7 +46,7 @@ export function timeline(scenario: Scenario, request?: Request): Timeline {
     // scenario changed since: the tool's `make` writes it again.
     const kind = (name: string, span: string) => `${name} (${span})`;
     const asked = request.spans.map((s) => kind(s.event, s.span)).join(", ");
-    const own = beats.map((b) => kind(b.name, b.walk ? "move" : "hold")).join(", ");
+    const own = beats.map((b) => kind(b.name, spanOf(b))).join(", ");
     if (asked !== own) throw new Error(`the request's spans (${asked}) are not the scenario's beats (${own}): make the video again`);
   }
   const duration = request ? request.duration : ms(beats.reduce((sum, beat) => sum + beat.takes, 0));
@@ -51,7 +57,7 @@ export function timeline(scenario: Scenario, request?: Request): Timeline {
     const span = request?.spans[i];
     const start = span ? span.at : at;
     const length = span ? span.duration : beat.takes;
-    events.push({ name: beat.name, at: ms(start), span: beat.walk ? "move" : "hold", ...(span ? { natural: span.natural } : {}) });
+    events.push({ name: beat.name, at: ms(start), span: spanOf(beat), ...(span ? { natural: span.natural } : {}) });
     const share = length / Math.max(beat.says.length, 1);
     beat.says.forEach((line, k) => {
       // The request's times are whole milliseconds each, so their sum may pass its duration by one.
@@ -96,7 +102,7 @@ export function moments(request: Request): Moment[] {
     if (start !== frames.length || end <= start) throw new Error(`the request's span "${span.event}" does not follow the one before it on a whole frame`);
     for (let frame = start; frame < end; frame++) {
       const progress = span.span === "move" ? Math.min(1, (frame - start) / request.fps / (span.move ?? span.duration)) : 0;
-      frames.push({ beat, progress, mouths: open[frame]! });
+      frames.push({ beat, progress, time: frame / request.fps, into: (frame - start) / request.fps, mouths: open[frame]! });
     }
   });
   return frames;

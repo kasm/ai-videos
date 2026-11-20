@@ -1,0 +1,34 @@
+# The first script, written by `new` from the clip's own texts: a line each, cued to the event it
+# begins at. The voice, formats and loudness are the project file's, beside this folder; a setting
+# written here overrides it. A line's speaker takes its voice from the cast there; a line with none
+# is said in the project's voice. After changing a line, `make <this folder> --fit` tries the timing.
+title: sundown
+scenes:
+  - id: sundown
+    scene: clip
+    make: sundown
+    narration:
+      - text: Pip stands in the meadow. The sun is high.
+        cue: waits
+      - speaker: pip
+        text: Hello, Mo! Come over here!
+        cue: mo-walks-in
+      - speaker: mo
+        text: Hello, Pip!
+        cue: mo-greets
+      - text: They play all day, until the sun goes down.
+        cue: sun-goes-down
+      - speaker: mo
+        text: Look, Pip! The sun is going to bed.
+        cue: mo-points
+      - text: Then the night comes, and the moon is up.
+        cue: night-falls
+      - speaker: pip
+        text: Hooray! The stars are out!
+        cue: pip-jumps
+      - speaker: mo
+        text: Good night, Pip.
+        cue: good-night
+      - speaker: pip
+        text: Good night, Mo.
+        cue: good-night

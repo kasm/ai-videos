@@ -34,6 +34,32 @@ test("each beat is an event: a move with a walk, a hold without, one after anoth
   assert.equal(t.duration, 8);
 });
 
+test("a turn and a jump are moves too; a beat that only changes a pose or the background is a hold", () => {
+  const t = timeline(
+    checkScenario(
+      {
+        characters: {
+          pip: {
+            shoulder: [50, -150],
+            parts: { body: [{ shape: "ellipse", at: [0, -100], size: [100, 200], fill: "#f2a33a" }], arm: [{ shape: "rect", at: [50, -110], size: [20, 100], fill: "#d9861f" }] },
+          },
+        },
+        backgrounds: { meadow: { fill: "#bfe3ff" }, night: { fill: "#101030" } },
+        scenes: [
+          scene([
+            { name: "turns", takes: 0.5, turn: { who: "pip" } },
+            { name: "waves", takes: 2, pose: { pip: "wave" } },
+            { name: "jumps", takes: 1.2, jump: { who: "pip", times: 2 }, pose: { pip: "stand" } },
+            { name: "night-falls", takes: 2, background: "night" },
+          ]),
+        ],
+      },
+      "test",
+    ),
+  );
+  assert.deepEqual(t.events.map((e) => [e.name, e.span]), [["turns", "move"], ["waves", "hold"], ["jumps", "move"], ["night-falls", "hold"]]);
+});
+
 test("a beat's line has the beat's whole time, and keeps its speaker", () => {
   const t = timeline(scenario(scene([{ name: "waits", takes: 1 }, { name: "talks", takes: 3, says: [{ who: "pip", text: "Hello!" }] }])));
   assert.deepEqual(t.lines, [{ who: "pip", text: "Hello!", from: 1, to: 4 }]);
@@ -90,12 +116,13 @@ test("a request for other beats is refused", () => {
 test("every frame of the request has its moment: a move's motion, then its end until the next beat", () => {
   const frames = moments(request());
   assert.equal(frames.length, 135);
-  assert.deepEqual(frames[0], { beat: 0, progress: 0, mouths: {} });
-  assert.deepEqual(frames[30], { beat: 0, progress: 0.5, mouths: {} });
-  assert.deepEqual(frames[60], { beat: 0, progress: 1, mouths: {} });
-  assert.deepEqual(frames[89], { beat: 0, progress: 1, mouths: {} });
-  assert.deepEqual(frames[90], { beat: 1, progress: 0, mouths: {} });
-  assert.deepEqual(frames[134], { beat: 1, progress: 0, mouths: {} });
+  // Each has the clip's time and the beat's own, in seconds: frame 90 is 3 s in, and its beat's first.
+  assert.deepEqual(frames[0], { beat: 0, progress: 0, time: 0, into: 0, mouths: {} });
+  assert.deepEqual(frames[30], { beat: 0, progress: 0.5, time: 1, into: 1, mouths: {} });
+  assert.deepEqual(frames[60], { beat: 0, progress: 1, time: 2, into: 2, mouths: {} });
+  assert.deepEqual(frames[89], { beat: 0, progress: 1, time: 89 / 30, into: 89 / 30, mouths: {} });
+  assert.deepEqual(frames[90], { beat: 1, progress: 0, time: 3, into: 0, mouths: {} });
+  assert.deepEqual(frames[134], { beat: 1, progress: 0, time: 134 / 30, into: 44 / 30, mouths: {} });
 });
 
 /** How open `who`'s mouth is in each frame of the request: 0 where the moment does not name them. */
@@ -113,7 +140,8 @@ test("a speaker's mouth follows each of their lines' tracks in the frames it nam
   assert.deepEqual(mouth.slice(16, 26), [0, 0, 0.5, 1, 0, 0, 0.8, 0.3, 0, 0], "closed before the line, in its pause and after it");
   assert.deepEqual(mouth.slice(87, 93), [0, 0.2, 0.9, 1, 0.4, 0], "a line goes on from one beat into the next");
   assert.equal(mouth.filter((open) => open > 0).length, 8, "no other frame has the mouth open");
-  assert.deepEqual(moments(spoken)[20], { beat: 0, progress: 20 / 60, mouths: {} }, "a closed mouth is not named: the moment is the silent one");
+  assert.deepEqual(moments(spoken)[20], moments(request())[20], "a closed mouth is not named: the moment is the silent one");
+  assert.deepEqual(moments(spoken)[20]!.mouths, {});
   // The beats are as without the lines: the mouth changes nothing else.
   assert.deepEqual(moments(spoken).map(({ beat, progress }) => [beat, progress]), moments(request()).map(({ beat, progress }) => [beat, progress]));
 });
