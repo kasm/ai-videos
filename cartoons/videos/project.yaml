@@ -4,5 +4,6 @@ voice: af_heart              # the narrator's, and any line that names no speake
 cast:                        # each character's voice, by its name in the scenarios
   pip: am_puck
   mo: bf_emma
+  tuk: bm_fable
 fps: 30
 formats: [landscape]         # the stage is 1920 by 1080; a portrait cartoon would need a layout of its own

@@ -1,0 +1,175 @@
+# The shy visitor, from stories/the-shy-visitor.md: Tuk comes over the hills, and Pip and Mo take
+# him in for the night. One scene in the meadow, from morning to night. The format is in CLAUDE.md
+# ("The scenario").
+
+characters:
+  pip: # as in videos/sundown
+    shoulder: [100, -203] # the middle of the arm's upper end: the arm turns around it
+    parts: # drawn in this order; written facing right; x right and y down from the point between the feet
+      body:
+        - { shape: rect, at: [0, -170], size: [220, 340], round: 110, fill: "#f2a33a" }
+      arm: # hanging down on Pip's front side, over the body
+        - { shape: rect, at: [100, -150], size: [44, 150], round: 22, fill: "#d9861f" }
+      eyes:
+        - { shape: ellipse, at: [-45, -250], size: [48, 60], fill: "#ffffff" }
+        - { shape: ellipse, at: [45, -250], size: [48, 60], fill: "#ffffff" }
+        - { shape: ellipse, at: [-30, -246], size: [20, 26], fill: "#2b2d42" } # looking right, the way Pip faces
+        - { shape: ellipse, at: [60, -246], size: [20, 26], fill: "#2b2d42" }
+      mouth:
+        - { shape: ellipse, at: [0, -170], size: [70, 18], fill: "#5b2333" }
+  mo: # as in videos/sundown
+    shoulder: [85, -265]
+    parts: # taller and narrower than Pip, and blue; written facing right too
+      body:
+        - { shape: rect, at: [0, -215], size: [190, 430], round: 95, fill: "#6aa9e9" }
+      arm:
+        - { shape: rect, at: [85, -200], size: [40, 170], round: 20, fill: "#3f7fc4" }
+      eyes:
+        - { shape: ellipse, at: [-40, -330], size: [44, 56], fill: "#ffffff" }
+        - { shape: ellipse, at: [40, -330], size: [44, 56], fill: "#ffffff" }
+        - { shape: ellipse, at: [-28, -326], size: [18, 24], fill: "#2b2d42" }
+        - { shape: ellipse, at: [52, -326], size: [18, 24], fill: "#2b2d42" }
+      mouth:
+        - { shape: ellipse, at: [0, -250], size: [60, 16], fill: "#27324f" }
+  tuk: # new here: the small one, 170 by 240, and green (darker than the grass); written facing right
+    shoulder: [75, -142]
+    parts:
+      body:
+        - { shape: rect, at: [0, -120], size: [170, 240], round: 85, fill: "#2f9e63" }
+      arm:
+        - { shape: rect, at: [75, -105], size: [36, 110], round: 18, fill: "#1f7547" }
+      eyes:
+        - { shape: ellipse, at: [-35, -172], size: [40, 50], fill: "#ffffff" }
+        - { shape: ellipse, at: [35, -172], size: [40, 50], fill: "#ffffff" }
+        - { shape: ellipse, at: [-23, -168], size: [16, 22], fill: "#2b2d42" }
+        - { shape: ellipse, at: [47, -168], size: [16, 22], fill: "#2b2d42" }
+      mouth:
+        - { shape: ellipse, at: [0, -108], size: [50, 14], fill: "#143d28" }
+
+backgrounds: # the meadow, with the hills Tuk comes over on the left
+  morning:
+    fill: "#bfe3ff" # the sky
+    shapes:
+      - { shape: ellipse, at: [1700, 230], size: [180, 180], fill: "#ffd966" } # the sun, high
+      - { shape: ellipse, at: [240, 850], size: [860, 400], fill: "#a9d9a0" } # the hills, far and pale
+      - { shape: ellipse, at: [800, 860], size: [620, 260], fill: "#b7e0ad" }
+      - { shape: rect, at: [960, 950], size: [1920, 260], fill: "#7cc36a" } # the grass
+  sundown:
+    fill: "#f6b26b"
+    shapes:
+      - { shape: rect, at: [960, 200], size: [1920, 400], fill: "#f9cb9c" } # the sky is paler higher up
+      - { shape: ellipse, at: [1750, 790], size: [240, 240], fill: "#e8542f" } # the sun, half behind the grass
+      - { shape: ellipse, at: [240, 850], size: [860, 400], fill: "#8fb276" }
+      - { shape: ellipse, at: [800, 860], size: [620, 260], fill: "#9dbd80" }
+      - { shape: rect, at: [960, 950], size: [1920, 260], fill: "#5f9a55" }
+  night:
+    fill: "#1b2a4a"
+    shapes:
+      - { shape: ellipse, at: [1180, 200], size: [160, 160], fill: "#f4f1de" } # the moon
+      - { shape: ellipse, at: [300, 160], size: [14, 14], fill: "#f4f1de" } # the stars
+      - { shape: ellipse, at: [620, 300], size: [10, 10], fill: "#f4f1de" }
+      - { shape: ellipse, at: [900, 120], size: [12, 12], fill: "#f4f1de" }
+      - { shape: ellipse, at: [1500, 340], size: [10, 10], fill: "#f4f1de" }
+      - { shape: ellipse, at: [1780, 180], size: [12, 12], fill: "#f4f1de" }
+      - { shape: ellipse, at: [240, 850], size: [860, 400], fill: "#223f4a" }
+      - { shape: ellipse, at: [800, 860], size: [620, 260], fill: "#27474d" }
+      - { shape: rect, at: [960, 950], size: [1920, 260], fill: "#2f5d46" }
+
+scenes:
+  - background: morning
+    places:
+      pip: [1000, 880]
+      mo: [1450, 880]
+      tuk: [-250, 880] # left of the stage, out of sight
+    faces: { mo: left } # Pip and Mo look at each other; Tuk will come in facing right
+    beats:
+      - name: morning
+        takes: 3
+        says:
+          - { who: narrator, text: "It is a sunny morning in the meadow." }
+      - name: mo-sighs
+        takes: 2.5
+        says:
+          - { who: mo, text: "Oh, nothing ever happens here." }
+      - name: tuk-walks-in # he stops a little way off
+        takes: 4.5
+        walk: { who: tuk, to: [480, 880] }
+        says:
+          - { who: narrator, text: "Just then, somebody new walks in." } # short lines: a caption of two rows covers the feet
+          - { who: narrator, text: "It is Tuk, who has come over the hills." }
+      - name: pip-turns # Pip sees him first
+        takes: 0.5
+        turn: { who: pip }
+      - name: pip-waves
+        takes: 2
+        pose: { pip: wave }
+        says:
+          - { who: pip, text: "Hello! Hello there!" }
+      - name: tuk-is-shy
+        takes: 1.5
+        pose: { pip: stand }
+        says:
+          - { who: narrator, text: "Tuk is shy." }
+      - name: tuk-says-hello
+        takes: 1.2
+        says:
+          - { who: tuk, text: "Hello." }
+      - name: tuk-turns-away
+        takes: 0.6
+        turn: { who: tuk }
+      - name: mo-points # Mo faces left already: the arm goes out over Pip's head, towards Tuk
+        takes: 2.5
+        pose: { mo: point }
+        says:
+          - { who: mo, text: "You there! Where do you come from?" }
+      - name: tuk-turns-back
+        takes: 0.6
+        turn: { who: tuk }
+        pose: { mo: stand }
+      - name: tuk-answers
+        takes: 3
+        says:
+          - { who: tuk, text: "I come from far away, behind the hills." }
+      - name: tuk-asks
+        takes: 2.5
+        says:
+          - { who: tuk, text: "I am looking for a place to sleep." }
+      - name: night-is-near
+        takes: 1.5
+        says:
+          - { who: tuk, text: "The night is near." }
+      - name: sun-goes-down # the background changes; nobody moves
+        takes: 2.5
+        background: sundown
+        says:
+          - { who: narrator, text: "And the sun goes down." }
+      - name: pip-invites
+        takes: 2
+        says:
+          - { who: pip, text: "You can stay with us, Tuk." }
+      - name: big-enough
+        takes: 2.5
+        says:
+          - { who: pip, text: "The meadow is big enough for three." }
+      - name: tuk-jumps # three hops
+        takes: 1.8
+        jump: { who: tuk, times: 3 }
+        says:
+          - { who: narrator, text: "Tuk is so glad!" }
+      - name: night-falls # the background changes again
+        takes: 3.5
+        background: night
+        says:
+          - { who: narrator, text: "Then the night falls, and the moon comes up." }
+      - name: good-night # all three wave
+        takes: 6.5
+        pose: { pip: wave, mo: wave, tuk: wave }
+        says:
+          - { who: pip, text: "Good night, Tuk." }
+          - { who: tuk, text: "Good night, Pip. Good night, Mo." }
+          - { who: mo, text: "Good night, you two." }
+      - name: mo-was-wrong
+        takes: 4
+        pose: { pip: stand, mo: stand, tuk: stand }
+        says:
+          - { who: narrator, text: "And Mo was wrong. Something did happen today." }

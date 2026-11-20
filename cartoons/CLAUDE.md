@@ -15,6 +15,10 @@ a video with a spoken voice, offline and with no AI. The plan is RayCraft's
     tool's `new` writes the first one from the scenario's lines; after that
     it is edited by hand.
   - `clips/`, `build/`, `out/`: made, not in git, never edited.
+- `stories/<name>.md`: a story in prose, the source of `videos/<name>`.
+  The `episode` skill (`.claude/skills/episode/`) turns a story into a
+  scenario and a video; it may add a new character's voice to the
+  project file's `cast`, and nothing else there.
 - `src/`: the maker, the command the tool runs to get a cartoon's clip.
   - `scenario.ts`: the scenario's schema and its checks.
   - `timeline.ts`: beats and lines as the clip's events and texts, and
