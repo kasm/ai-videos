@@ -357,6 +357,10 @@ Portrait scenes keep reading text inside x 120–888 and y 288–1248, the area 
   folder cannot be deleted on Windows until it exits. `compose` clears only its own subfolders.
 - The portrait check runs with `--safe-zone off`: scrolled-off page text is outside the social safe
   areas by design, and the scene parks each cue inside them.
+- HyperFrames' check writes its progress a line a step (`check: craft 1/599`, 634 lines for
+  water-switch). `check` and `make` fold them into a line per phase, on its last count, written over
+  in place on a terminal (`src/progress.ts`); its status, warnings, errors and verdict show as they
+  come. A new HyperFrames that words its counts otherwise shows them all again, unfolded.
 - HyperFrames telemetry is disabled on this machine (`npx hyperframes telemetry disable`). Its update
   check, which asks npm from a process that outlives the command, is off for every run of the tool
   (`HYPERFRAMES_NO_UPDATE_CHECK`, set in `src/cli.ts`).

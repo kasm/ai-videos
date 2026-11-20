@@ -160,7 +160,7 @@ async function checkProjects(formats: FormatName[], projects: Record<string, str
     // Scrolled-off text is geometrically outside the social safe areas by design; the scene parks
     // each cue inside them, so the portrait check skips that audit rather than drown in warnings.
     const args = format === "portrait" ? ["check", "--safe-zone", "off"] : ["check"];
-    if ((await hyperframes(ROOT, projects[format]!, args)) !== 0) passed = false;
+    if ((await hyperframes(ROOT, projects[format]!, args, { fold: true })) !== 0) passed = false;
   }
   return passed;
 }

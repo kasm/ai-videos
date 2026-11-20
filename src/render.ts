@@ -2,6 +2,7 @@
 import { spawn } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
+import { foldProgress, type Sink } from "./progress.ts";
 
 interface RunResult {
   code: number;
@@ -26,12 +27,46 @@ export function run(cmd: string, args: string[], opts: { cwd?: string; inherit?:
   });
 }
 
+/**
+ * Runs a command, its stderr through `foldProgress` (progress.ts), and gives its exit code. In place,
+ * on the terminal itself, its stdout goes there straight: HyperFrames colours only a terminal's.
+ * Anywhere else it goes through the fold too, so that a count held back comes before it.
+ */
+export function runFolded(
+  cmd: string,
+  args: string[],
+  opts: { cwd?: string; out?: Sink; err?: Sink; inPlace?: boolean } = {},
+): Promise<number> {
+  const { out = process.stdout, err = process.stderr, inPlace = process.stderr.isTTY === true } = opts;
+  const straight = inPlace && out === process.stdout;
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, {
+      cwd: opts.cwd,
+      stdio: ["inherit", straight ? "inherit" : "pipe", "pipe"],
+      windowsHide: true,
+    });
+    const fold = foldProgress({ out, err, inPlace });
+    child.stdout?.setEncoding("utf8").on("data", (d: string) => fold.stdout(d));
+    child.stderr?.setEncoding("utf8").on("data", (d: string) => fold.stderr(d));
+    child.on("error", reject);
+    child.on("close", (code) => {
+      fold.end();
+      resolve(code ?? 1);
+    });
+  });
+}
+
 /** The HyperFrames CLI the tool pins, run with this Node (never npx, which could fetch another). */
 export const hyperframesBin = (root: string) => path.join(root, "node_modules", "hyperframes", "bin", "hyperframes.mjs");
 
-/** Runs a HyperFrames CLI command inside a generated project, streaming its output. */
-export async function hyperframes(root: string, project: string, args: string[]): Promise<number> {
-  const { code } = await run(process.execPath, [hyperframesBin(root), ...args], { cwd: project, inherit: true });
+/**
+ * Runs a HyperFrames CLI command inside a generated project, streaming its output. With `fold`, the
+ * check's progress comes a line per phase (progress.ts).
+ */
+export async function hyperframes(root: string, project: string, args: string[], opts: { fold?: boolean } = {}): Promise<number> {
+  const command = [hyperframesBin(root), ...args];
+  if (opts.fold) return runFolded(process.execPath, command, { cwd: project });
+  const { code } = await run(process.execPath, command, { cwd: project, inherit: true });
   return code;
 }
 
