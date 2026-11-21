@@ -1,5 +1,6 @@
 # The first cartoon: Pip walks onto a meadow and stops there, while a narrator speaks.
 # The format is in CLAUDE.md ("The scenario").
+use: cartoon # the plugin that draws it; the voices and the rest of the settings are package.json's "ai-videos"
 
 characters:
   pip:

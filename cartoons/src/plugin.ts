@@ -1,6 +1,7 @@
 // This project's plugin for the video tool (its AGENTS.md, "Plugins"), named in package.json. The
-// tool runs it in a process of its own: it reads a cartoon's scenario.yaml and has it checked here,
-// writes the plan as the clip's data, fits it to the voice, and asks for each frame's picture.
+// tool runs it in a process of its own: it reads a cartoon's file, videos/<name>.yaml, and has its
+// scenario (the file but the tool's keys) checked here, writes the plan as the clip's data, fits it
+// to the voice, and asks for each frame's picture.
 import type { Plugin } from "ai-videos/plugin";
 import { frameSvg } from "./picture.ts";
 import { COMMANDS, NARRATOR, STAGE, checkScenario, type Scenario } from "./scenario.ts";
@@ -8,7 +9,6 @@ import { timeline } from "./timeline.ts";
 
 export default {
   scene: "cartoon",
-  source: "scenario.yaml",
   stage: STAGE,
   commands: COMMANDS,
   check: checkScenario,

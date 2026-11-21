@@ -1,5 +1,4 @@
 node_modules/
-# What the video tool and the maker write into a video folder: made, never edited by hand.
-videos/*/clips/
-videos/*/build/
-videos/*/out/
+# What the video tool makes of a video file: the stages in between, and the finished files. Never edited by hand.
+.cache/
+out/

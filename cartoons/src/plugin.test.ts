@@ -10,10 +10,11 @@ import { parse } from "yaml";
 import plugin from "./plugin.ts";
 
 const videos = path.join(import.meta.dirname, "../videos");
-/** A cartoon's scenario, read and checked as the tool has the plugin do it. */
+/** A cartoon's scenario, read and checked as the tool has the plugin do it: its file, without the tool's `use:`. */
 const scenarioOf = (name: string) => {
-  const file = path.join(videos, name, plugin.source);
-  return plugin.check(parse(readFileSync(file, "utf8")), file);
+  const file = path.join(videos, `${name}.yaml`);
+  const { use: _use, ...scenario } = parse(readFileSync(file, "utf8"));
+  return plugin.check(scenario, file);
 };
 
 test("hello's plan: its beats as events, its lines as texts", () => {

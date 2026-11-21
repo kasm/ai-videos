@@ -7,24 +7,24 @@ a video with a spoken voice, offline and with no AI. The plan is the tool's
 
 ## Where things are
 
-- `package.json`: names this project's plugin for the tool (`"ai-videos":
-  { "plugin": "./src/plugin.ts" }`).
-- `videos/project.yaml`: what every cartoon shares, read by the tool (the
-  narrator's voice, the cast's voices, the format).
-- `videos/<name>/`: one cartoon.
-  - `scenario.yaml`: its source, written by hand or by an AI session.
-  - `video.yaml`: the tool's script (the spoken lines and their cues). The
-    tool's `new` writes the first one from the scenario's lines; after that
-    it is edited by hand.
-  - `clips/`, `build/`, `out/`: made, not in git, never edited.
-- `stories/<name>.md`: a story in prose, the source of `videos/<name>`.
+- `package.json`: its `"ai-videos"` names this project's plugin for the
+  tool (`"plugin": "./src/plugin.ts"`), and holds what every cartoon
+  shares: the narrator's `voice`, the `cast`'s voices, the `fps`.
+- `videos/<name>.yaml`: one cartoon, its whole source, written by hand or
+  by an AI session: `use: cartoon` on top, then its scenario, each line
+  written once, in its beat (the tool's `AGENTS.md`, "A video file").
+- `.cache/<name>/`: what the tool makes on the way (the plan, the request,
+  the clip, the build); `out/<name>.mp4` and `out/<name>.srt`: the
+  finished video and its subtitles. Made, not in git, never edited.
+- `stories/<name>.md`: a story in prose, the source of `videos/<name>.yaml`.
   The `episode` skill (`.claude/skills/episode/`) turns a story into a
-  scenario and a video; it may add a new character's voice to the
-  project file's `cast`, and nothing else there.
+  cartoon and a video; it may add a new character's voice to the `cast`
+  in `package.json`, and nothing else there.
 - `src/`: the cartoon plugin, the module the tool runs to get a cartoon's
-  clip (the tool's `AGENTS.md`, "Plugins").
-  - `plugin.ts`: the plugin itself: the scene `cartoon`, its source
-    `scenario.yaml`, its commands, and the three functions below.
+  clip (the tool's `AGENTS.md`, "Plugins"). Its code is part of what the
+  tool's cache keys on: a change to a file here draws the clips again.
+  - `plugin.ts`: the plugin itself: the scene `cartoon`, its stage, its
+    commands, and the three functions below.
   - `scenario.ts`: the scenario's schema and its checks, and the commands
     a beat may do (`COMMANDS`), each with a description and an example.
   - `timeline.ts`: beats and lines as the clip's events and texts, at the
@@ -40,13 +40,16 @@ a video with a spoken voice, offline and with no AI. The plan is the tool's
 Node 24. From this folder:
 
 - `npm test`: the tests (`node --test`); `npm run typecheck`.
-- `npm run -s video -- new videos/<name>`: writes `video.yaml` from the
-  scenario's lines, each character's with its `speaker`. It never writes
-  over one, and names a speaker the cast gives no voice yet.
-- `npm run -s video -- make videos/<name> --fit`: speaks the lines and
-  prints how the clip fits them, before anything is drawn.
-- `npm run -s video -- make videos/<name>`: the whole video, into
-  `videos/<name>/out/<name>-landscape.mp4`, with its subtitles beside it.
+- `npm run -s video -- make videos/<name>.yaml --fit`: checks the file
+  (the plugin's checks, and a voice for each speaker), speaks the lines
+  and prints how the clip fits them, before anything is drawn.
+- `npm run -s video -- make videos/<name>.yaml`: the whole video, into
+  `out/<name>.mp4`, with its subtitles beside it. A stage made from what
+  has not changed since is taken from `.cache/<name>/`, and the log says
+  "From the cache".
+- `--profile quiet` (or `youtube`, `draft`): the tool's settings of that
+  name over the rest, into `out/<name>-quiet.mp4` (the tool's `AGENTS.md`,
+  "Settings in layers").
 
 `video` is the tool's command line, found at `../ai_videos`. The contract
 between the tool and this project is the tool's `AGENTS.md`, "Projects".
@@ -58,7 +61,7 @@ folder too. Drawing needs `ffmpeg` on the PATH.
 
 The tool measures the voice and asks for the clip in whole frames: when
 each beat begins, how long it lasts, and how long a move's motion takes
-(the request, `clips/<name>-landscape.request.json`). With each spoken
+(the request, `.cache/<name>/clips/<name>-landscape.request.json`). With each spoken
 line it gives the line's speaker and a mouth track, taken from the voice's
 loudness: how open the mouth is in each frame the line sounds in, 0 closed
 to 1 wide. The tool then:
@@ -104,46 +107,52 @@ the narrator's line, which names nobody, opens none.
 
 ## Voices
 
-Each speaker has a voice of its own, set in `videos/project.yaml` (the
-tool's `AGENTS.md`, "The cast"):
+Each speaker has a voice of its own, set in `package.json`'s
+`"ai-videos"` (the tool's `AGENTS.md`, "The cast"):
 
-```yaml
-voice: af_heart   # the narrator's, and any line that names no speaker
-cast:             # each character's voice, by its name in the scenarios
-  pip: am_puck
-  mo: bf_emma
+```json
+"voice": "af_heart",
+"cast": { "pip": "am_puck", "mo": "bf_emma" }
 ```
 
-- A scenario line's `who` goes through the tool and comes back: the
-  plugin's plan gives a character's text with `speaker: <who>` (the
-  narrator's with none), `new` writes that into the line of `video.yaml`,
-  the tool says the line in the cast's voice for that speaker, and the
-  request names the speaker with the line's mouth track.
+`voice` is the narrator's, and any line's that names no speaker; `cast`
+gives each character's, by its name in the cartoons.
+
+- A line's `who` goes through the tool and comes back: the plugin's plan
+  gives a character's text with `speaker: <who>` (the narrator's with
+  none), the tool makes each text a line, cued to its beat, says it in
+  the cast's voice for that speaker, and the request names the speaker
+  with the line's mouth track.
 - A character new to the project needs a voice in `cast` before `make`:
-  the tool refuses a speaker the cast does not name. A cartoon's own
-  `video.yaml` may give `cast:` too, over the project's, for a voice only
-  it uses.
-- `video.yaml` is the one the tool reads: change who says a line there
-  (`speaker:`), as well as in the scenario. A speaker the scenario does
-  not draw is a voice off stage: it is heard, and no mouth moves.
+  the tool refuses a speaker the cast does not name. A cartoon's own file
+  may give `cast:` too, on top beside `use:`, over the project's, for a
+  voice only it uses.
+- A character the scene does not place is a voice off stage: it is heard,
+  and no mouth moves.
 - A voice is one of the tool's (Kokoro): `npm run -s video -- voices`
   writes samples of several into the tool's `out/voice-samples/` and lists
   every name. `make` prints the speaker and voice of each character's line.
-- `videos/meet` has two characters and the narrator, three voices.
+- `videos/meet.yaml` has two characters and the narrator, three voices.
 
 The picture depends only on the scenario and the request, so two runs
-draw the same frames. `clips/<name>-landscape.mp4.frames` holds a hash of
-each frame's pixels, a line a frame: compare two runs' files to see it,
-or to find the frame where they part.
+draw the same frames. `.cache/<name>/clips/<name>-landscape.mp4.frames`
+holds a hash of each frame's pixels, a line a frame: compare two runs'
+files to see it, or to find the frame where they part.
 
 ## The scenario
 
-`videos/<name>/scenario.yaml`; `videos/hello/scenario.yaml` is the smallest
-whole one, and `videos/sundown/scenario.yaml` uses everything: each pose,
-each move, and backgrounds that change. A key the format does not have is
-refused, and an error names the file and the place.
+A cartoon is `videos/<name>.yaml`: `use: cartoon` on top, then its
+scenario. `videos/hello.yaml` is the smallest whole one, and
+`videos/sundown.yaml` uses everything: each pose, each move, and
+backgrounds that change. The tool keeps its own keys (`use`, and the
+settings a cartoon may give over the project's: `voice`, `cast`, `speed`,
+`fps`, `loudness`, `timing`, `quality`) and gives the plugin the rest. A
+key the format does not have is refused, and an error names the file and
+the place.
 
 ```yaml
+use: cartoon
+
 characters:
   pip:
     shoulder: [100, -203]
@@ -249,10 +258,11 @@ scenes:
 ## Rules
 
 - **Names** are lowercase letters, digits and dashes, a letter first.
-- **The scenario is the only source.** The plugin keeps no settings of its
-  own, and nothing made is edited by hand.
+- **The video file is the only source.** The plugin keeps no settings of
+  its own, and nothing made is edited by hand.
 - **The plan draws nothing** and gives the same data for the same
-  scenario: the tool asks for it on every `make`.
+  scenario: the tool asks for it again whenever the file or a file in
+  `src/` has changed.
 - **Of the tool's sources, only the modules its `package.json` exports
   are imported**: `ai-videos/plugin` for the plugin's types, and in the
   tests `ai-videos/frames`. Both need none of the tool's packages.

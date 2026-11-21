@@ -1,9 +1,10 @@
 # The shy visitor, from stories/the-shy-visitor.md: Tuk comes over the hills, and Pip and Mo take
 # him in for the night. One scene in the meadow, from morning to night. The format is in CLAUDE.md
 # ("The scenario").
+use: cartoon # the plugin that draws it; the voices and the rest of the settings are package.json's "ai-videos"
 
 characters:
-  pip: # as in videos/sundown
+  pip: # as in sundown.yaml
     shoulder: [100, -203] # the middle of the arm's upper end: the arm turns around it
     parts: # drawn in this order; written facing right; x right and y down from the point between the feet
       body:
@@ -17,7 +18,7 @@ characters:
         - { shape: ellipse, at: [60, -246], size: [20, 26], fill: "#2b2d42" }
       mouth:
         - { shape: ellipse, at: [0, -170], size: [70, 18], fill: "#5b2333" }
-  mo: # as in videos/sundown
+  mo: # as in sundown.yaml
     shoulder: [85, -265]
     parts: # taller and narrower than Pip, and blue; written facing right too
       body:

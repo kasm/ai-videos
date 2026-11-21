@@ -5,9 +5,12 @@ import { test } from "node:test";
 import { parse } from "yaml";
 import { checkScenario, moveOf } from "./scenario.ts";
 
-const hello = path.join(import.meta.dirname, "../videos/hello/scenario.yaml");
-/** A scenario file, read as the tool reads it for the plugin. */
-const readScenario = (file: string) => checkScenario(parse(readFileSync(file, "utf8")), file);
+const hello = path.join(import.meta.dirname, "../videos/hello.yaml");
+/** A cartoon's file, read as the tool reads it for the plugin: without the tool's `use:`. */
+const readScenario = (file: string) => {
+  const { use: _use, ...scenario } = parse(readFileSync(file, "utf8"));
+  return checkScenario(scenario, file);
+};
 
 /** The smallest scenario, as parsed YAML; each test breaks one thing in a copy of it. */
 const small = () => ({
@@ -34,7 +37,7 @@ test("hello's scenario reads: a character of parts, a background, one scene", ()
 });
 
 test("sundown's scenario reads, and uses each pose, each move and a background changed by a beat", () => {
-  const s = readScenario(path.join(import.meta.dirname, "../videos/sundown/scenario.yaml"));
+  const s = readScenario(path.join(import.meta.dirname, "../videos/sundown.yaml"));
   const beats = s.scenes.flatMap((scene) => scene.beats);
   assert.deepEqual(new Set(beats.map((beat) => moveOf(beat)?.kind)), new Set(["walk", "turn", "jump", undefined]));
   assert.deepEqual(new Set(beats.flatMap((beat) => Object.values(beat.pose))), new Set(["stand", "wave", "point"]));

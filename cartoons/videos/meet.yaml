@@ -1,6 +1,7 @@
 # Two characters, each with a voice of its own: Pip waits in the meadow, Mo walks in, and they talk.
 # The narrator's lines are said in the project's voice; Pip's and Mo's in the cast's
-# (../project.yaml). The format is in CLAUDE.md ("The scenario").
+# (package.json's "ai-videos"). The format is in CLAUDE.md ("The scenario").
+use: cartoon # the plugin that draws it; the voices and the rest of the settings are package.json's "ai-videos"
 
 characters:
   pip:

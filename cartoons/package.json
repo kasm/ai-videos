@@ -5,7 +5,14 @@
   "license": "UNLICENSED",
   "type": "module",
   "ai-videos": {
-    "plugin": "./src/plugin.ts"
+    "plugin": "./src/plugin.ts",
+    "voice": "af_heart",
+    "cast": {
+      "pip": "am_puck",
+      "mo": "bf_emma",
+      "tuk": "bm_fable"
+    },
+    "fps": 30
   },
   "scripts": {
     "video": "npm --prefix ../ai_videos run -s video --",
