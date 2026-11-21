@@ -29,7 +29,7 @@ on a stage, walk, turn and jump, wave and point, blink and talk, in front
 of a background that changes as a cut. It has no props, no faces that
 change, no two moves at once, nobody lying down or sitting. What the story
 has and the format lacks, the narrator says, or it is left out. Never
-invent a key or a pose: the maker refuses it. Keep a list of what was left
+invent a key or a pose: the plugin refuses it. Keep a list of what was left
 out, for the report.
 
 ## 2. The cast
@@ -52,7 +52,7 @@ out, for the report.
 - **Its voice.** A character the cast lacks gets a line under `cast:` in
   `videos/project.yaml`, before `make`. You may add that line without
   asking: it is the user's standing yes. Nothing else in that file is
-  yours: the maker, the narrator's `voice`, `fps`, `formats` and the cast's
+  yours: the narrator's `voice`, `fps`, `formats` and the cast's
   other lines stay as they are, and so does a voice a character has
   already.
   - The voices that speak English (the tool's, Kokoro; any other name
@@ -113,7 +113,7 @@ out, for the report.
 
 Run these from the repo's folder.
 
-1. `npm run -s video -- new videos/<name>`. This is the check: the maker's
+1. `npm run -s video -- new videos/<name>`. This is the check: the plugin's
    first call reads the scenario and refuses one that breaks the format,
    with the file, the place and the reason. Fix it and run again, until it
    writes `video.yaml` and names no speaker without a voice.

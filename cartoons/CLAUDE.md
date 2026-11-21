@@ -2,13 +2,15 @@
 
 Simple 2D cartoons with talking characters. Each cartoon is written as a
 scenario; the video tool (`../ai_videos`, a repo of its own) turns it into
-a video with a spoken voice, offline and with no AI. The plan is RayCraft's
-`docs/plans/anime.md`.
+a video with a spoken voice, offline and with no AI. The plan is the tool's
+`docs/plans/animation-server.md`.
 
 ## Where things are
 
+- `package.json`: names this project's plugin for the tool (`"ai-videos":
+  { "plugin": "./src/plugin.ts" }`).
 - `videos/project.yaml`: what every cartoon shares, read by the tool (the
-  maker's command, the narrator's voice, the cast's voices, the format).
+  narrator's voice, the cast's voices, the format).
 - `videos/<name>/`: one cartoon.
   - `scenario.yaml`: its source, written by hand or by an AI session.
   - `video.yaml`: the tool's script (the spoken lines and their cues). The
@@ -19,18 +21,19 @@ a video with a spoken voice, offline and with no AI. The plan is RayCraft's
   The `episode` skill (`.claude/skills/episode/`) turns a story into a
   scenario and a video; it may add a new character's voice to the
   project file's `cast`, and nothing else there.
-- `src/`: the maker, the command the tool runs to get a cartoon's clip.
-  - `scenario.ts`: the scenario's schema and its checks.
-  - `timeline.ts`: beats and lines as the clip's events and texts, and
-    which moment each frame shows, with whose mouth is open and how wide.
+- `src/`: the cartoon plugin, the module the tool runs to get a cartoon's
+  clip (the tool's `AGENTS.md`, "Plugins").
+  - `plugin.ts`: the plugin itself: the scene `cartoon`, its source
+    `scenario.yaml`, its commands, and the three functions below.
+  - `scenario.ts`: the scenario's schema and its checks, and the commands
+    a beat may do (`COMMANDS`), each with a description and an example.
+  - `timeline.ts`: beats and lines as the clip's events and texts, at the
+    scenario's own pace (the plan).
   - `picture.ts`: one moment's picture, as an SVG: who stands where, facing
     which way, with the arm, the eyes and the mouth how.
-  - `draw.ts`: the frames as pixels (resvg), given to the tool's encoder.
-  - `call.ts`, `request.ts`: the tool's call to the maker, and its request.
-  - `make.ts`: the maker itself.
-  - What every maker does the same comes from the tool, `ai-videos/frames`
-    (its `src/frames.ts`; its `AGENTS.md`, "The maker's shared code"):
-    which moment each frame shows, the encoder, and the clip's data written.
+  - The rest is the tool's, the same for every plugin: reading the file,
+    which moment each frame shows, the SVG turned into pixels, the encoder,
+    and the clip's data written.
 
 ## Running
 
@@ -58,19 +61,19 @@ each beat begins, how long it lasts, and how long a move's motion takes
 (the request, `clips/<name>-landscape.request.json`). With each spoken
 line it gives the line's speaker and a mouth track, taken from the voice's
 loudness: how open the mouth is in each frame the line sounds in, 0 closed
-to 1 wide. The maker then:
+to 1 wide. The tool then:
 
 1. finds each frame's moment: which beat, how far through its move, the
    time in the clip and in the beat, and whose mouth is open, how wide
-   (`moments`, `timeline.ts`: the tool's, a span being a beat);
-2. writes that moment's picture as an SVG (`frameSvg`, `picture.ts`);
-3. turns the SVG into pixels with resvg, and gives them to the tool's
-   encoder, which pipes them to ffmpeg (`draw.ts`). A frame whose SVG is
-   the one before it is not drawn again.
+   (its `moments`, a span being a beat);
+2. asks the plugin for that moment's picture as an SVG (`frameSvg`,
+   `picture.ts`);
+3. turns the SVG into pixels with resvg, and pipes them to ffmpeg. A frame
+   whose SVG is the one before it is not drawn again.
 
 A walk goes from the character's place to its end, slow at both ends, in
 a whole number of steps: the character rises a little in the middle of
-each. Its look is the maker's (`STEP`, `BOUNCE` in `picture.ts`), not the
+each. Its look is the plugin's (`STEP`, `BOUNCE` in `picture.ts`), not the
 scenario's. So is the look of everything below: the scenario names a
 move or a pose, and `picture.ts` holds its numbers.
 
@@ -112,7 +115,7 @@ cast:             # each character's voice, by its name in the scenarios
 ```
 
 - A scenario line's `who` goes through the tool and comes back: the
-  maker's step one writes a character's text with `speaker: <who>` (the
+  plugin's plan gives a character's text with `speaker: <who>` (the
   narrator's with none), `new` writes that into the line of `video.yaml`,
   the tool says the line in the cast's voice for that speaker, and the
   request names the speaker with the line's mouth track.
@@ -197,7 +200,7 @@ scenes:
   list of shapes. Parts are drawn in the order written. Their shapes are
   measured from the point between the character's feet, so `[0, -170]` is
   170 pixels above the ground. Write a character **facing right**: a turn
-  mirrors it. Three names mean something to the maker:
+  mirrors it. Three names mean something to the plugin:
   - `mouth` is the part that talks: write it closed, as a flat shape,
     with room under it for the jaw to drop (about 0.9 of its width). On a
     character with no `mouth` part nothing opens.
@@ -246,14 +249,14 @@ scenes:
 ## Rules
 
 - **Names** are lowercase letters, digits and dashes, a letter first.
-- **The scenario is the only source.** The maker keeps no settings of its
+- **The scenario is the only source.** The plugin keeps no settings of its
   own, and nothing made is edited by hand.
-- **The maker's step one draws nothing** and gives the same data for the
-  same scenario: the tool runs it on every `make`.
-- **Of the tool's sources, only the shared maker module is imported**
-  (`ai-videos/frames`, the one its `package.json` exports; it needs none of
-  the tool's packages). `call.ts` reads the tool's call itself, and
-  `request.ts` checks its request.
-- **A frame's picture is a pure function** of the scenario and the moment:
+- **The plan draws nothing** and gives the same data for the same
+  scenario: the tool asks for it on every `make`.
+- **Of the tool's sources, only the modules its `package.json` exports
+  are imported**: `ai-videos/plugin` for the plugin's types, and in the
+  tests `ai-videos/frames`. Both need none of the tool's packages.
+- **The plugin's code is pure**: no Node API (the tool reads the files),
+  and a frame's picture is a function of the scenario and the moment alone:
   no clock, no random number, no font of the machine (a picture holds no
-  text; captions are the tool's).
+  text; captions are the tool's). So the same code can draw in a web page.

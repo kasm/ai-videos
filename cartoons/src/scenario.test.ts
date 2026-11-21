@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
-import { checkScenario, moveOf, readScenario } from "./scenario.ts";
+import { parse } from "yaml";
+import { checkScenario, moveOf } from "./scenario.ts";
 
 const hello = path.join(import.meta.dirname, "../videos/hello/scenario.yaml");
+/** A scenario file, read as the tool reads it for the plugin. */
+const readScenario = (file: string) => checkScenario(parse(readFileSync(file, "utf8")), file);
 
 /** The smallest scenario, as parsed YAML; each test breaks one thing in a copy of it. */
 const small = () => ({
@@ -42,10 +46,6 @@ test("the smallest scenario passes, and what it leaves out is empty", () => {
   const s = checkScenario(small(), "small.yaml");
   assert.deepEqual(s.backgrounds.meadow!.shapes, []);
   assert.deepEqual(s.scenes[0]!.beats[1]!.says, []);
-});
-
-test("a missing file is named", () => {
-  assert.throws(() => readScenario(path.join(import.meta.dirname, "nothing/scenario.yaml")), /no scenario at .*nothing/);
 });
 
 test("a key the format does not have is refused, with the file's name", () => {

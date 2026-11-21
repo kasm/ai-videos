@@ -1,7 +1,7 @@
 // A cartoon's scenario: the hand-written source of one episode (CLAUDE.md, "The scenario").
-// Everything the maker draws and says comes from it; nothing here draws.
-import { readFileSync } from "node:fs";
-import { parse } from "yaml";
+// Everything the plugin draws and says comes from it; nothing here draws. The tool reads the file
+// and gives it here parsed, so this needs no Node API, as the picture needs none.
+import type { Command } from "ai-videos/plugin";
 import { z } from "zod";
 
 /** The stage every scenario is written for, px: x right and y down from the top-left corner. */
@@ -40,6 +40,39 @@ const Background = z.strictObject({ fill: colour, shapes: z.array(Shape).default
 const Line = z.strictObject({ who: name, text: z.string().trim().min(1) });
 
 /**
+ * What a beat may do, each described once (the tool's AGENTS.md, "Plugins"): what it takes, what
+ * it does, and an example. A beat's checks come from these; so will the tool's prompt.
+ */
+export const COMMANDS = {
+  walk: {
+    description: "The character goes from where it stands to `to`, a point on the stage, in a whole number of steps. A walk turns nobody: to walk back, turn first.",
+    example: { who: "pip", to: [960, 880] },
+    schema: z.strictObject({ who: name, to: point }),
+  },
+  turn: {
+    description: "The character turns to face the other way, and stays so. About half a second is a natural `takes`.",
+    example: { who: "pip" },
+    schema: z.strictObject({ who: name }),
+  },
+  jump: {
+    description: "The character hops in place `times` times (1 when left out), and ends on the ground. About 0.6 seconds a hop is natural.",
+    example: { who: "pip", times: 2 },
+    schema: z.strictObject({ who: name, times: z.number().int().positive().default(1) }),
+  },
+  pose: {
+    description:
+      "The poses that change as the beat begins, by character: stand (the arm hangs), wave (raised and swinging) or point (held straight forward). A pose stays until a later beat of the scene changes it; wave and point need the character's arm.",
+    example: { pip: "wave", mo: "stand" },
+    schema: z.record(name, Pose),
+  },
+  background: {
+    description: "The background from this beat on, in its scene, by name. Everyone stays where they are.",
+    example: "night",
+    schema: name,
+  },
+} satisfies Record<string, Command>;
+
+/**
  * A beat is one moment of the clip, and one event for the video tool: it takes `takes` seconds at
  * the scenario's own pace. With a `walk`, a `turn` or a `jump` (one of them) it is a move; without
  * one it is a hold. As it begins it may change characters' poses and the background.
@@ -47,16 +80,11 @@ const Line = z.strictObject({ who: name, text: z.string().trim().min(1) });
 const Beat = z.strictObject({
   name,
   takes: z.number().positive(),
-  /** The character goes from where it stands to `to`. */
-  walk: z.strictObject({ who: name, to: point }).optional(),
-  /** The character turns to face the other way, and stays so. */
-  turn: z.strictObject({ who: name }).optional(),
-  /** The character hops in place, `times` times. */
-  jump: z.strictObject({ who: name, times: z.number().int().positive().default(1) }).optional(),
-  /** The poses that change as the beat begins, by character: each stays until a later beat changes it. */
-  pose: z.record(name, Pose).default({}),
-  /** The background from this beat on, in its scene. */
-  background: name.optional(),
+  walk: COMMANDS.walk.schema.optional(),
+  turn: COMMANDS.turn.schema.optional(),
+  jump: COMMANDS.jump.schema.optional(),
+  pose: COMMANDS.pose.schema.default({}),
+  background: COMMANDS.background.schema.optional(),
   says: z.array(Line).default([]),
 });
 
@@ -139,26 +167,9 @@ export const Scenario = z
   });
 export type Scenario = z.infer<typeof Scenario>;
 
-/** Checks a scenario already parsed from YAML. `file` is only named in the error. */
+/** Checks a scenario already parsed from YAML. `file` is only named in the error, with every reason. */
 export function checkScenario(raw: unknown, file: string): Scenario {
   const result = Scenario.safeParse(raw);
   if (!result.success) throw new Error(`${file} is not a scenario:\n${z.prettifyError(result.error)}`);
   return result.data;
-}
-
-/** Reads and checks a scenario file. An error names the file and every reason. */
-export function readScenario(file: string): Scenario {
-  let text: string;
-  try {
-    text = readFileSync(file, "utf8");
-  } catch {
-    throw new Error(`no scenario at ${file}`);
-  }
-  let raw: unknown;
-  try {
-    raw = parse(text);
-  } catch (e) {
-    throw new Error(`${file} is not YAML: ${(e as Error).message}`);
-  }
-  return checkScenario(raw, file);
 }

@@ -1,5 +1,5 @@
 # What every cartoon here shares, read by the video tool (its AGENTS.md, "The project file").
-maker: node ../src/make.ts   # draws a cartoon's clip from its scenario; the tool runs it in this folder
+# The plugin that draws them is named in ../package.json.
 voice: af_heart              # the narrator's, and any line that names no speaker
 cast:                        # each character's voice, by its name in the scenarios
   pip: am_puck
