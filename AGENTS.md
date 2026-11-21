@@ -50,7 +50,7 @@ video's folder. The TTS cache always stays here.
 | `videos/project.yaml`, `videos/make-clip.ts` | The folder's videos as a project (see Projects): its project file, and its maker, which draws clip-demo's square. |
 | `videos/clip-demo/` | The `clip` scene's demo: a made clip (`make: square`); `make clip-demo` writes its `clips/`, `build/` and `out/`. |
 | `scenes/<name>/scene.html` | Reusable scene templates (HyperFrames sub-compositions with `{{placeholders}}`): `page-scroll`, `clip`. |
-| `src/` | The pipeline: `script` → `clip` → `tts` → `timeline` (and `fit` with `mouth`, for `request`) → `compose` (with `bundle`) → `render` → `srt`; `setup`, what the commands need on the disk; `new`, a first script; `frames`, what a maker draws with (see The maker's shared code). |
+| `src/` | The pipeline: `script` → `clip` → `tts` → `timeline` (and `fit` with `mouth`, for `request`) → `compose` (with `bundle`) → `render` → `srt`; `setup`, what the commands need on the disk; `new`, a first script; `frames`, what a maker draws with (see The maker's shared code); `plugin` and `host`, a project's plugin and the process it runs in (see Plugins). |
 | `build/` | Generated HyperFrames projects. Never edit; regenerated on every run. |
 | `out/` | Finished videos and subtitles. |
 | `.cache/tts/` | Narration audio, keyed by text, voice and speed. |
@@ -122,18 +122,58 @@ made parts out of git; nothing made is edited by hand.
 | --- | --- | --- | --- |
 | `video.yaml` | The script. | You or an AI; `new` writes a first one, a line per caption, each cued to its event. | yes |
 | `page.html`, `page.css`, `assets/` | A `page-scroll` scene's page. | You or an AI. | yes |
-| `clips/<scene>-<format>.json` | A made clip's data: its events and texts, at its own pace. | The maker, step one. | no |
+| `clips/<scene>-<format>.json` | A made clip's data: its events and texts, at its own pace. | The plugin or the maker, step one. | no |
 | `clips/<scene>-<format>.request.json` | The clip fitted to the voice (see Fitting). | `make`, as `request` does. | no |
-| `clips/<scene>-<format>.mp4` | The clip drawn to the request; its JSON is written again. | The maker, step two. | no |
+| `clips/<scene>-<format>.mp4` | The clip drawn to the request; its JSON is written again. | The plugin or the maker, step two. | no |
 | `build/<format>/` | The HyperFrames project. | `make`, as `compose` does. | no |
 | `out/<name>-<format>.mp4`, `out/<name>.srt` | The finished video and its subtitles. | `make`, as `build` does. | no |
 
-A made clip is a clip scene with `make: <name>` in place of `clip:`, the name of what the maker
-draws (in RayCraft, a tutorial); its files are the `clips/` ones above, by the scene's id. A clip
-scene with `clip:` paths plays a clip drawn elsewhere, as before.
+A made clip is a clip scene with `make: <name>` in place of `clip:`, the name of what the plugin
+or the maker draws (in RayCraft, a tutorial); its files are the `clips/` ones above, by the scene's
+id. A clip scene with `clip:` paths plays a clip drawn elsewhere, as before.
+
+### Plugins
+
+A project's plugin draws its made clips: a module the tool runs in a child process of its own
+(`src/host.ts`), in place of a maker's command line. `cartoons` has one (its `src/plugin.ts`);
+RayCraft keeps its maker.
+
+- **Where:** the nearest `package.json` above the video folder names it, as a path from that
+  folder: `"ai-videos": { "plugin": "./src/plugin.ts" }` (`pluginOf`, `src/make.ts`). Its project
+  file then names no `maker`: one with both is refused. A `package.json` with no `"ai-videos"` key
+  (the tool's own, RayCraft's) leaves the clips to the maker.
+- **What it is:** the module's default export, `Plugin` in `src/plugin.ts`, which a project
+  imports for its types alone (`import type { Plugin } from "ai-videos/plugin"`):
+  - `scene`: the scene it draws (`cartoon`).
+  - `source`: its source's file name. A made clip's `make: <name>` names the folder beside the
+    video's that holds it, `<name>/<source>`: for a cartoon, the video's own `scenario.yaml`.
+  - `stage`: the size its picture is drawn at. A format of another shape is refused.
+  - `commands`: what its source's beats may do, by name, each described once: a `description`,
+    an `example` and a `schema`. A schema is any library's with the Standard Schema and Standard
+    JSON Schema interfaces (`~standard.validate`, `~standard.jsonSchema`; standardschema.dev), as
+    zod 4's have. A plugin whose example fails its schema, or whose schema writes no JSON Schema,
+    is refused when it loads.
+  - `check(raw, file)`: the source, read and parsed from YAML by the host, checked into the
+    plugin's own type. An error names the file and every reason.
+  - `plan(source)`: its events and texts at its own pace, as step one writes them.
+  - `frame(source, moment, size)`: a moment (`moments`, The maker's shared code) as an SVG of the
+    whole stage, `width` × `height` pixels.
+
+  Each function is pure: no Node APIs, no clock, no unseeded randomness. So a frame is the same in
+  every run, and the same code can draw in a web page.
+- **What the host does** is the rest of both steps, the same for every plugin. Step one: the
+  source read, checked and planned, and the plan written as the clip's data. Step two: the
+  request's spans checked against the plan's events, each moment's SVG turned into pixels by resvg
+  (no fonts: a picture holds no text) and encoded (`encoder`, crf 17), and the data written again:
+  each event at its span, the texts moved with their beats. A frame whose SVG is the one before is
+  not drawn again.
+- **The process:** `make` and `new` start the host at their first call, in the `package.json`'s
+  folder, and close it when they are done. Each call is a message, answered before the next; one
+  that fails says why, and `make` stops there. `src/host.test.ts` shows each case.
 
 ### The maker
 
+A project with no plugin draws its made clips with a maker.
 `make` runs the project file's `maker` in the project file's folder, through the shell, with a
 call appended: the name, a format, and every file as an absolute path. A made clip takes two calls
 per format:
@@ -166,9 +206,10 @@ one that draws by other means, follows those alone.
 
 - **From another repository** the tool is a folder package: `"ai-videos": "file:<path to this
   folder>"` in the project's `package.json`, then `import { moments, encoder, writeClipData }
-  from "ai-videos/frames"`. It is the only module `package.json` exports, and it imports nothing
-  but Node's own modules, so the project needs none of the tool's packages. Node 24 runs it as it
-  is written. The tool's own maker imports the file (`../src/frames.ts`).
+  from "ai-videos/frames"`. It and `ai-videos/plugin` (types alone, see Plugins) are the modules
+  `package.json` exports, and they import nothing but Node's own modules, so the project needs none
+  of the tool's packages. Node 24 runs them as they are written. The tool's own maker imports the
+  file (`../src/frames.ts`).
 - **`moments(request)`** gives one moment for each of the request's `frames`, in order:
   - `span`: which of the request's spans the frame is in, counted from 0. Each span begins on
     the frame its `at` names; a request whose spans do not follow each other on whole frames is
@@ -203,9 +244,9 @@ one that draws by other means, follows those alone.
 ### `new`
 
 `npm run video -- new <video>` begins a video with no AI (`src/new.ts`). The folder needs a
-project file with a maker beside it; the folder itself may not exist yet.
+plugin, or a project file with a maker beside it; the folder itself may not exist yet.
 
-1. It runs the maker's step one for the clip, in the project's first format (or `--format`'s),
+1. It runs the plugin's or the maker's step one for the clip, in the project's first format (or `--format`'s),
    into the folder's `clips/`. The clip is the folder's name, or `--make <name>`'s.
 2. It writes `video.yaml`: a title (the folder's name) and one made clip scene, its id the clip's
    name, with a line per text of the clip's data, in time order. Each line is cued to the event
@@ -224,11 +265,11 @@ script: write its lines by hand. `new` speaks and draws nothing, so it needs not
 `npm run video -- make <video>` makes the whole video in five steps, in this order, and stops at
 the first that fails (`src/cli.ts`, `make`; the calls are `src/make.ts`):
 
-1. The data: the maker's step one for each made clip, in each format.
+1. The data: the plugin's or the maker's step one for each made clip, in each format.
 2. The fit: the voice spoken (from the cache when a line has not changed) and measured, and each
    made clip fitted to it, as `request` does: the table, and `clips/<scene>-<format>.request.json`.
    `--fit` stops here, in seconds, to try the lines and `timing` before anything is drawn.
-3. The drawing: the maker's step two for each made clip, in each format.
+3. The drawing: the plugin's or the maker's step two for each made clip, in each format.
 4. The checks: `build/<format>/` composed and checked, as `check` does. A made clip not drawn to its
    request, or a check's error, stops it.
 5. The video: each format rendered, at the script's loudness, into `out/`, with the subtitles.

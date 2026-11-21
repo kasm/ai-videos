@@ -7,7 +7,7 @@ import { checkPages } from "./bundle.ts";
 import { loadClips, type SceneClips } from "./clip.ts";
 import { compose } from "./compose.ts";
 import { drawnTo, fitClip, requestDocument, requestFileOf, requestText, type Fit, type FitLine } from "./fit.ts";
-import { commandLine, madeScenes, makerCalls, makerOf, runShell } from "./make.ts";
+import { drawerOf, madeScenes, makerCalls, type Drawer } from "./make.ts";
 import type { MakerCall } from "./maker.ts";
 import { newVideo } from "./new.ts";
 import { hyperframes, normalizeLoudness, renderProject } from "./render.ts";
@@ -196,35 +196,51 @@ async function render(
 }
 
 /**
- * `make`: the maker's data for each made clip, the fit to the voice, the maker's drawing, check and
- * build, in that order, stopping at the first that fails. All it writes is in the video's folder
- * (clips/, build/, out/), but for the voice cache, which stays in the tool.
+ * `make`: the data for each made clip, the fit to the voice, the drawing, check and build, in that
+ * order, stopping at the first that fails; the project's plugin or its maker writes the data and
+ * draws. All it writes is in the video's folder (clips/, build/, out/), but for the voice cache,
+ * which stays in the tool.
  */
 async function make(dir: string, arg: string, only: string | undefined, opts: { fit: boolean; draft: boolean }) {
   const video = await loadVideo(dir);
   await checkPages(video);
   const formats = formatsOf(video, only);
-  const maker = makerOf(video);
+  const drawer = await drawerOf(video);
+  try {
+    await makeWith(drawer, video, dir, arg, only, formats, opts);
+  } finally {
+    drawer?.close();
+  }
+}
+
+/** make's five steps, with what draws its made clips (none when it has none). */
+async function makeWith(
+  drawer: Drawer | undefined,
+  video: LoadedVideo,
+  dir: string,
+  arg: string,
+  only: string | undefined,
+  formats: FormatName[],
+  opts: { fit: boolean; draft: boolean },
+) {
   const made = new Set(madeScenes(video).map((s) => s.id));
   const steps = opts.fit ? 2 : 5;
   const begin = (n: number, what: string) => log(`\n== ${n}/${steps}: ${what}\n`);
 
-  const callMaker = async (step: MakerCall["step"]) => {
-    if (!maker) return log("No made clip.");
+  const callDrawer = async (step: MakerCall["step"]) => {
+    if (!drawer) return log("No made clip.");
     for (const { scene, call } of makerCalls(video, formats, step)) {
-      const line = commandLine(maker.maker, call);
-      log(`${line}\n  (in ${maker.dir})`);
-      const code = await runShell(line, maker.dir);
-      if (code !== 0) {
+      const failed = await drawer.run(call, log);
+      if (failed !== undefined) {
         const what = step === "data" ? "writing its data" : "drawing it";
-        throw new Error(`\nStopped: the maker failed on scene "${scene}" (${call.format}), ${what}, with exit code ${code}; it says why above.`);
+        throw new Error(`\nStopped: the ${drawer.kind} failed on scene "${scene}" (${call.format}), ${what}${failed}`);
       }
     }
   };
 
   begin(1, "the made clips' data");
-  if (maker) await mkdir(path.join(video.dir, "clips"), { recursive: true });
-  await callMaker("data");
+  if (drawer) await mkdir(path.join(video.dir, "clips"), { recursive: true });
+  await callDrawer("data");
 
   begin(2, "the fit to the voice");
   // Requests for made clips only: make draws no other, and one drawn elsewhere may lie outside the folder.
@@ -233,7 +249,7 @@ async function make(dir: string, arg: string, only: string | undefined, opts: { 
   if (opts.fit) return;
 
   begin(3, "the made clips, drawn to the voice");
-  await callMaker("draw");
+  await callDrawer("draw");
 
   begin(4, "check");
   const { timeline, projects, undrawn } = await prepare(dir, only, arg, (v) => path.join(v.dir, "build"));

@@ -9,13 +9,15 @@
   "license": "UNLICENSED",
   "type": "module",
   "exports": {
-    "./frames": "./src/frames.ts"
+    "./frames": "./src/frames.ts",
+    "./plugin": "./src/plugin.ts"
   },
   "private": "true",
   "dependencies": {
     "@fontsource/inter": "5.3.0",
     "@fontsource/jetbrains-mono": "5.3.0",
     "@huggingface/transformers": "3.8.1",
+    "@resvg/resvg-js": "2.6.2",
     "gsap": "3.15.0",
     "hyperframes": "0.9.58",
     "kokoro-js": "1.2.1",

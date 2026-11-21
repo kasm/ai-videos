@@ -1,10 +1,14 @@
-// `make`'s calls to a project's maker (AGENTS.md, "The maker"): which calls a video needs, the
-// command line each becomes, and running one. cli.ts runs make's steps in order.
-import { spawn } from "node:child_process";
+// `make`'s calls to what draws a project's clips: its plugin (AGENTS.md, "Plugins"), or its maker
+// (AGENTS.md, "The maker"). Which calls a video needs, and running one: a plugin's in its host
+// process (host.ts), a maker's as a command line. cli.ts runs make's steps in order.
+import { fork, spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { madeFiles } from "./clip.ts";
+import type { Job, Reply } from "./host.ts";
 import { MakerCall, makerArgs } from "./maker.ts";
-import { FORMATS, PROJECT_FILE, type FormatName, type LoadedVideo } from "./script.ts";
+import { FORMATS, PROJECT_FILE, type FormatName, type LoadedProject, type LoadedVideo } from "./script.ts";
 
 /** The video's made clips: each clip scene with `make:`, by its id and what the maker draws. */
 export function madeScenes(video: LoadedVideo): { id: string; name: string }[] {
@@ -61,4 +65,141 @@ export function runShell(line: string, dir: string): Promise<number> {
     child.on("error", reject);
     child.on("close", (code) => resolve(code ?? 1));
   });
+}
+
+/** A project's plugin: its file, and the package.json that names it, in the project's folder. */
+export interface PluginFile {
+  file: string;
+  dir: string;
+  package: string;
+}
+
+/**
+ * The plugin the project of a video folder names: the nearest package.json above the folder, its
+ * `"ai-videos": { "plugin": <a path from there> }`. Undefined when that package.json names none,
+ * or there is no package.json above it.
+ */
+export async function pluginOf(videoDir: string): Promise<PluginFile | undefined> {
+  for (let dir = path.dirname(path.resolve(videoDir)); ; dir = path.dirname(dir)) {
+    const file = path.join(dir, "package.json");
+    let text: string | undefined;
+    try {
+      text = await readFile(file, "utf8");
+    } catch (e) {
+      if ((e as { code?: string }).code !== "ENOENT") throw e;
+    }
+    if (text !== undefined) {
+      let pkg: { "ai-videos"?: { plugin?: unknown } };
+      try {
+        pkg = JSON.parse(text);
+      } catch (e) {
+        throw new Error(`${file} is not JSON: ${(e as Error).message}`);
+      }
+      if (pkg["ai-videos"] === undefined) return undefined;
+      const named = pkg["ai-videos"]?.plugin;
+      if (typeof named !== "string" || named === "") throw new Error(`${file}: "ai-videos": { "plugin" } is the plugin's file, a path from that folder`);
+      const plugin = path.resolve(dir, named);
+      if (!existsSync(plugin)) throw new Error(`${file} names the plugin ${named}, and there is no ${plugin}`);
+      return { file: plugin, dir, package: file };
+    }
+    if (path.dirname(dir) === dir) return undefined;
+  }
+}
+
+/** What draws a video's made clips: its project's plugin or its maker, one call at a time. */
+export interface Drawer {
+  kind: "plugin" | "maker";
+  /** Runs one call, its progress logged: undefined when it is done, else why it failed, as the end of a sentence. */
+  run(call: MakerCall, log: (msg: string) => void): Promise<string | undefined>;
+  /** Ends what the drawer started: a plugin's process. */
+  close(): void;
+}
+
+/** The maker of a project file, run through the shell in the project file's folder. */
+export function makerDrawer({ maker, dir }: { maker: string; dir: string }): Drawer {
+  return {
+    kind: "maker",
+    async run(call, log) {
+      const line = commandLine(maker, call);
+      log(`${line}\n  (in ${dir})`);
+      const code = await runShell(line, dir);
+      return code === 0 ? undefined : ` with exit code ${code}; it says why above.`;
+    },
+    close() {},
+  };
+}
+
+/** The host process, run by this file's own Node. */
+const HOST = path.join(import.meta.dirname, "host.ts");
+
+/** The plugin's host, started in the project's folder: each reply is waited for, one at a time. */
+function startHost(plugin: PluginFile) {
+  // No execArgv: what this process was started with (a test runner's flags) is not the host's.
+  const child = fork(HOST, [plugin.file], { cwd: plugin.dir, execArgv: [], stdio: ["ignore", "inherit", "inherit", "ipc"] });
+  let waiting: ((reply: Reply) => void) | undefined;
+  let gone: string | undefined;
+  const end = (why: string) => {
+    gone ??= why;
+    waiting?.({ error: gone });
+  };
+  child.on("message", (reply: Reply) => waiting?.(reply));
+  child.on("error", (e) => end(`its process failed: ${e.message}`));
+  child.on("exit", (code) => end(`its process ended with exit code ${code}`));
+  const next = () => new Promise<Reply>((resolve) => (gone ? resolve({ error: gone }) : (waiting = resolve)));
+  return {
+    ready: next(),
+    send(job: Job): Promise<Reply> {
+      if (gone) return Promise.resolve({ error: gone });
+      const reply = next();
+      child.send(job);
+      return reply;
+    },
+    close() {
+      if (child.connected) child.disconnect();
+    },
+  };
+}
+
+/**
+ * The project's plugin, run in its own process from the first call on. `sources` is the folder that
+ * holds the video folders: a made clip's source is `<sources>/<make>/<the plugin's source file>`. A
+ * project file with a maker as well is refused: one of the two draws the clips.
+ */
+export function pluginDrawer(plugin: PluginFile, project: LoadedProject | undefined, sources: string): Drawer {
+  if (project?.script.maker) {
+    throw new Error(`${plugin.package} names a plugin and ${project.file} a maker: one of them draws the project's clips, so remove the maker`);
+  }
+  let host: ReturnType<typeof startHost> | undefined;
+  let scene = "";
+  const shown = (file: string) => path.relative(plugin.dir, file);
+  return {
+    kind: "plugin",
+    async run(call, log) {
+      if (!host) {
+        host = startHost(plugin);
+        const ready = await host.ready;
+        if (!("ready" in ready)) return `: ${"failed" in ready ? ready.failed : "error" in ready ? ready.error : "it did not start"}`;
+        scene = ready.ready.scene;
+        log(`Plugin: ${scene}, ${plugin.file} (its commands: ${ready.ready.commands.join(", ") || "none"})`);
+      }
+      log(`${scene}: ${call.step === "data" ? `the data of ${call.name}` : `${call.name}, drawn to ${path.basename(call.request)}`} (${call.format})`);
+      const reply = await host.send({ call, sources });
+      if (!("done" in reply)) return `: ${"error" in reply ? reply.error : "it did not answer"}`;
+      const { frames, drawn, seconds } = reply.done;
+      if (call.step === "data") log(`  ${shown(call.data)}`);
+      else log(`  ${shown(call.clip)}: ${frames} frames (${drawn} drawn) in ${seconds?.toFixed(1)} s; and its JSON`);
+      return undefined;
+    },
+    close() {
+      host?.close();
+    },
+  };
+}
+
+/** What draws the video's made clips: its project's plugin, else its maker. Undefined when it has none. */
+export async function drawerOf(video: LoadedVideo): Promise<Drawer | undefined> {
+  if (madeScenes(video).length === 0) return undefined;
+  const plugin = await pluginOf(video.dir);
+  if (plugin) return pluginDrawer(plugin, video.project, path.dirname(path.resolve(video.dir)));
+  return makerDrawer(makerOf(video)!);
 }

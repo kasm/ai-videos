@@ -2,9 +2,14 @@
 
 ## Now
 
-- Plan written 2026-11-21, from the requirements agreed in chat that day;
-  nothing built. Three repos: this tool, `cartoons` (`d:\m\web\cartoons`)
-  and RayCraft (`d:\m\web\RayCraft`). **Next: step 1.**
+- Plan written 2026-11-21, from the requirements agreed in chat that day.
+  Three repos: this tool, `cartoons` (`d:\m\web\cartoons`) and RayCraft
+  (`d:\m\web\RayCraft`).
+- Step 1 done 2026-11-21. Checked: `make` of `sundown` and
+  `the-shy-visitor` through the plugin gave the same `.frames` as the old
+  maker drawing their requests (580 and 1277 frames); `npm test` and
+  `npm run typecheck` pass in both repos; RayCraft's `water-switch` made
+  with the same request and `.frames`. **Next: step 2.**
 
 
 ## Goal
