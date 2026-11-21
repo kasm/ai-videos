@@ -7,11 +7,6 @@
   "ai-videos": {
     "plugin": "./src/plugin.ts",
     "voice": "af_heart",
-    "cast": {
-      "pip": "am_puck",
-      "mo": "bf_emma",
-      "tuk": "bm_fable"
-    },
     "fps": 30
   },
   "scripts": {

@@ -5,55 +5,60 @@ import { checkScenario } from "./scenario.ts";
 
 const scenario = checkScenario(
   {
-    characters: {
-      pip: {
-        parts: {
-          body: [{ shape: "rect", at: [0, -100], size: [100, 200], round: 50, fill: "#f2a33a" }],
-          mouth: [{ shape: "ellipse", at: [0, -90], size: [40, 10], fill: "#5b2333" }],
-        },
-      },
-      mo: {
-        parts: {
-          body: [{ shape: "ellipse", at: [0, -120], size: [160, 240], fill: "#6aa9e9" }],
-          mouth: [{ shape: "rect", at: [0, -100], size: [60, 12], fill: "#27324f" }],
-        },
-      },
-    },
-    backgrounds: {
-      meadow: { fill: "#bfe3ff", shapes: [{ shape: "rect", at: [960, 950], size: [1920, 260], fill: "#7cc36a" }] },
-      night: { fill: "#101030" },
-    },
     scenes: [
       {
         background: "meadow",
-        places: { pip: [-200, 900] },
+        places: { pip: "off-left" },
         beats: [
-          { name: "walks-in", takes: 4, walk: { who: "pip", to: [960, 900] } },
+          { name: "walks-in", takes: 4, walk: { who: "pip", to: "middle" } },
           { name: "stops", takes: 3 },
         ],
       },
-      { background: "night", places: { pip: [300, 800], mo: [900, 800] }, beats: [{ name: "later", takes: 2 }] },
+      { background: "night", places: { pip: "left", mo: "middle" }, beats: [{ name: "later", takes: 2 }] },
     ],
   },
   "test",
+  {
+    file: "library",
+    raw: {
+      characters: {
+        pip: {
+          parts: {
+            body: [{ shape: "rect", at: [0, -100], size: [100, 200], round: 50, fill: "#f2a33a" }],
+            mouth: [{ shape: "ellipse", at: [0, -90], size: [40, 10], fill: "#5b2333" }],
+          },
+        },
+        mo: {
+          parts: {
+            body: [{ shape: "ellipse", at: [0, -120], size: [160, 240], fill: "#6aa9e9" }],
+            mouth: [{ shape: "rect", at: [0, -100], size: [60, 12], fill: "#27324f" }],
+          },
+        },
+      },
+      backgrounds: {
+        meadow: { fill: "#bfe3ff", shapes: [{ shape: "rect", at: [960, 950], size: [1920, 260], fill: "#7cc36a" }] },
+        night: { fill: "#101030" },
+      },
+    },
+  },
 );
 /** A moment with nothing going on: the clip's first instant, where nobody blinks yet. */
 const still = { progress: 0, time: 0, into: 0, mouths: {} };
 const pipAt = (beat: number, progress: number) => stagingAt(scenario, { ...still, beat, progress }).characters[0]!.at;
 
 test("a walk goes from the character's place to its end, and the beats after find it there", () => {
-  assert.deepEqual(pipAt(0, 0), [-200, 900]);
-  assert.deepEqual(pipAt(0, 1), [960, 900]);
-  assert.deepEqual(pipAt(1, 0), [960, 900]);
+  assert.deepEqual(pipAt(0, 0), [-250, 880]);
+  assert.deepEqual(pipAt(0, 1), [960, 880]);
+  assert.deepEqual(pipAt(1, 0), [960, 880]);
 });
 
 test("halfway through, the walker is halfway, and never below the ground", () => {
   const [x, y] = pipAt(0, 0.5);
-  assert.ok(Math.abs(x - 380) < 1e-6, `x is ${x}`);
-  assert.ok(y <= 900 && y >= 900 - 16, `y is ${y}`);
-  // Between two steps the character is up: 1160 px is 8 steps, so 1/16 of the way is a step's middle.
+  assert.ok(Math.abs(x - 355) < 1e-6, `x is ${x}`);
+  assert.ok(y <= 880 && y >= 880 - 16, `y is ${y}`);
+  // Between two steps the character is up: 1210 px is 8 steps, so 1/16 of the way is a step's middle.
   const p = Math.acos(1 - 2 / 16) / Math.PI; // where the eased way is 1/16
-  assert.ok(Math.abs(pipAt(0, p)[1] - (900 - 16)) < 1e-6);
+  assert.ok(Math.abs(pipAt(0, p)[1] - (880 - 16)) < 1e-6);
 });
 
 test("a later scene has its own background and places", () => {
@@ -61,8 +66,8 @@ test("a later scene has its own background and places", () => {
   assert.equal(staging.background.fill, "#101030");
   // Each as written: facing right, the arm down, the eyes open.
   assert.deepEqual(staging.characters, [
-    { name: "pip", at: [300, 800], facing: 1, arm: 0, eyes: 1 },
-    { name: "mo", at: [900, 800], facing: 1, arm: 0, eyes: 1 },
+    { name: "pip", at: [480, 880], facing: 1, arm: 0, eyes: 1 },
+    { name: "mo", at: [960, 880], facing: 1, arm: 0, eyes: 1 },
   ]);
   assert.throws(() => stagingAt(scenario, { ...still, beat: 3 }), /no beat 3/);
 });
@@ -74,7 +79,7 @@ test("the picture is the stage as SVG: the background, its shapes, then each cha
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="960" height="540">',
       '<rect width="1920" height="1080" fill="#bfe3ff"/>',
       '<rect x="0" y="820" width="1920" height="260" fill="#7cc36a"/>',
-      '<g transform="translate(960 900)"><rect x="-50" y="-200" width="100" height="200" rx="50" fill="#f2a33a"/><ellipse cx="0" cy="-90" rx="20" ry="5" fill="#5b2333"/></g>',
+      '<g transform="translate(960 880)"><rect x="-50" y="-200" width="100" height="200" rx="50" fill="#f2a33a"/><ellipse cx="0" cy="-90" rx="20" ry="5" fill="#5b2333"/></g>',
       "</svg>",
     ].join("\n"),
   );
@@ -126,24 +131,10 @@ test("only the mouth of a speaker the moment names opens: the other character's 
 // Bo has an arm and eyes, and a scene with every move and pose but the walk, which Pip has above.
 const acting = checkScenario(
   {
-    characters: {
-      bo: {
-        shoulder: [40, -150],
-        parts: {
-          body: [{ shape: "rect", at: [0, -100], size: [100, 200], fill: "#f2a33a" }],
-          arm: [{ shape: "rect", at: [40, -110], size: [20, 100], fill: "#d9861f" }],
-          eyes: [
-            { shape: "ellipse", at: [0, -160], size: [40, 40], fill: "#ffffff" },
-            { shape: "ellipse", at: [6, -156], size: [10, 20], fill: "#2b2d42" },
-          ],
-        },
-      },
-    },
-    backgrounds: { day: { fill: "#bfe3ff" }, night: { fill: "#101030" } },
     scenes: [
       {
         background: "day",
-        places: { bo: [500, 900] },
+        places: { bo: "left" },
         beats: [
           { name: "turns", takes: 0.5, turn: { who: "bo" } },
           { name: "waves", takes: 2, pose: { bo: "wave" } },
@@ -153,10 +144,29 @@ const acting = checkScenario(
           { name: "rests", takes: 1, pose: { bo: "stand" } },
         ],
       },
-      { background: "day", places: { bo: [500, 900] }, faces: { bo: "left" }, beats: [{ name: "again", takes: 1 }] },
+      { background: "day", places: { bo: "left" }, faces: { bo: "left" }, beats: [{ name: "again", takes: 1 }] },
     ],
   },
   "test",
+  {
+    file: "library",
+    raw: {
+      characters: {
+        bo: {
+          shoulder: [40, -150],
+          parts: {
+            body: [{ shape: "rect", at: [0, -100], size: [100, 200], fill: "#f2a33a" }],
+            arm: [{ shape: "rect", at: [40, -110], size: [20, 100], fill: "#d9861f" }],
+            eyes: [
+              { shape: "ellipse", at: [0, -160], size: [40, 40], fill: "#ffffff" },
+              { shape: "ellipse", at: [6, -156], size: [10, 20], fill: "#2b2d42" },
+            ],
+          },
+        },
+      },
+      backgrounds: { day: { fill: "#bfe3ff" }, night: { fill: "#101030" } },
+    },
+  },
 );
 const [TURNS, WAVES, WAVES_ON, POINTS, JUMPS, RESTS, AGAIN] = [0, 1, 2, 3, 4, 5, 6];
 const bo = (beat: number, at: Partial<typeof still> = {}) => stagingAt(acting, { ...still, beat, ...at }).characters[0]!;
@@ -170,11 +180,11 @@ test("a turn mirrors the character: narrow halfway and never nothing, then facin
   near(bo(TURNS, { progress: 0.75 }).facing, -Math.SQRT1_2);
   assert.equal(bo(TURNS, { progress: 1 }).facing, -1);
   assert.equal(bo(WAVES).facing, -1);
-  assert.deepEqual(bo(TURNS, { progress: 0.5 }).at, [500, 900], "it turns where it stands");
+  assert.deepEqual(bo(TURNS, { progress: 0.5 }).at, [480, 880], "it turns where it stands");
   // As written it has no scale; mirrored, its parts are the same, flipped around the point between its feet.
-  assert.match(boSvg(TURNS), /<g transform="translate\(500 900\)"><rect/);
-  assert.match(boSvg(WAVES_ON), /<g transform="translate\(500 900\) scale\(-1 1\)"><rect/);
-  assert.match(boSvg(TURNS, { progress: 0.25 }), /<g transform="translate\(500 900\) scale\(0\.7071 1\)">/);
+  assert.match(boSvg(TURNS), /<g transform="translate\(480 880\)"><rect/);
+  assert.match(boSvg(WAVES_ON), /<g transform="translate\(480 880\) scale\(-1 1\)"><rect/);
+  assert.match(boSvg(TURNS, { progress: 0.25 }), /<g transform="translate\(480 880\) scale\(0\.7071 1\)">/);
 });
 
 test("a scene's faces begin it mirrored, and a character it does not name is as written", () => {
@@ -183,15 +193,15 @@ test("a scene's faces begin it mirrored, and a character it does not name is as 
 });
 
 test("a jump is whole hops in place: up in the middle of each, down between them and at the end", () => {
-  const height = (progress: number) => 900 - bo(JUMPS, { progress }).at[1];
+  const height = (progress: number) => 880 - bo(JUMPS, { progress }).at[1];
   near(height(0), 0);
   near(height(0.125), 90, "a quarter through the first hop");
   near(height(0.25), 120, "the top of the first hop");
   near(height(0.5), 0, "between the hops");
   near(height(0.75), 120, "the top of the second");
   near(height(1), 0);
-  assert.equal(bo(JUMPS, { progress: 0.25 }).at[0], 500);
-  assert.deepEqual(bo(RESTS).at, [500, 900]);
+  assert.equal(bo(JUMPS, { progress: 0.25 }).at[0], 480);
+  assert.deepEqual(bo(RESTS).at, [480, 880]);
 });
 
 test("a pose turns the arm around the shoulder: down to stand, forward to point, up and swinging to wave", () => {

@@ -1,38 +1,15 @@
-# The first cartoon: Pip walks onto a meadow and stops there, while a narrator speaks.
-# The format is in CLAUDE.md ("The scenario").
-use: cartoon # the plugin that draws it; the voices and the rest of the settings are package.json's "ai-videos"
-
-characters:
-  pip:
-    parts: # drawn in this order; x right and y down from the point between the feet
-      body:
-        - { shape: rect, at: [0, -170], size: [220, 340], round: 110, fill: "#f2a33a" }
-      eyes:
-        - { shape: ellipse, at: [-45, -250], size: [48, 60], fill: "#ffffff" }
-        - { shape: ellipse, at: [45, -250], size: [48, 60], fill: "#ffffff" }
-        - { shape: ellipse, at: [-38, -246], size: [20, 26], fill: "#2b2d42" }
-        - { shape: ellipse, at: [52, -246], size: [20, 26], fill: "#2b2d42" }
-      mouth:
-        - { shape: ellipse, at: [0, -170], size: [70, 18], fill: "#5b2333" }
-
-backgrounds:
-  meadow:
-    fill: "#bfe3ff" # the sky
-    shapes:
-      - { shape: ellipse, at: [1560, 220], size: [180, 180], fill: "#ffd966" } # the sun
-      - { shape: rect, at: [960, 950], size: [1920, 260], fill: "#7cc36a" } # the grass
+# The first cartoon: Pip walks onto a meadow and stops there, while a narrator speaks. The smallest
+# whole one. The format is in CLAUDE.md ("The scenario"); Pip and the meadow are drawn in library.yaml.
+use: cartoon # the plugin that draws it; the voices are library.yaml's, the other settings package.json's "ai-videos"
 
 scenes:
   - background: meadow
-    places:
-      pip: [-200, 880] # left of the stage, out of sight
+    places: { pip: off-left }
     beats:
       - name: walks-in
-        takes: 4
-        walk: { who: pip, to: [960, 880] }
+        walk: { who: pip, to: middle }
         says:
           - { who: narrator, text: "This is Pip. Pip walks into the meadow." }
       - name: stops
-        takes: 3
         says:
           - { who: narrator, text: "And here, Pip stops." }

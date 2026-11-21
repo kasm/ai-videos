@@ -3,25 +3,30 @@ import { test } from "node:test";
 import { checkScenario } from "./scenario.ts";
 import { timeline } from "./timeline.ts";
 
-const scene = (beats: unknown[]) => ({ background: "meadow", places: { pip: [0, 900] }, beats });
-const scenario = (...scenes: unknown[]) =>
-  checkScenario(
-    {
-      characters: { pip: { parts: { body: [{ shape: "ellipse", at: [0, -100], size: [100, 200], fill: "#f2a33a" }] } } },
-      backgrounds: { meadow: { fill: "#bfe3ff" } },
-      scenes,
+const scene = (beats: unknown[]) => ({ background: "meadow", places: { pip: "left" }, beats });
+/** Pip, with an arm to wave, and two backgrounds. */
+const library = {
+  file: "library",
+  raw: {
+    characters: {
+      pip: {
+        shoulder: [50, -150],
+        parts: { body: [{ shape: "ellipse", at: [0, -100], size: [100, 200], fill: "#f2a33a" }], arm: [{ shape: "rect", at: [50, -110], size: [20, 100], fill: "#d9861f" }] },
+      },
     },
-    "test",
-  );
+    backgrounds: { meadow: { fill: "#bfe3ff" }, night: { fill: "#101030" } },
+  },
+};
+const scenario = (...scenes: unknown[]) => checkScenario({ scenes }, "test", library);
 const says = (...texts: string[]) => texts.map((text) => ({ who: "narrator", text }));
 
 test("each beat is an event: a move with a walk, a hold without, one after another from 0", () => {
   const t = timeline(
     scenario(
       scene([
-        { name: "walks-in", takes: 4, walk: { who: "pip", to: [960, 900] } },
+        { name: "walks-in", takes: 4, walk: { who: "pip", to: "middle" } },
         { name: "stops", takes: 2.5 },
-        { name: "walks-on", takes: 1.5, walk: { who: "pip", to: [1500, 900] } },
+        { name: "walks-on", takes: 1.5, walk: { who: "pip", to: "right" } },
       ]),
     ),
   );
@@ -35,25 +40,13 @@ test("each beat is an event: a move with a walk, a hold without, one after anoth
 
 test("a turn and a jump are moves too; a beat that only changes a pose or the background is a hold", () => {
   const t = timeline(
-    checkScenario(
-      {
-        characters: {
-          pip: {
-            shoulder: [50, -150],
-            parts: { body: [{ shape: "ellipse", at: [0, -100], size: [100, 200], fill: "#f2a33a" }], arm: [{ shape: "rect", at: [50, -110], size: [20, 100], fill: "#d9861f" }] },
-          },
-        },
-        backgrounds: { meadow: { fill: "#bfe3ff" }, night: { fill: "#101030" } },
-        scenes: [
-          scene([
-            { name: "turns", takes: 0.5, turn: { who: "pip" } },
-            { name: "waves", takes: 2, pose: { pip: "wave" } },
-            { name: "jumps", takes: 1.2, jump: { who: "pip", times: 2 }, pose: { pip: "stand" } },
-            { name: "night-falls", takes: 2, background: "night" },
-          ]),
-        ],
-      },
-      "test",
+    scenario(
+      scene([
+        { name: "turns", takes: 0.5, turn: { who: "pip" } },
+        { name: "waves", takes: 2, pose: { pip: "wave" } },
+        { name: "jumps", takes: 1.2, jump: { who: "pip", times: 2 }, pose: { pip: "stand" } },
+        { name: "night-falls", takes: 2, background: "night" },
+      ]),
     ),
   );
   assert.deepEqual(t.events.map((e) => [e.name, e.span]), [["turns", "move"], ["waves", "hold"], ["jumps", "move"], ["night-falls", "hold"]]);

@@ -1,14 +1,15 @@
 ---
 name: episode
-description: Write a cartoon from a story - turn a story (a file in stories/, or told in the chat) into videos/<name>.yaml (the cast, the scenes, the lines, the poses and moves), give a new character its voice, and make the video. Use for "write an episode from stories/x.md", "make a cartoon of this story", "turn this story into a scenario".
+description: Write a cartoon from a story - turn a story (a file in stories/, or told in the chat) into videos/<name>.yaml (the cast, the scenes, the lines, the poses and moves), add a new character or background to library.yaml, and make the video. Use for "write an episode from stories/x.md", "make a cartoon of this story", "turn this story into a scenario".
 ---
 
 # An episode from a story
 
 A story comes in as prose (`stories/<name>.md`, or in the chat). It goes
 out as `videos/<name>.yaml` and a video the user watches. The format is
-`CLAUDE.md`, "The scenario": read it first, then `videos/sundown.yaml`,
-which uses all of it. `src/` is not needed.
+`CLAUDE.md`, "The scenario" and "The library": read them first, then
+`videos/the-shy-visitor.yaml`, which uses all of it, and `library.yaml`,
+what a cartoon can name. `src/` is not needed.
 
 `<name>` is the story file's name; a story told in the chat gets a short
 name of its own (lowercase letters, digits and dashes). A file
@@ -19,9 +20,9 @@ writing over it.
 
 Before writing, list:
 
-- who is in it, and which of them the `cast` in `package.json`'s
-  `"ai-videos"` names;
-- where and when it happens: the backgrounds;
+- who is in it, and which of them `library.yaml` has;
+- where and when it happens: the backgrounds, and which of them
+  `library.yaml` has;
 - what happens, in order, one thing at a time: the beats;
 - what is said, and by whom: the lines.
 
@@ -36,23 +37,23 @@ out, for the report.
 ## 2. The cast
 
 - **A name** is the story's, in lowercase (`Tuk` is `tuk`). The same name
-  goes in the file's `characters`, in each line's `who`, and in the
-  `cast`: that is how a line finds its voice and its mouth.
-- **A character drawn before** (`pip`, `mo`): copy its block from
-  `videos/sundown.yaml` as it is, so it looks the same in every cartoon.
-  Each video file carries its own `characters`; there is no shared file.
-- **A new character** is drawn here. Give it all four parts (`body`,
+  goes in `library.yaml`'s `characters`, in the scene's `places`, and in
+  each line's `who`: that is how a line finds its voice and its mouth.
+- **A character drawn before** (`pip`, `mo`, `tuk`) is named, as it is in
+  `library.yaml`, so it looks the same in every cartoon. Change nothing
+  already there.
+- **A new character** is drawn in `library.yaml`, under `characters`. You
+  may add it without asking (the user's standing yes); say in the report
+  what you added. Give it all four parts (`body`,
   `arm`, `eyes`, `mouth`) and a `shoulder`, so it can do everything the
   others do. Make it easy to tell apart: its own colour and its own size
   (Pip is 220 by 340, Mo 190 by 430; say in a comment what it is). Write
   it facing right, pupils nearer the right side of each eye. Keep the
   eyes, the mouth and the room under the mouth (0.9 of its width) inside
   the body.
-- **Its voice.** A character the cast lacks gets a line in the `"cast"`
-  of `package.json`'s `"ai-videos"`, before `make`. You may add that line
-  without asking: it is the user's standing yes. Nothing else in that file
-  is yours: the plugin, the narrator's `voice`, `fps` and the cast's other
-  lines stay as they are, and so does a voice a character has already.
+- **Its voice** is its `voice:` in `library.yaml`, beside its `parts`.
+  The narrator's `voice` and the rest of `package.json` are not yours, and
+  a voice a character has already stays as it is.
   - The voices that speak English (the tool's, Kokoro; any other name
     fails when `make` speaks the line, and names the command that lists
     them):
@@ -63,19 +64,23 @@ out, for the report.
       `am_liam`, `am_michael`, `am_onyx`, `am_puck`, `am_santa`;
     - British women: `bf_alice`, `bf_emma`, `bf_isabella`, `bf_lily`;
     - British men: `bm_daniel`, `bm_fable`, `bm_george`, `bm_lewis`.
-  - Take one nobody in the cast has, nor the narrator, and that suits the
-    character. You cannot hear it: say which you took, so the user can
-    change it.
+  - Take one no character in the library has, nor the narrator, and that
+    suits the character. You cannot hear it: say which you took, so the
+    user can change it.
+- **A new background** is drawn in `library.yaml` too, under
+  `backgrounds`, when no background there is the story's place. You may
+  add it without asking, as a character. Keep its grass from y 820 down,
+  as the others'.
 
 ## 3. Scenes and beats
 
 - **One scene** is one stretch of the story in one place. Time passing in
   the same place is a beat's `background:`, not a new scene. A new scene
   puts everyone in new places, facing as it says, standing.
-- **The stage.** Feet stand at y 880, as in the other cartoons (lower, the
-  caption covers them). Leave 350 or more between two characters' x, or
-  they overlap. Out of sight is x -250 on the left and 2170 on the right.
-- **Coming and going** is a walk from or to a place out of sight. The one
+- **The stage** has three marks, `left`, `middle` and `right`, one
+  character each, and two out of sight, `off-left` and `off-right`, where
+  any number wait.
+- **Coming and going** is a walk from or to a mark out of sight. The one
   who walks faces the way it goes: from the right it begins with
   `faces: left`. A walk turns nobody, so going back the way it came needs
   a `turn` beat first.
@@ -88,10 +93,9 @@ out, for the report.
   turns away. A pose is not a move: one beat can change poses and hold a
   walk as well. Put a pose back to `stand` when its moment is over; a wave
   left on goes on waving.
-- **`takes`** is the beat's length at its own pace. A spoken line takes
-  about 0.3 seconds a word. Give a beat with a move about as long as its
-  line, or the move is played up to twice as fast to keep up with the
-  voice. A walk across half the stage looks right at about 3 seconds.
+- **`takes`** is the beat's length at its own pace: leave it out, and a
+  move takes its own time, a hold its words'. Write it only for a pause
+  with nothing said (`takes: 2`), or a move slower than its own.
 
 ## 4. Lines
 
@@ -113,11 +117,11 @@ Run these from the repo's folder.
 
 1. `npm run -s video -- make videos/<name>.yaml --fit`. This is the check:
    the plugin's first call reads the file and refuses one that breaks the
-   format, with the file, the place and the reason, and a line whose
-   speaker the cast gives no voice is refused too. Fix it and run again.
-   Then it speaks the lines and prints each beat as `takes -> its length
-   in the video`. A move much shorter than its `takes` is rushed (step 3's
-   `takes`).
+   format, with the file, the place and the reason. Fix it and run again.
+   It lists what the plugin mended (`CLAUDE.md`, "Mending"): write those
+   beats into the file as mended, so the file says what is drawn. Then it
+   speaks the lines and prints each beat as `its own length -> its length
+   in the video`.
 2. `npm run -s video -- make videos/<name>.yaml` makes the video. The first
    time it can take a few minutes.
 3. Look at it. From the fit's `at` times take a frame from the middle of
@@ -135,6 +139,6 @@ Run these from the repo's folder.
 ## 6. Report
 
 Say in a few lines: the video's path, the cast with each new character's
-voice (and that it was added to `package.json`), what of the story was
+voice (and what was added to `library.yaml`), what of the story was
 left out or given to the narrator, and anything in the frames you could
 not get right. Don't commit: the user watches first.

@@ -9,16 +9,40 @@ import { moments, type Request } from "ai-videos/frames";
 import { parse } from "yaml";
 import plugin from "./plugin.ts";
 
-const videos = path.join(import.meta.dirname, "../videos");
-/** A cartoon's scenario, read and checked as the tool has the plugin do it: its file, without the tool's `use:`. */
+const root = path.join(import.meta.dirname, "..");
+/** The project's library, as the tool gives it to the plugin: without each character's voice. */
+const library = (() => {
+  const file = path.join(root, "library.yaml");
+  const raw = parse(readFileSync(file, "utf8"));
+  for (const character of Object.values(raw.characters)) delete (character as { voice?: string }).voice;
+  return { file, raw };
+})();
+/** A cartoon's scenario, read and checked as the tool has the plugin do it: its file, without the tool's `use:`, and the library. */
 const scenarioOf = (name: string) => {
-  const file = path.join(videos, `${name}.yaml`);
+  const file = path.join(root, "videos", `${name}.yaml`);
   const { use: _use, ...scenario } = parse(readFileSync(file, "utf8"));
-  return plugin.check(scenario, file);
+  return plugin.check(scenario, file, library);
 };
+/** Pip walks in from off the stage and stops, the narrator telling it. */
+const walk = plugin.check(
+  {
+    scenes: [
+      {
+        background: "morning",
+        places: { pip: "off-left" },
+        beats: [
+          { name: "walks-in", takes: 4, walk: { who: "pip", to: "middle" }, says: [{ who: "narrator", text: "This is Pip. Pip walks into the meadow." }] },
+          { name: "stops", takes: 3, says: [{ who: "narrator", text: "And here, Pip stops." }] },
+        ],
+      },
+    ],
+  },
+  "walk.yaml",
+  library,
+);
 
-test("hello's plan: its beats as events, its lines as texts", () => {
-  assert.deepEqual(plugin.plan(scenarioOf("hello")), {
+test("the plan: its beats as events, its lines as texts", () => {
+  assert.deepEqual(plugin.plan(walk), {
     duration: 7,
     events: [
       { name: "walks-in", at: 0, span: "move" },
@@ -32,12 +56,10 @@ test("hello's plan: its beats as events, its lines as texts", () => {
 });
 
 test("each character's text names it as the speaker, and the narrator's names nobody", () => {
-  assert.deepEqual(plugin.plan(scenarioOf("meet")).texts, [
-    { text: "Pip is waiting in the meadow.", from: 0, to: 3 },
-    { text: "Oh, someone is coming! Hello! Who are you?", speaker: "pip", from: 3, to: 6 },
-    { text: "I am Mo. I live behind the hill.", speaker: "mo", from: 6, to: 8 },
-    { text: "I am Pip. Shall we play?", speaker: "pip", from: 8, to: 10 },
-    { text: "Yes, let's play!", speaker: "mo", from: 10, to: 12 },
+  // the-shy-visitor writes no beat's length: a hold takes its words' time, 0.3 s each.
+  assert.deepEqual(plugin.plan(scenarioOf("the-shy-visitor")).texts.slice(0, 2), [
+    { text: "It is a sunny morning in the meadow.", from: 0, to: 2.4 },
+    { text: "Oh, nothing ever happens here.", speaker: "mo", from: 2.4, to: 3.9 },
   ]);
 });
 
@@ -51,7 +73,7 @@ test("each command is described, and its example passes its schema", async () =>
   }
 });
 
-// hello's walk in 8 frames with its motion in 6, then 4 frames of the stop.
+// The walk in 8 frames with its motion in 6, then 4 frames of the stop.
 const SMALL: Request = {
   fps: 30,
   frames: 12,
@@ -61,7 +83,7 @@ const SMALL: Request = {
   ],
 };
 const size = { width: 320, height: 180 };
-const pictures = (request: Request) => moments(request).map((moment) => plugin.frame(scenarioOf("hello"), moment, size));
+const pictures = (request: Request) => moments(request).map((moment) => plugin.frame(walk, moment, size));
 
 test("each frame of the walk is its own picture; from its end on, through the stop, the picture stays", () => {
   const frames = pictures(SMALL);
