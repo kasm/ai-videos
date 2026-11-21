@@ -11,21 +11,25 @@ import { z } from "zod";
 import type { requestDocument } from "./fit.ts";
 import { encoder, moments, writeClipData, type ClipText } from "./frames.ts";
 import type { MakerCall } from "./maker.ts";
-import type { Plan, Plugin, Schema } from "./plugin.ts";
+import type { Library, Plan, Plugin, Schema } from "./plugin.ts";
 import { FORMATS, slug } from "./script.ts";
 
-/** A call for the plugin, with the video file and its source: the file, parsed, without the tool's keys. */
+/**
+ * A call for the plugin, with the video file and its source (the file, parsed, without the tool's
+ * keys), and the project's library, when it has one.
+ */
 export interface Job {
   call: MakerCall;
   file: string;
   source: unknown;
+  library?: Library;
 }
 
 /** What the host says: once that it is ready (or why not), then once for each job. */
 export type Reply =
   | { ready: { scene: string; stage: { width: number; height: number }; commands: string[] } }
   | { failed: string }
-  | { done: { frames?: number; drawn?: number; seconds?: number } }
+  | { done: { frames?: number; drawn?: number; seconds?: number; repaired?: string[] } }
   | { error: string };
 
 /** The clip's quality (x264's crf, lower is closer to the pixels): a plugin's picture is a drawing, and its edges stay clean. */
@@ -53,6 +57,7 @@ const PluginShape = z.object({
     }),
   ),
   check: fn,
+  repair: fn.optional(),
   plan: fn,
   frame: fn,
 });
@@ -155,17 +160,22 @@ async function draw(plugin: Plugin, source: unknown, call: Extract<MakerCall, { 
   return { frames: await out.end(), drawn };
 }
 
-/** One of make's calls: step one writes the plan as the clip's data, step two draws the clip and writes its data again. */
+/**
+ * One of make's calls: step one writes the plan as the clip's data, and says what the plugin
+ * mended in the source; step two draws the clip and writes its data again. Each has the source
+ * mended, then checked.
+ */
 export async function runJob(plugin: Plugin, pluginFile: string, job: Job): Promise<Extract<Reply, { done: unknown }>["done"]> {
   const { call, file } = job;
   fills(plugin, call.format, call.step === "draw" ? call : FORMATS[call.format]);
-  const source = plugin.check(job.source, file);
+  const repaired = plugin.repair?.(job.source, job.library) ?? { source: job.source, did: [] };
+  const source = plugin.check(repaired.source, file, job.library);
   const plan = plugin.plan(source);
   const shown = (f: string) => path.relative(process.cwd(), f).split(path.sep).join("/");
   const made = { by: `the ${plugin.scene} plugin, ${shown(pluginFile)}`, from: shown(file) };
   if (call.step === "data") {
     writeClipData(call.data, { ...made, ...plan });
-    return {};
+    return { repaired: repaired.did };
   }
   const request = readRequest(call.request);
   // The tool writes the request from this plan's data, so they differ only when the source changed since.

@@ -29,9 +29,18 @@ export default {
   scene: "square",
   stage: { width: 160, height: 90 },
   commands: { colour: { description: "The square's colour.", example: "#d04040", schema: text("a colour") } },
-  check(raw, file) {
+  check(raw, file, library) {
     if (typeof raw?.colour !== "string") throw new Error(file + ": give the square a colour");
-    return raw;
+    if (raw.colour.startsWith("#")) return raw;
+    // A colour by name is the library's.
+    const named = library?.raw?.colours?.[raw.colour];
+    if (!named) throw new Error((library?.file ?? file) + ": no colour is named " + raw.colour);
+    return { ...raw, colour: named };
+  },
+  // Six hex digits with no # can only be a colour.
+  repair(raw) {
+    if (!/^[0-9a-f]{6}$/.test(raw?.colour)) return { source: raw, did: [] };
+    return { source: { ...raw, colour: "#" + raw.colour }, did: ["the colour " + raw.colour + " is #" + raw.colour] };
   },
   plan: (s) => ({
     duration: s.wait + s.slide,
@@ -91,7 +100,8 @@ test("the plugin's host writes the plan as the clip's data, then draws the clip 
     assert.match(said[0]!, /^Plugin: square, .*plugin\.mjs \(its commands: colour\)$/);
     assert.equal(host.scene, "square");
     assert.deepEqual(host.stage, { width: 160, height: 90 });
-    await host.run({ step: "data", name: "sq", format: "landscape", data: files.data }, video, SOURCE, (m) => said.push(m));
+    const data = { step: "data", name: "sq", format: "landscape", data: files.data } as const;
+    await host.run({ call: data, file: video, source: SOURCE }, (m) => said.push(m));
     assert.deepEqual(await json(files.data), {
       format: "ai-videos-clip",
       version: 1,
@@ -109,7 +119,7 @@ test("the plugin's host writes the plan as the clip's data, then draws the clip 
 
     await writeFile(files.request, JSON.stringify(REQUEST));
     const draw = { step: "draw", name: "sq", format: "landscape", width: 160, height: 90, ...files } as const;
-    await host.run(draw, video, SOURCE, (m) => said.push(m));
+    await host.run({ call: draw, file: video, source: SOURCE }, (m) => said.push(m));
     assert.match(said.at(-1)!, /sq-landscape\.mp4: 10 frames \(5 drawn\) in [\d.]+ s; and its JSON/);
     // The wait and the slide's first frame are one picture; each frame of the motion differs; its end holds.
     const frames = (await readFile(`${files.clip}.frames`, "utf8")).trim().split("\n");
@@ -117,18 +127,30 @@ test("the plugin's host writes the plan as the clip's data, then draws the clip 
     assert.equal(new Set(frames.slice(3, 8)).size, 5);
     assert.equal(new Set(frames.slice(7)).size, 1);
     // The data again, as the request times it: each event at its span, the texts moved with their beats.
-    const data = await json(files.data);
-    assert.equal(data.made.from, "videos/sq.yaml, drawn to sq-landscape.request.json");
-    assert.equal(data.duration, 1);
-    assert.deepEqual(data.events, [
+    const drawn = await json(files.data);
+    assert.equal(drawn.made.from, "videos/sq.yaml, drawn to sq-landscape.request.json");
+    assert.equal(drawn.duration, 1);
+    assert.deepEqual(drawn.events, [
       { name: "start", at: 0, span: "hold", natural: 1 },
       { name: "slide", at: 0.3, span: "move", natural: 1 },
     ]);
-    assert.deepEqual(data.texts.map((t: { from: number; to: number }) => [t.from, t.to]), [[0, 0.3], [0.3, 1]]);
+    assert.deepEqual(drawn.texts.map((t: { from: number; to: number }) => [t.from, t.to]), [[0, 0.3], [0.3, 1]]);
 
     // A job that fails says why, and the host takes the next one.
-    await assert.rejects(host.run({ ...draw, request: path.join(root, "none.json") }, video, SOURCE, quiet), /^Error: no request at .*none\.json/);
-    await host.run({ step: "data", name: "sq", format: "landscape", data: files.data }, video, SOURCE, quiet);
+    const missing = { ...draw, request: path.join(root, "none.json") };
+    await assert.rejects(host.run({ call: missing, file: video, source: SOURCE }, quiet), /^Error: no request at .*none\.json/);
+    await host.run({ call: data, file: video, source: SOURCE }, quiet);
+
+    // The library comes with the job: the check finds the source's names in it, and a mistake there names its file.
+    const library = { file: path.join(root, "library.yaml"), raw: { colours: { red: "#d04040" } } };
+    await host.run({ call: data, file: video, source: { ...SOURCE, colour: "red" }, library }, quiet);
+    await assert.rejects(host.run({ call: data, file: video, source: { ...SOURCE, colour: "blue" }, library }, quiet), /library\.yaml: no colour is named blue/);
+
+    // The plugin mends the source before its check, and the plan's call says what it mended.
+    assert.deepEqual(await host.run({ call: data, file: video, source: SOURCE }, quiet), { repaired: [] });
+    assert.deepEqual(await host.run({ call: data, file: video, source: { ...SOURCE, colour: "d04040" } }, quiet), { repaired: ["the colour d04040 is #d04040"] });
+    await host.run({ call: draw, file: video, source: { ...SOURCE, colour: "d04040" } }, quiet);
+    assert.deepEqual(await readFile(`${files.clip}.frames`, "utf8"), frames.join("\n") + "\n", "drawn as the colour written whole");
   } finally {
     host.close();
   }

@@ -12,15 +12,24 @@ import { formatOf, linesOf, readVideoFile, scriptOf } from "./video-file.ts";
 const scratch = await mkdtemp(path.join(os.tmpdir(), "ai-videos-file-"));
 after(() => rm(scratch, { recursive: true, force: true }));
 
-/** A project `name` whose package.json says this of "ai-videos" (a plugin and settings), and its video files. */
-async function project(name: string, settings: Record<string, unknown>, files: Record<string, string>) {
+/** A project `name` whose package.json says this of "ai-videos" (a plugin and settings), its video files, and its library.yaml if given. */
+async function project(name: string, settings: Record<string, unknown>, files: Record<string, string>, library?: string) {
   const root = path.join(scratch, name);
   await mkdir(path.join(root, "videos"), { recursive: true });
   await writeFile(path.join(root, "package.json"), JSON.stringify({ "ai-videos": { plugin: "plugin.mjs", ...settings } }));
   await writeFile(path.join(root, "plugin.mjs"), "");
   for (const [file, text] of Object.entries(files)) await writeFile(path.join(root, "videos", file), text);
+  if (library !== undefined) await writeFile(path.join(root, "library.yaml"), library);
   return root;
 }
+
+/** A library of two characters, each with its voice and a drawing of the plugin's, and a background. */
+const LIBRARY = `characters:
+  pip: { voice: am_puck, parts: { body: [] } }
+  mo: { voice: bf_emma, parts: { body: [] } }
+backgrounds:
+  meadow: { fill: "#bfe3ff" }
+`;
 
 const FILE = `use: cartoon
 loudness: -16
@@ -39,18 +48,30 @@ test("the file's own keys are the tool's settings and use:, the rest is the plug
   assert.equal(video.cache, path.join(root, ".cache", "meet"));
   assert.equal(video.out, path.join(root, "out", "meet"));
   assert.equal(video.profile, undefined);
+  assert.equal(video.library, undefined, "a project with no library.yaml has none");
+  assert.deepEqual(video.settings.cast, { mo: "bm_fable", tuk: "am_puck" });
+});
+
+test("the library: each character's voice is the project's cast, and the plugin gets the rest", async () => {
+  const root = await project("library", {}, { "meet.yaml": "use: cartoon\nscenes: []\n" }, LIBRARY);
+  const video = await readVideoFile(path.join(root, "videos", "meet.yaml"));
+  assert.deepEqual(video.settings.cast, { pip: "am_puck", mo: "bf_emma" });
+  assert.deepEqual(video.library, {
+    file: path.join(root, "library.yaml"),
+    raw: { characters: { pip: { parts: { body: [] } }, mo: { parts: { body: [] } } }, backgrounds: { meadow: { fill: "#bfe3ff" } } },
+  });
 });
 
 test("settings in layers: the server's, the project's over them, the file's, then a profile's", async () => {
-  const project_ = { voice: "am_michael", fps: 24, loudness: -22, cast: { pip: "am_puck", mo: "bf_emma" }, timing: { lead: 1 } };
-  const root = await project("layers", project_, { "meet.yaml": FILE });
+  const project_ = { voice: "am_michael", fps: 24, loudness: -22, timing: { lead: 1 } };
+  const root = await project("layers", project_, { "meet.yaml": FILE }, LIBRARY);
   const file = path.join(root, "videos", "meet.yaml");
   const { settings } = await readVideoFile(file);
   assert.equal(settings.speed, 1); // the server's: set nowhere else
   assert.equal(settings.voice, "am_michael"); // the project's
   assert.equal(settings.fps, 24);
   assert.equal(settings.loudness, -16); // the file's, over the project's
-  // Tables merge key by key: the file's speakers over the project's, the project's lead under the file's gap.
+  // Tables merge key by key: the file's speakers over the library's, the project's lead under the file's gap.
   assert.deepEqual(settings.cast, { pip: "am_puck", mo: "bm_fable", tuk: "am_puck" });
   assert.deepEqual(settings.timing, { lead: 1, gap: 0.2, tail: 1, moves: { slowest: 0.5, fastest: 2 } });
   assert.equal(settings.quality, "high");
@@ -87,6 +108,15 @@ test("a mistake is reported against the file that holds it", async () => {
   await assert.rejects(readVideoFile(file("list.yaml")), /list\.yaml: a video file is a mapping/);
   await assert.rejects(readVideoFile(file("Bad_Name.yaml")), /a video file is <name>\.yaml, its name in lowercase letters/);
   await assert.rejects(readVideoFile(file("none.yaml")), /No video file at .*none\.yaml/);
+
+  // A voice has one home: the library's character.
+  const cast = await project("cast-in-package", { cast: { pip: "am_puck" } }, { "a.yaml": "use: cartoon\n" });
+  await assert.rejects(readVideoFile(path.join(cast, "videos", "a.yaml")), /package\.json: "ai-videos" is not valid:[\s\S]*a character's voice is in library\.yaml/);
+  const library = async (name: string, text: string) => readVideoFile(path.join(await project(name, {}, { "a.yaml": "use: cartoon\n" }, text), "videos", "a.yaml"));
+  await assert.rejects(library("library-yaml", "characters: [\n"), /library\.yaml is not YAML/);
+  await assert.rejects(library("library-list", "- pip\n"), /library\.yaml: a library is a mapping/);
+  await assert.rejects(library("library-voiceless", "characters:\n  pip: { parts: {} }\n"), /library\.yaml: its characters are not valid:[\s\S]*give each character its voice[\s\S]*characters\.pip\.voice/);
+  await assert.rejects(library("library-name", "characters:\n  Pip: { voice: am_puck }\n"), /library\.yaml: its characters are not valid:[\s\S]*name is lowercase[\s\S]*characters\.Pip/);
 });
 
 test("a video file needs a plugin, named by the package.json above it", async () => {
@@ -141,7 +171,10 @@ test("the script: one made clip scene by the file's name, its lines the plan's, 
     },
   ]);
   const alone = await readVideoFile(path.join(root, "videos", "alone.yaml"));
-  assert.throws(() => scriptOf(alone, "landscape", PLAN), /alone\.yaml: mo says "Rounded apart from its event\.", and the cast \(it is empty\) gives mo no voice/);
+  assert.throws(
+    () => scriptOf(alone, "landscape", PLAN),
+    /alone\.yaml: mo says "Rounded apart from its event\.", and the cast \(it is empty\) gives mo no voice: give mo a voice: under the character in .*library\.yaml, or under cast: in the file/,
+  );
   assert.throws(() => scriptOf(alone, "landscape", { ...PLAN, texts: [] }), /alone\.yaml has no line to say/);
 });
 

@@ -56,6 +56,18 @@ export interface Plan {
 }
 
 /**
+ * The project's library, `library.yaml` beside its package.json: what its videos name (a cartoon's
+ * characters and backgrounds). The tool reads it, takes each character's `voice` for the cast, and
+ * gives the plugin the rest.
+ */
+export interface Library {
+  /** The library's file, for an error to name. */
+  file: string;
+  /** The file, parsed from YAML, without each character's `voice`. */
+  raw: unknown;
+}
+
+/**
  * A plugin, the module's default export. `Source` is the plugin's own scenario, as `check` gives
  * it. Every function is pure: no Node APIs, no clock, no unseeded randomness. So a frame is the same
  * in every run, and the same code can draw in a web page.
@@ -69,9 +81,16 @@ export interface Plugin<Source = unknown> {
   commands: Record<string, Command>;
   /**
    * The source checked: `raw` is the video file, parsed from YAML, without the tool's keys (`use`
-   * and the settings). An error names `file` and every reason.
+   * and the settings), and what it names is found in `library` (none when the project has no
+   * library.yaml). An error names the file that holds the mistake, and every reason.
    */
-  check(raw: unknown, file: string): Source;
+  check(raw: unknown, file: string, library: Library | undefined): Source;
+  /**
+   * Optional: what it mends in a source before `check`, only where there is one right answer.
+   * `source` is `raw` mended, in the same format, so it could be written back; `did` says what it
+   * mended, a sentence each. Without it, nothing is mended.
+   */
+  repair?(raw: unknown, library: Library | undefined): { source: unknown; did: string[] };
   /** The source's beats as the clip's events and texts, at its own pace. */
   plan(source: Source): Plan;
   /** A moment's picture as an SVG of the whole stage, `width` by `height` pixels. */

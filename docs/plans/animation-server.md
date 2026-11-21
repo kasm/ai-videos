@@ -16,7 +16,14 @@
   having been drawn before blinking (anime step 5). With `--profile
   quiet` every stage came from the cache but the sound (measured -19.9
   LUFS), from shells that spell the drive `d:` and `D:`. `npm test` and
-  `npm run typecheck` pass in both repos. **Next: step 3.**
+  `npm run typecheck` pass in both repos.
+- Step 3 done 2026-11-22. Checked: the user watched `the-shy-visitor`,
+  rewritten in names (no coordinates, no character inline, no `takes`),
+  and accepted it; its fit gives step 2's 1277 frames and subtitles.
+  `hello`, `meet` and `sundown` moved to names too, and all four make.
+  `cartoons`' `src/repair.test.ts` shows each repair, and a make of a
+  file with both mistakes listed them, from the cache too. `npm test` and
+  `npm run typecheck` pass in both repos. **Next: step 4.**
 
 
 ## Goal

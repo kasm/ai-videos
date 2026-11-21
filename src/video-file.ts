@@ -1,15 +1,21 @@
 // A plugin's video as one file (AGENTS.md, "A video file"): videos/<name>.yaml, with `use:` naming
-// its plugin, its own settings, and the rest the plugin's source. Settings come in layers, each
-// over the one before: the server's (the tool's defaults), the project's (its package.json's
-// "ai-videos"), the file's, and the profile picked when making. Each line is written once, in the
-// source: the plugin's plan gives the lines, and this file makes them the script the pipeline reads.
+// its plugin, its own settings, and the rest the plugin's source. What it names is in the project's
+// library (library.yaml), its characters' voices among it. Settings come in layers, each over the
+// one before: the server's (the tool's defaults), the project's (its package.json's "ai-videos",
+// and the library's voices as its cast), the file's, and the profile picked when making. Each line
+// is written once, in the source: the plugin's plan gives the lines, and this file makes them the
+// script the pipeline reads.
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
 import type { ClipJson } from "./clip.ts";
 import { pluginOf, type PluginFile } from "./make.ts";
-import { FORMATS, overlay, settings, slug, type FormatName, type VideoScript } from "./script.ts";
+import type { Library } from "./plugin.ts";
+import { FORMATS, overlay, settings, slug, Speaker, type FormatName, type VideoScript } from "./script.ts";
+
+/** The project's library, beside its package.json. */
+export const LIBRARY_FILE = "library.yaml";
 
 /** The server's profiles: settings over all the layers, picked when making (`make <file> --profile quiet`). */
 export const PROFILES = {
@@ -32,8 +38,52 @@ export const FileSettings = z.strictObject({
 });
 export type FileSettingsScript = z.infer<typeof FileSettings>;
 
-/** The project's layer: package.json's "ai-videos", the plugin's path and the settings its videos share. */
-const ProjectSettings = z.strictObject({ plugin: z.string(), ...FileSettings.shape });
+/**
+ * The project's layer: package.json's "ai-videos", the plugin's path and the settings its videos
+ * share. Its cast is the library's: a character's voice has one home.
+ */
+const ProjectSettings = z.strictObject({
+  plugin: z.string(),
+  ...FileSettings.shape,
+  cast: z.never({ error: `a character's voice is in ${LIBRARY_FILE}, beside this package.json: voice: under the character` }).optional(),
+});
+
+/** What the tool reads of a library: each character's voice. The rest is the plugin's. */
+const LibraryVoices = z.looseObject({
+  characters: z
+    .record(Speaker, z.looseObject({ voice: z.string({ error: "give each character its voice: one of the tool's (npm run video -- voices lists them)" }).min(1) }), {
+      error: (issue) => (issue.code === "invalid_key" ? "a character's name is lowercase letters, digits and dashes, a letter first" : undefined),
+    })
+    .optional(),
+});
+
+/** The project's library, its voices taken out as the cast; none when the project has no library.yaml. */
+async function readLibrary(dir: string): Promise<{ library: Library | undefined; cast: Record<string, string> }> {
+  const file = path.join(dir, LIBRARY_FILE);
+  let text: string;
+  try {
+    text = await readFile(file, "utf8");
+  } catch (e) {
+    if ((e as { code?: string }).code === "ENOENT") return { library: undefined, cast: {} };
+    throw e;
+  }
+  let raw: unknown;
+  try {
+    raw = parse(text);
+  } catch (e) {
+    throw new Error(`${file} is not YAML: ${e instanceof Error ? e.message : e}`);
+  }
+  if (!isRecord(raw)) throw new Error(`${file}: a library is a mapping: characters:, each with its voice, and what else its plugin keeps there`);
+  const voices = LibraryVoices.safeParse(raw);
+  if (!voices.success) throw new Error(`${file}: its characters are not valid:\n${z.prettifyError(voices.error)}`);
+  const cast: Record<string, string> = {};
+  const characters: Record<string, unknown> = {};
+  for (const [who, { voice, ...drawn }] of Object.entries(voices.data.characters ?? {})) {
+    cast[who] = voice;
+    characters[who] = drawn;
+  }
+  return { library: { file, raw: voices.data.characters ? { ...raw, characters } : raw }, cast };
+}
 
 /** The keys of a video file that are the tool's; every other key is the plugin's source. */
 export const TOOL_KEYS = ["use", ...Object.keys(FileSettings.shape)];
@@ -47,6 +97,8 @@ export interface VideoFile {
   use: string;
   /** The file, parsed, without the tool's keys: what the plugin checks. */
   source: Record<string, unknown>;
+  /** The project's library, without its voices: what the plugin finds the names in. None without a library.yaml. */
+  library: Library | undefined;
   /** The server's settings, the project's over them, the file's, then the profile's. */
   settings: FileSettingsScript;
   profile: ProfileName | undefined;
@@ -86,6 +138,7 @@ export async function readVideoFile(file: string, profile?: string): Promise<Vid
   // The project's settings are checked on their own, so whatever the schema refuses below is the file's.
   const project = ProjectSettings.safeParse(plugin.settings);
   if (!project.success) throw new Error(`${plugin.package}: "ai-videos" is not valid:\n${z.prettifyError(project.error)}`);
+  const { library, cast } = await readLibrary(plugin.dir);
 
   const { use, ...rest } = raw;
   const used = slug.safeParse(use);
@@ -93,8 +146,8 @@ export async function readVideoFile(file: string, profile?: string): Promise<Vid
   const own: Record<string, unknown> = {};
   const source: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(rest)) (Object.hasOwn(FileSettings.shape, key) ? own : source)[key] = value;
-  const { plugin: _plugin, ...projectSettings } = project.data;
-  const layered = FileSettings.safeParse(overlay(projectSettings, own));
+  const { plugin: _plugin, cast: _cast, ...projectSettings } = project.data;
+  const layered = FileSettings.safeParse(overlay({ ...projectSettings, cast }, own));
   if (!layered.success) throw new Error(`${file}: a setting is not valid:\n${z.prettifyError(layered.error)}`);
   const picked = profile as ProfileName | undefined;
   const base = path.join(plugin.dir, "out", picked ? `${name.data}-${picked}` : name.data);
@@ -104,6 +157,7 @@ export async function readVideoFile(file: string, profile?: string): Promise<Vid
     plugin,
     use: used.data,
     source,
+    library,
     settings: picked ? FileSettings.parse(overlay(layered.data, PROFILES[picked])) : layered.data,
     profile: picked,
     cache: path.join(plugin.dir, ".cache", name.data),
@@ -148,7 +202,7 @@ export function scriptOf(video: VideoFile, format: FormatName, plan: ClipJson): 
   if (voiceless) {
     throw new Error(
       `${video.file}: ${voiceless.speaker} says "${voiceless.text}", and the cast (${cast.join(", ") || "it is empty"}) gives ${voiceless.speaker} no voice: ` +
-        `give one under cast:, in the file or in ${video.plugin.package}'s "ai-videos"`,
+        `give ${voiceless.speaker} a voice: under the character in ${path.join(video.plugin.dir, LIBRARY_FILE)}, or under cast: in the file`,
     );
   }
   return {

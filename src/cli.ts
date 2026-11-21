@@ -306,7 +306,7 @@ async function makeFileWith(video: VideoFile, fitOnly: boolean, plugin: () => Pr
   const call = async (job: MakerCall, what: string) => {
     const plugin = await host();
     try {
-      await plugin.run(MakerCall.parse(job), video.file, video.source, log);
+      return await plugin.run({ call: MakerCall.parse(job), file: video.file, source: video.source, library: video.library }, log);
     } catch (e) {
       throw new Error(`\nStopped: the plugin failed on ${shown(video.file)}, ${what}: ${(e as Error).message}`);
     }
@@ -315,16 +315,22 @@ async function makeFileWith(video: VideoFile, fitOnly: boolean, plugin: () => Pr
   begin(1, "the plan");
   // The plan's format is the stage's, which only the plugin knows: it is recorded with the plan.
   const planFile = path.join(video.cache, "plan.json");
-  const planKey = keyOf("plan", video.use, video.source, code);
+  // The library without its voices: a voice changed redoes the voices, not the plan.
+  const planKey = keyOf("plan", video.use, video.source, video.library?.raw, code);
   let planned = stages.cached("plan", planKey, [planFile]);
   if (planned) cached(`the plan, ${shown(planFile)}`);
   else {
     await stages.forget("plan");
     const { scene, stage } = await host();
     const format = formatOf(scene, stage);
-    await call({ step: "data", name: video.name, format, data: planFile }, "writing its plan");
-    await stages.made("plan", planKey, { format });
-    planned = { key: planKey, format };
+    const { repaired } = await call({ step: "data", name: video.name, format, data: planFile }, "writing its plan");
+    await stages.made("plan", planKey, { format, repaired });
+    planned = { key: planKey, format, repaired };
+  }
+  // What the plugin mended is said every time, from the cache too: the file still holds it.
+  const repaired = (planned.repaired ?? []) as string[];
+  if (repaired.length > 0) {
+    log(`Mended by the plugin, in what it draws (${shown(video.file)} is as written):\n${repaired.map((r) => `  - ${r}`).join("\n")}`);
   }
   const format = planned.format as FormatName;
   const plan = await readClipData(planFile);
@@ -350,7 +356,7 @@ async function makeFileWith(video: VideoFile, fitOnly: boolean, plugin: () => Pr
   if (fitOnly) return;
 
   begin(3, "the drawing");
-  const drawKey = keyOf("drawing", await readFile(files.request, "utf8"), video.use, video.source, code);
+  const drawKey = keyOf("drawing", await readFile(files.request, "utf8"), video.use, video.source, video.library?.raw, code);
   if (stages.cached("drawing", drawKey, [files.clip, files.data, `${files.clip}.frames`])) cached(`the clip, ${shown(files.clip)}`);
   else {
     await stages.forget("drawing");

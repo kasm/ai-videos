@@ -165,8 +165,11 @@ function startHost(plugin: PluginFile) {
 export interface PluginHost {
   scene: string;
   stage: { width: number; height: number };
-  /** Runs one call on a video's source (its file, parsed, without the tool's keys), its progress logged; throws why it failed. */
-  run(call: MakerCall, file: string, source: unknown, log: (msg: string) => void): Promise<void>;
+  /**
+   * Runs one call on a video's source (its file, parsed, without the tool's keys) and library, its
+   * progress logged; throws why it failed. A plan's call gives what the plugin mended in the source.
+   */
+  run(job: Job, log: (msg: string) => void): Promise<{ repaired: string[] }>;
   /** Ends its process. */
   close(): void;
 }
@@ -185,13 +188,15 @@ export async function startPlugin(plugin: PluginFile, log: (msg: string) => void
   return {
     scene,
     stage,
-    async run(call, file, source, log) {
+    async run(job, log) {
+      const { call } = job;
       log(`${scene}: ${call.step === "data" ? `the plan of ${call.name}` : `${call.name}, drawn to ${path.basename(call.request)}`} (${call.format})`);
-      const reply = await host.send({ call, file, source });
+      const reply = await host.send(job);
       if (!("done" in reply)) throw new Error("error" in reply ? reply.error : "it did not answer");
-      const { frames, drawn, seconds } = reply.done;
+      const { frames, drawn, seconds, repaired = [] } = reply.done;
       if (call.step === "data") log(`  ${shown(call.data)}`);
       else log(`  ${shown(call.clip)}: ${frames} frames (${drawn} drawn) in ${seconds?.toFixed(1)} s; and its JSON`);
+      return { repaired };
     },
     close: () => host.close(),
   };

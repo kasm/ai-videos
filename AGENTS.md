@@ -66,8 +66,9 @@ video's folder. The TTS cache always stays here.
 
 A project (RayCraft, or this tool's `videos/`) keeps its videos in one folder, a video folder
 each, and beside them one project file with what they share. A project with a plugin (`cartoons`)
-keeps each video as one file instead, and its package.json holds what they share (see A video
-file). This section is the contract between the tool and a project.
+keeps each video as one file instead; its package.json holds the settings they share, and its
+`library.yaml` what they name (see A video file, The library). This section is the contract
+between the tool and a project.
 
 ### The project file
 
@@ -109,7 +110,8 @@ narration:
 - A line's voice is its own `voice` if it writes one, else its `speaker`'s in the cast, else the
   video's `voice` (`voiceOf`, `src/script.ts`). A video with no speakers needs no cast.
 - The cast is a setting like the others: a `video.yaml`'s `cast` overrides the project's speaker by
-  speaker, and may add its own.
+  speaker, and may add its own. A project with a plugin keeps its cast in its library, a voice
+  under each character (see The library).
 - A speaker the cast does not name is refused when the video loads, with the line and the cast: it
   is never said in the video's voice.
 - A clip's text may name its speaker (see Clips), `new` writes it into the line (a video file's
@@ -159,8 +161,13 @@ RayCraft keeps its maker.
     JSON Schema interfaces (`~standard.validate`, `~standard.jsonSchema`; standardschema.dev), as
     zod 4's have. A plugin whose example fails its schema, or whose schema writes no JSON Schema,
     is refused when it loads.
-  - `check(raw, file)`: the source, checked into the plugin's own type: the video file, read and
-    parsed from YAML by the tool, without the tool's keys. An error names the file and every reason.
+  - `check(raw, file, library)`: the source, checked into the plugin's own type: the video file,
+    read and parsed from YAML by the tool, without the tool's keys, and what it names found in the
+    library (`{ file, raw }`, undefined without a `library.yaml`; see The library). An error names
+    the file that holds the mistake, and every reason.
+  - `repair(raw, library)`, optional: what it mends in the source before `check`, only where there
+    is one right answer. It gives the source mended, in the same format, so it could be written
+    back, and `did`, a sentence for each thing it mended.
   - `plan(source)`: its events and texts at its own pace, as step one writes them.
   - `frame(source, moment, size)`: a moment (`moments`, The maker's shared code) as an SVG of the
     whole stage, `width` × `height` pixels.
@@ -168,15 +175,16 @@ RayCraft keeps its maker.
   Each function is pure: no Node APIs, no clock, no unseeded randomness. So a frame is the same in
   every run, and the same code can draw in a web page.
 - **What the host does** is the rest of both steps, the same for every plugin. Step one: the
-  source checked and planned, and the plan written as the clip's data. Step two: the
+  source mended, checked and planned, the plan written as the clip's data, and what was mended
+  said (`make` lists it, every time, and the file stays as written). Step two: the
   request's spans checked against the plan's events, each moment's SVG turned into pixels by resvg
   (no fonts: a picture holds no text) and encoded (`encoder`, crf 17), and the data written again:
   each event at its span, the texts moved with their beats. A frame whose SVG is the one before is
   not drawn again.
 - **The process:** `make` starts the host at the first stage it makes (none when each is in the
   cache), in the `package.json`'s folder, and closes it when it is done. Each call is a message,
-  with the video file's source, answered before the next; one that fails says why, and `make`
-  stops there. `src/host.test.ts` shows each case.
+  with the video file's source and the library, answered before the next; one that fails says
+  why, and `make` stops there. `src/host.test.ts` shows each case.
 
 ### A video file
 
@@ -204,13 +212,35 @@ scenes: [ … ]
 
 `src/video-file.test.ts` shows each rule.
 
+### The library
+
+`library.yaml`, beside the `package.json`, holds what a project's videos name, each drawn once:
+`cartoons`' characters and backgrounds. A video file names them, and draws none of its own.
+
+```yaml
+characters:
+  pip:
+    voice: am_puck   # the tool's: Pip's voice, the cast's
+    parts: { … }     # the rest is the plugin's
+backgrounds: { … }
+```
+
+- **Its keys:** each character's `voice` is the tool's, and every character has one. The tool takes
+  them as the project's cast (see Settings in layers), and gives the plugin the rest, with the
+  file's path, for `check` (see Plugins). A mistake is reported against `library.yaml`: a voice
+  missing or a name the tool refuses by the tool, the rest by the plugin.
+- **A voice has one home:** a `cast` in the `package.json`'s `"ai-videos"` is refused, pointing
+  here. A video file's own `cast:` still goes over the library's, speaker by speaker.
+- A project with no `library.yaml` has no library: its plugin gets none, and its cast is empty.
+
 ### Settings in layers
 
 A video file's settings come in layers, each over the one before, key by key as over a project
 file (a table merges, a list is replaced):
 
 1. the server's: the tool's defaults;
-2. the project's: its `package.json`'s `"ai-videos"`, beside `plugin`;
+2. the project's: its `package.json`'s `"ai-videos"`, beside `plugin`, and its library's voices
+   as its `cast` (see The library);
 3. the file's;
 4. a profile's, picked when making: `make <file> --profile quiet`.
 
@@ -228,10 +258,10 @@ into, and the ones made from them:
 
 | Stage | Made from | What it makes, in `.cache/<name>/` |
 | --- | --- | --- |
-| The plan | the source, `use`, the plugin's code | `plan.json`, and the format, in `stages.json` |
+| The plan | the source, `use`, the library (but its voices), the plugin's code | `plan.json`, and the format and what was mended, in `stages.json` |
 | The voices | each line's text, voice and `speed` (the tool's voice cache) | |
 | The fit | the plan, the voices, `fps`, `timing` | `clips/<name>-<format>.request.json` |
-| The drawing | the request, the source, the plugin's code | `clips/<name>-<format>.mp4`, its `.json` and `.frames` |
+| The drawing | the request, the source, the library (but its voices), the plugin's code | `clips/<name>-<format>.mp4`, its `.json` and `.frames` |
 | Check | the build (`build/<format>/`, but HyperFrames' own `.hyperframes/` and `renders/`), HyperFrames' version | |
 | The render | the build, `quality`, `fps` | `render.mp4` |
 | The sound | the render, `loudness` | `out/<name>.mp4`, mixed every time |
