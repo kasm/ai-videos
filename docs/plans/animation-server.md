@@ -9,7 +9,14 @@
   `the-shy-visitor` through the plugin gave the same `.frames` as the old
   maker drawing their requests (580 and 1277 frames); `npm test` and
   `npm run typecheck` pass in both repos; RayCraft's `water-switch` made
-  with the same request and `.frames`. **Next: step 2.**
+  with the same request and `.frames`.
+- Step 2 done 2026-11-21. Checked: `make videos/the-shy-visitor.yaml`
+  gave step 1's `.frames` (1277 frames), and so did `hello` and
+  `sundown`; `meet`'s differ only in its blinks, step 1's clip of it
+  having been drawn before blinking (anime step 5). With `--profile
+  quiet` every stage came from the cache but the sound (measured -19.9
+  LUFS), from shells that spell the drive `d:` and `D:`. `npm test` and
+  `npm run typecheck` pass in both repos. **Next: step 3.**
 
 
 ## Goal

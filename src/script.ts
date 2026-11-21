@@ -144,9 +144,10 @@ export type FormatName = keyof typeof FORMATS;
 
 /**
  * The settings a video.yaml shares with its project file (AGENTS.md, "Projects"): set in either,
- * the video.yaml's win; set in neither, these defaults.
+ * the video.yaml's win; set in neither, these defaults. A video file's are these too, but the
+ * formats (video-file.ts).
  */
-const settings = {
+export const settings = {
   /** The voice of every line that names no speaker (a narrator's). */
   voice: z.string().default("af_heart"),
   /** The cast: each speaker's voice, by name. A line's `speaker` is one of these. */
@@ -230,7 +231,7 @@ const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
 /** `over` on top of `under`: tables merge key by key (timing.moves.fastest keeps timing.gap); anything else replaces. */
-function overlay(under: unknown, over: unknown): unknown {
+export function overlay(under: unknown, over: unknown): unknown {
   if (!isRecord(under) || !isRecord(over)) return over === undefined ? under : over;
   const out = { ...under };
   for (const [key, value] of Object.entries(over)) out[key] = overlay(under[key], value);

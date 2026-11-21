@@ -1,12 +1,12 @@
 // The child process a plugin runs in (AGENTS.md, "Plugins"). make.ts forks it with the plugin's
-// file and sends it make's calls (the maker's, maker.ts), one at a time. It does for every plugin
-// what a maker did for itself: reads the source, writes the clip's data, and draws the clip to the
-// request, a moment at a time, the plugin's SVG turned into pixels by resvg and encoded by frames.ts.
+// file and sends it make's calls (the maker's, maker.ts), one at a time, each with the video's
+// source. It does for every plugin what a maker did for itself: has the source checked, writes the
+// plan as the clip's data, and draws the clip to the request, a moment at a time, the plugin's SVG
+// turned into pixels by resvg and encoded by frames.ts.
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { Resvg } from "@resvg/resvg-js";
-import { parse } from "yaml";
 import { z } from "zod";
 import type { requestDocument } from "./fit.ts";
 import { encoder, moments, writeClipData, type ClipText } from "./frames.ts";
@@ -14,15 +14,16 @@ import type { MakerCall } from "./maker.ts";
 import type { Plan, Plugin, Schema } from "./plugin.ts";
 import { FORMATS, slug } from "./script.ts";
 
-/** A call for the plugin, and the folder that holds the video folders: a source is `<sources>/<name>/<plugin.source>`. */
+/** A call for the plugin, with the video file and its source: the file, parsed, without the tool's keys. */
 export interface Job {
   call: MakerCall;
-  sources: string;
+  file: string;
+  source: unknown;
 }
 
 /** What the host says: once that it is ready (or why not), then once for each job. */
 export type Reply =
-  | { ready: { scene: string; commands: string[] } }
+  | { ready: { scene: string; stage: { width: number; height: number }; commands: string[] } }
   | { failed: string }
   | { done: { frames?: number; drawn?: number; seconds?: number } }
   | { error: string };
@@ -42,7 +43,6 @@ const pixels = z.number().int().positive();
 /** What the tool reads of a plugin's default export (plugin.ts). */
 const PluginShape = z.object({
   scene: slug,
-  source: z.string().refine((s) => s !== "" && path.basename(s) === s, "the source's file name, with no folder"),
   stage: z.object({ width: pixels, height: pixels }),
   commands: z.record(
     slug,
@@ -98,23 +98,6 @@ function fills(plugin: Plugin, format: string, { width, height }: { width: numbe
   if (width * stage.height !== height * stage.width) {
     throw new Error(`the ${plugin.scene} stage is ${stage.width} by ${stage.height}: it does not fill ${format} (${width} by ${height})`);
   }
-}
-
-/** Reads the source and has the plugin check it. */
-function readSource(plugin: Plugin, file: string): unknown {
-  let text: string;
-  try {
-    text = readFileSync(file, "utf8");
-  } catch {
-    throw new Error(`no ${plugin.source} at ${file}`);
-  }
-  let raw: unknown;
-  try {
-    raw = parse(text);
-  } catch (e) {
-    throw new Error(`${file} is not YAML: ${message(e)}`);
-  }
-  return plugin.check(raw, file);
 }
 
 type Request = ReturnType<typeof requestDocument>;
@@ -173,10 +156,10 @@ async function draw(plugin: Plugin, source: unknown, call: Extract<MakerCall, { 
 }
 
 /** One of make's calls: step one writes the plan as the clip's data, step two draws the clip and writes its data again. */
-export async function runJob(plugin: Plugin, pluginFile: string, { call, sources }: Job): Promise<Extract<Reply, { done: unknown }>["done"]> {
+export async function runJob(plugin: Plugin, pluginFile: string, job: Job): Promise<Extract<Reply, { done: unknown }>["done"]> {
+  const { call, file } = job;
   fills(plugin, call.format, call.step === "draw" ? call : FORMATS[call.format]);
-  const file = path.join(sources, call.name, plugin.source);
-  const source = readSource(plugin, file);
+  const source = plugin.check(job.source, file);
   const plan = plugin.plan(source);
   const shown = (f: string) => path.relative(process.cwd(), f).split(path.sep).join("/");
   const made = { by: `the ${plugin.scene} plugin, ${shown(pluginFile)}`, from: shown(file) };
@@ -218,7 +201,7 @@ if (import.meta.main) {
         ),
       );
     });
-    await send({ ready: { scene: plugin.scene, commands: Object.keys(plugin.commands) } });
+    await send({ ready: { scene: plugin.scene, stage: plugin.stage, commands: Object.keys(plugin.commands) } });
   } catch (e) {
     await send({ failed: message(e) });
     process.exit(1);

@@ -61,15 +61,16 @@ export interface Plan {
  * in every run, and the same code can draw in a web page.
  */
 export interface Plugin<Source = unknown> {
-  /** The scene it draws (lowercase letters, digits and dashes). */
+  /** The scene it draws (lowercase letters, digits and dashes): a video file's `use:` names it. */
   scene: string;
-  /** Its source's file name, in the folder `make:` names beside the video's (a video folder of the project). */
-  source: string;
-  /** The size its picture is drawn at, px: a format of another shape is refused. */
+  /** The size its picture is drawn at, px: the video's format is the one of its shape. */
   stage: { width: number; height: number };
   /** The commands of its scenario, by name. */
   commands: Record<string, Command>;
-  /** The source checked: `raw` is its file, parsed from YAML. An error names `file` and every reason. */
+  /**
+   * The source checked: `raw` is the video file, parsed from YAML, without the tool's keys (`use`
+   * and the settings). An error names `file` and every reason.
+   */
   check(raw: unknown, file: string): Source;
   /** The source's beats as the clip's events and texts, at its own pace. */
   plan(source: Source): Plan;

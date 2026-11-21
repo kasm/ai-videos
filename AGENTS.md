@@ -11,6 +11,8 @@ npm run video -- new <video>               a first video.yaml, from its clip's t
 npm run video -- new <video> --make <name> the same, for a clip not named as the folder
 npm run video -- make <video>              the whole video, inside its folder (see Projects, make)
 npm run video -- make <video> --fit        only the made clips' data and the fit, in seconds
+npm run video -- make <dir>/<name>.yaml    a plugin's video, from its one file (see Projects, A video file)
+npm run video -- make <file> --profile quiet  the same, a profile's settings over the rest
 npm run video -- build <video>             narrate, render every format, write out/<name>/
 npm run video -- build <video> --draft     fast low-quality render for iteration
 npm run video -- build <video> --format portrait
@@ -24,7 +26,8 @@ npm test                                   the tool's tests (src/*.test.ts)
 npm run typecheck
 ```
 
-A `<video>` is a folder holding a `video.yaml`. A bare name (`scroll-demo`) is a folder in this
+A `<video>` is a folder holding a `video.yaml`; a plugin's video is one file instead, and only
+`make` takes it (see A video file). A bare name (`scroll-demo`) is a folder in this
 tool's `videos/`; anything with a slash is a path to a folder anywhere on the disk, relative to
 where the command is typed, so another project runs the tool on its own folder:
 
@@ -50,7 +53,7 @@ video's folder. The TTS cache always stays here.
 | `videos/project.yaml`, `videos/make-clip.ts` | The folder's videos as a project (see Projects): its project file, and its maker, which draws clip-demo's square. |
 | `videos/clip-demo/` | The `clip` scene's demo: a made clip (`make: square`); `make clip-demo` writes its `clips/`, `build/` and `out/`. |
 | `scenes/<name>/scene.html` | Reusable scene templates (HyperFrames sub-compositions with `{{placeholders}}`): `page-scroll`, `clip`. |
-| `src/` | The pipeline: `script` → `clip` → `tts` → `timeline` (and `fit` with `mouth`, for `request`) → `compose` (with `bundle`) → `render` → `srt`; `setup`, what the commands need on the disk; `new`, a first script; `frames`, what a maker draws with (see The maker's shared code); `plugin` and `host`, a project's plugin and the process it runs in (see Plugins). |
+| `src/` | The pipeline: `script` → `clip` → `tts` → `timeline` (and `fit` with `mouth`, for `request`) → `compose` (with `bundle`) → `render` → `srt`; `setup`, what the commands need on the disk; `new`, a first script; `frames`, what a maker draws with (see The maker's shared code); `plugin` and `host`, a project's plugin and the process it runs in (see Plugins); `video-file` and `stages`, a plugin's video as one file, its settings in layers, and the cache of its stages (see A video file). |
 | `build/` | Generated HyperFrames projects. Never edit; regenerated on every run. |
 | `out/` | Finished videos and subtitles. |
 | `.cache/tts/` | Narration audio, keyed by text, voice and speed. |
@@ -62,8 +65,9 @@ video's folder. The TTS cache always stays here.
 ## Projects
 
 A project (RayCraft, or this tool's `videos/`) keeps its videos in one folder, a video folder
-each, and beside them one project file with what they share. This section is the contract between
-the tool and a project.
+each, and beside them one project file with what they share. A project with a plugin (`cartoons`)
+keeps each video as one file instead, and its package.json holds what they share (see A video
+file). This section is the contract between the tool and a project.
 
 ### The project file
 
@@ -108,8 +112,9 @@ narration:
   speaker, and may add its own.
 - A speaker the cast does not name is refused when the video loads, with the line and the cast: it
   is never said in the video's voice.
-- A clip's text may name its speaker (see Clips), `new` writes it into the line, and the request
-  passes it to the maker, which moves that character's mouth (see Fitting).
+- A clip's text may name its speaker (see Clips), `new` writes it into the line (a video file's
+  line has it from the plan), and the request passes it to the maker or the plugin, which moves
+  that character's mouth (see Fitting).
 - The narration's log names the speaker and voice of each line said in another voice than the
   video's: `line 2 (pip, am_puck): 0.93s`.
 
@@ -122,39 +127,40 @@ made parts out of git; nothing made is edited by hand.
 | --- | --- | --- | --- |
 | `video.yaml` | The script. | You or an AI; `new` writes a first one, a line per caption, each cued to its event. | yes |
 | `page.html`, `page.css`, `assets/` | A `page-scroll` scene's page. | You or an AI. | yes |
-| `clips/<scene>-<format>.json` | A made clip's data: its events and texts, at its own pace. | The plugin or the maker, step one. | no |
+| `clips/<scene>-<format>.json` | A made clip's data: its events and texts, at its own pace. | The maker, step one. | no |
 | `clips/<scene>-<format>.request.json` | The clip fitted to the voice (see Fitting). | `make`, as `request` does. | no |
-| `clips/<scene>-<format>.mp4` | The clip drawn to the request; its JSON is written again. | The plugin or the maker, step two. | no |
+| `clips/<scene>-<format>.mp4` | The clip drawn to the request; its JSON is written again. | The maker, step two. | no |
 | `build/<format>/` | The HyperFrames project. | `make`, as `compose` does. | no |
 | `out/<name>-<format>.mp4`, `out/<name>.srt` | The finished video and its subtitles. | `make`, as `build` does. | no |
 
-A made clip is a clip scene with `make: <name>` in place of `clip:`, the name of what the plugin
-or the maker draws (in RayCraft, a tutorial); its files are the `clips/` ones above, by the scene's
-id. A clip scene with `clip:` paths plays a clip drawn elsewhere, as before.
+A made clip is a clip scene with `make: <name>` in place of `clip:`, the name of what the maker
+draws (in RayCraft, a tutorial); its files are the `clips/` ones above, by the scene's id. A clip
+scene with `clip:` paths plays a clip drawn elsewhere, as before.
 
 ### Plugins
 
-A project's plugin draws its made clips: a module the tool runs in a child process of its own
+A project's plugin draws its videos: a module the tool runs in a child process of its own
 (`src/host.ts`), in place of a maker's command line. `cartoons` has one (its `src/plugin.ts`);
 RayCraft keeps its maker.
 
-- **Where:** the nearest `package.json` above the video folder names it, as a path from that
-  folder: `"ai-videos": { "plugin": "./src/plugin.ts" }` (`pluginOf`, `src/make.ts`). Its project
-  file then names no `maker`: one with both is refused. A `package.json` with no `"ai-videos"` key
-  (the tool's own, RayCraft's) leaves the clips to the maker.
+- **Where:** the nearest `package.json` above the video file names it, as a path from that
+  folder: `"ai-videos": { "plugin": "./src/plugin.ts" }` (`pluginOf`, `src/make.ts`). The same
+  `"ai-videos"` holds the project's settings (see Settings in layers). The project's videos are
+  files (see A video file): a video folder there with a made clip is refused, and so is `new`. A
+  `package.json` with no `"ai-videos"` key (the tool's own, RayCraft's) leaves the clips to the
+  maker.
 - **What it is:** the module's default export, `Plugin` in `src/plugin.ts`, which a project
   imports for its types alone (`import type { Plugin } from "ai-videos/plugin"`):
-  - `scene`: the scene it draws (`cartoon`).
-  - `source`: its source's file name. A made clip's `make: <name>` names the folder beside the
-    video's that holds it, `<name>/<source>`: for a cartoon, the video's own `scenario.yaml`.
-  - `stage`: the size its picture is drawn at. A format of another shape is refused.
+  - `scene`: the scene it draws (`cartoon`): a video file's `use:` names it.
+  - `stage`: the size its picture is drawn at. The video's format is the one of its shape; a stage
+    no format has the shape of is refused.
   - `commands`: what its source's beats may do, by name, each described once: a `description`,
     an `example` and a `schema`. A schema is any library's with the Standard Schema and Standard
     JSON Schema interfaces (`~standard.validate`, `~standard.jsonSchema`; standardschema.dev), as
     zod 4's have. A plugin whose example fails its schema, or whose schema writes no JSON Schema,
     is refused when it loads.
-  - `check(raw, file)`: the source, read and parsed from YAML by the host, checked into the
-    plugin's own type. An error names the file and every reason.
+  - `check(raw, file)`: the source, checked into the plugin's own type: the video file, read and
+    parsed from YAML by the tool, without the tool's keys. An error names the file and every reason.
   - `plan(source)`: its events and texts at its own pace, as step one writes them.
   - `frame(source, moment, size)`: a moment (`moments`, The maker's shared code) as an SVG of the
     whole stage, `width` × `height` pixels.
@@ -162,14 +168,83 @@ RayCraft keeps its maker.
   Each function is pure: no Node APIs, no clock, no unseeded randomness. So a frame is the same in
   every run, and the same code can draw in a web page.
 - **What the host does** is the rest of both steps, the same for every plugin. Step one: the
-  source read, checked and planned, and the plan written as the clip's data. Step two: the
+  source checked and planned, and the plan written as the clip's data. Step two: the
   request's spans checked against the plan's events, each moment's SVG turned into pixels by resvg
   (no fonts: a picture holds no text) and encoded (`encoder`, crf 17), and the data written again:
   each event at its span, the texts moved with their beats. A frame whose SVG is the one before is
   not drawn again.
-- **The process:** `make` and `new` start the host at their first call, in the `package.json`'s
-  folder, and close it when they are done. Each call is a message, answered before the next; one
-  that fails says why, and `make` stops there. `src/host.test.ts` shows each case.
+- **The process:** `make` starts the host at the first stage it makes (none when each is in the
+  cache), in the `package.json`'s folder, and closes it when it is done. Each call is a message,
+  with the video file's source, answered before the next; one that fails says why, and `make`
+  stops there. `src/host.test.ts` shows each case.
+
+### A video file
+
+A plugin's video is one file, `videos/<name>.yaml`: no folder, no `video.yaml`, no project file.
+`make` alone takes it (`src/video-file.ts`):
+
+```yaml
+use: cartoon        # the scene its plugin draws: the plugin's `scene`
+loudness: -16       # optional: any of the settings, over the project's
+characters: { … }   # every other key is the plugin's source, checked by the plugin
+scenes: [ … ]
+```
+
+- **Its keys:** `use` and the settings are the tool's; the plugin checks the rest. The settings
+  are a `video.yaml`'s but `formats`, and `quality`: `voice`, `cast`, `speed`, `fps`,
+  `loudness`, `timing`, and `quality` (`high` or `draft`, the render).
+- **Its lines** are written once, in the source: each of the plan's texts is a line, cued to the
+  event it begins at, with the text's speaker (`linesOf`, as `new` writes them). So a video file
+  has no `pause`, no line's own `voice` and no `limits`. A speaker the cast gives no voice is
+  refused, with the line.
+- **Its format** is the one of its plugin's stage (1920 by 1080: landscape), and it has that
+  one alone.
+- **Its name** is the file's: what is made goes into `.cache/<name>/`, and the finished files are
+  `out/<name>.mp4` and `out/<name>.srt`, both in the project's folder, the `package.json`'s.
+
+`src/video-file.test.ts` shows each rule.
+
+### Settings in layers
+
+A video file's settings come in layers, each over the one before, key by key as over a project
+file (a table merges, a list is replaced):
+
+1. the server's: the tool's defaults;
+2. the project's: its `package.json`'s `"ai-videos"`, beside `plugin`;
+3. the file's;
+4. a profile's, picked when making: `make <file> --profile quiet`.
+
+The profiles are the tool's (`PROFILES`, `src/video-file.ts`): `youtube` (-14 LUFS), `quiet`
+(-20 LUFS) and `draft` (the fast render). With a profile, the finished files take its name:
+`out/<name>-quiet.mp4`, `.srt`. A mistake is reported against the file that holds it: the
+`package.json` or the video file.
+
+### The cache
+
+`make <file>` keeps each stage's key in `.cache/<name>/stages.json`: a hash of what the stage is
+made from (`src/stages.ts`). A stage whose key is the one recorded, its files all there, is taken
+from the cache, and the log says "From the cache". So a setting redoes only the stages it goes
+into, and the ones made from them:
+
+| Stage | Made from | What it makes, in `.cache/<name>/` |
+| --- | --- | --- |
+| The plan | the source, `use`, the plugin's code | `plan.json`, and the format, in `stages.json` |
+| The voices | each line's text, voice and `speed` (the tool's voice cache) | |
+| The fit | the plan, the voices, `fps`, `timing` | `clips/<name>-<format>.request.json` |
+| The drawing | the request, the source, the plugin's code | `clips/<name>-<format>.mp4`, its `.json` and `.frames` |
+| Check | the build (`build/<format>/`, but HyperFrames' own `.hyperframes/` and `renders/`), HyperFrames' version | |
+| The render | the build, `quality`, `fps` | `render.mp4` |
+| The sound | the render, `loudness` | `out/<name>.mp4`, mixed every time |
+
+- The plugin's code is every file in the plugin's folder (but `node_modules` and dot folders)
+  and the tool's files it runs through (`DRAWING`, `src/stages.ts`): keep the plugin in a folder
+  of its own, as `cartoons`' `src/`.
+- The build names no absolute path, so it is the same however the drive is spelled (`d:` or
+  `D:`).
+- A stage is forgotten before it is made again: one stopped half-way is made in full next time.
+- `--fit` shows the fit even when it is in the cache.
+
+`src/stages.test.ts` shows each rule.
 
 ### The maker
 
@@ -243,10 +318,11 @@ one that draws by other means, follows those alone.
 
 ### `new`
 
-`npm run video -- new <video>` begins a video with no AI (`src/new.ts`). The folder needs a
-plugin, or a project file with a maker beside it; the folder itself may not exist yet.
+`npm run video -- new <video>` begins a video folder with no AI (`src/new.ts`). The folder needs
+a project file with a maker beside it; the folder itself may not exist yet. A plugin's video needs
+no `new`: it is one file, its lines written once in it (see A video file).
 
-1. It runs the plugin's or the maker's step one for the clip, in the project's first format (or `--format`'s),
+1. It runs the maker's step one for the clip, in the project's first format (or `--format`'s),
    into the folder's `clips/`. The clip is the folder's name, or `--make <name>`'s.
 2. It writes `video.yaml`: a title (the folder's name) and one made clip scene, its id the clip's
    name, with a line per text of the clip's data, in time order. Each line is cued to the event
@@ -263,13 +339,15 @@ script: write its lines by hand. `new` speaks and draws nothing, so it needs not
 ### `make`
 
 `npm run video -- make <video>` makes the whole video in five steps, in this order, and stops at
-the first that fails (`src/cli.ts`, `make`; the calls are `src/make.ts`):
+the first that fails (`src/cli.ts`, `make`; the calls are `src/make.ts`). A video file is made in
+the same five steps, by its plugin, each taken from the cache when it is unchanged (`makeFile`;
+see The cache).
 
-1. The data: the plugin's or the maker's step one for each made clip, in each format.
+1. The data: the maker's step one for each made clip, in each format.
 2. The fit: the voice spoken (from the cache when a line has not changed) and measured, and each
    made clip fitted to it, as `request` does: the table, and `clips/<scene>-<format>.request.json`.
    `--fit` stops here, in seconds, to try the lines and `timing` before anything is drawn.
-3. The drawing: the plugin's or the maker's step two for each made clip, in each format.
+3. The drawing: the maker's step two for each made clip, in each format.
 4. The checks: `build/<format>/` composed and checked, as `check` does. A made clip not drawn to its
    request, or a check's error, stops it.
 5. The video: each format rendered, at the script's loudness, into `out/`, with the subtitles.
@@ -302,10 +380,10 @@ files into the folder as a maker does, so that `make` stays offline.
 
 ### What an AI writes
 
-An AI session writes sources: a `video.yaml` (its lines, cues and limits), a page and its assets,
-or a project's own sources (a RayCraft tutorial). It never writes a made file, and it is never a
-step of `make`: no command calls a model but the voice on this machine. The project file's
-settings are the user's; an AI changes them only when asked. A video can begin without an AI:
+An AI session writes sources: a `video.yaml` (its lines, cues and limits), a video file, a page
+and its assets, or a project's own sources (a RayCraft tutorial). It never writes a made file, and
+it is never a step of `make`: no command calls a model but the voice on this machine. The project
+file's settings, and a `package.json`'s, are the user's; an AI changes them only when asked. A video can begin without an AI:
 `new` writes its first script from the clip's own texts.
 
 ## How loud

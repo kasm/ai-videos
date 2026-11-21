@@ -1,6 +1,6 @@
 // `make`'s calls to what draws a project's clips: its plugin (AGENTS.md, "Plugins"), or its maker
-// (AGENTS.md, "The maker"). Which calls a video needs, and running one: a plugin's in its host
-// process (host.ts), a maker's as a command line. cli.ts runs make's steps in order.
+// (AGENTS.md, "The maker"). Which calls a video folder needs, and running one: a plugin's in its
+// host process (host.ts), a maker's as a command line. cli.ts runs make's steps in order.
 import { fork, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -8,7 +8,7 @@ import path from "node:path";
 import { madeFiles } from "./clip.ts";
 import type { Job, Reply } from "./host.ts";
 import { MakerCall, makerArgs } from "./maker.ts";
-import { FORMATS, PROJECT_FILE, type FormatName, type LoadedProject, type LoadedVideo } from "./script.ts";
+import { FORMATS, PROJECT_FILE, type FormatName, type LoadedVideo } from "./script.ts";
 
 /** The video's made clips: each clip scene with `make:`, by its id and what the maker draws. */
 export function madeScenes(video: LoadedVideo): { id: string; name: string }[] {
@@ -67,20 +67,24 @@ export function runShell(line: string, dir: string): Promise<number> {
   });
 }
 
-/** A project's plugin: its file, and the package.json that names it, in the project's folder. */
+/**
+ * A project's plugin: its file, and the package.json that names it, in the project's folder. Its
+ * `"ai-videos"` is the project's settings too (video-file.ts), the plugin's path among them.
+ */
 export interface PluginFile {
   file: string;
   dir: string;
   package: string;
+  settings: Record<string, unknown>;
 }
 
 /**
- * The plugin the project of a video folder names: the nearest package.json above the folder, its
+ * The plugin the project of a video names: the nearest package.json above its file or folder, its
  * `"ai-videos": { "plugin": <a path from there> }`. Undefined when that package.json names none,
  * or there is no package.json above it.
  */
-export async function pluginOf(videoDir: string): Promise<PluginFile | undefined> {
-  for (let dir = path.dirname(path.resolve(videoDir)); ; dir = path.dirname(dir)) {
+export async function pluginOf(video: string): Promise<PluginFile | undefined> {
+  for (let dir = path.dirname(path.resolve(video)); ; dir = path.dirname(dir)) {
     const file = path.join(dir, "package.json");
     let text: string | undefined;
     try {
@@ -89,43 +93,40 @@ export async function pluginOf(videoDir: string): Promise<PluginFile | undefined
       if ((e as { code?: string }).code !== "ENOENT") throw e;
     }
     if (text !== undefined) {
-      let pkg: { "ai-videos"?: { plugin?: unknown } };
+      let pkg: { "ai-videos"?: Record<string, unknown> };
       try {
         pkg = JSON.parse(text);
       } catch (e) {
         throw new Error(`${file} is not JSON: ${(e as Error).message}`);
       }
-      if (pkg["ai-videos"] === undefined) return undefined;
-      const named = pkg["ai-videos"]?.plugin;
+      const settings = pkg["ai-videos"];
+      if (settings === undefined) return undefined;
+      const named = settings?.plugin;
       if (typeof named !== "string" || named === "") throw new Error(`${file}: "ai-videos": { "plugin" } is the plugin's file, a path from that folder`);
       const plugin = path.resolve(dir, named);
       if (!existsSync(plugin)) throw new Error(`${file} names the plugin ${named}, and there is no ${plugin}`);
-      return { file: plugin, dir, package: file };
+      return { file: plugin, dir, package: file, settings };
     }
     if (path.dirname(dir) === dir) return undefined;
   }
 }
 
-/** What draws a video's made clips: its project's plugin or its maker, one call at a time. */
+/** What draws a video folder's made clips: its project's maker, one call at a time. */
 export interface Drawer {
-  kind: "plugin" | "maker";
   /** Runs one call, its progress logged: undefined when it is done, else why it failed, as the end of a sentence. */
   run(call: MakerCall, log: (msg: string) => void): Promise<string | undefined>;
-  /** Ends what the drawer started: a plugin's process. */
-  close(): void;
 }
 
 /** The maker of a project file, run through the shell in the project file's folder. */
 export function makerDrawer({ maker, dir }: { maker: string; dir: string }): Drawer {
   return {
-    kind: "maker",
     async run(call, log) {
       const line = commandLine(maker, call);
-      log(`${line}\n  (in ${dir})`);
+      log(`${line}
+  (in ${dir})`);
       const code = await runShell(line, dir);
       return code === 0 ? undefined : ` with exit code ${code}; it says why above.`;
     },
-    close() {},
   };
 }
 
@@ -160,46 +161,49 @@ function startHost(plugin: PluginFile) {
   };
 }
 
-/**
- * The project's plugin, run in its own process from the first call on. `sources` is the folder that
- * holds the video folders: a made clip's source is `<sources>/<make>/<the plugin's source file>`. A
- * project file with a maker as well is refused: one of the two draws the clips.
- */
-export function pluginDrawer(plugin: PluginFile, project: LoadedProject | undefined, sources: string): Drawer {
-  if (project?.script.maker) {
-    throw new Error(`${plugin.package} names a plugin and ${project.file} a maker: one of them draws the project's clips, so remove the maker`);
+/** A project's plugin in its own process: what it draws, and its calls, one at a time. */
+export interface PluginHost {
+  scene: string;
+  stage: { width: number; height: number };
+  /** Runs one call on a video's source (its file, parsed, without the tool's keys), its progress logged; throws why it failed. */
+  run(call: MakerCall, file: string, source: unknown, log: (msg: string) => void): Promise<void>;
+  /** Ends its process. */
+  close(): void;
+}
+
+/** Starts the project's plugin in a process of its own, and waits until it is ready: throws why not. */
+export async function startPlugin(plugin: PluginFile, log: (msg: string) => void): Promise<PluginHost> {
+  const host = startHost(plugin);
+  const ready = await host.ready;
+  if (!("ready" in ready)) {
+    host.close();
+    throw new Error(`the plugin did not start: ${"failed" in ready ? ready.failed : "error" in ready ? ready.error : "it said something else"}`);
   }
-  let host: ReturnType<typeof startHost> | undefined;
-  let scene = "";
+  const { scene, stage, commands } = ready.ready;
+  log(`Plugin: ${scene}, ${plugin.file} (its commands: ${commands.join(", ") || "none"})`);
   const shown = (file: string) => path.relative(plugin.dir, file);
   return {
-    kind: "plugin",
-    async run(call, log) {
-      if (!host) {
-        host = startHost(plugin);
-        const ready = await host.ready;
-        if (!("ready" in ready)) return `: ${"failed" in ready ? ready.failed : "error" in ready ? ready.error : "it did not start"}`;
-        scene = ready.ready.scene;
-        log(`Plugin: ${scene}, ${plugin.file} (its commands: ${ready.ready.commands.join(", ") || "none"})`);
-      }
-      log(`${scene}: ${call.step === "data" ? `the data of ${call.name}` : `${call.name}, drawn to ${path.basename(call.request)}`} (${call.format})`);
-      const reply = await host.send({ call, sources });
-      if (!("done" in reply)) return `: ${"error" in reply ? reply.error : "it did not answer"}`;
+    scene,
+    stage,
+    async run(call, file, source, log) {
+      log(`${scene}: ${call.step === "data" ? `the plan of ${call.name}` : `${call.name}, drawn to ${path.basename(call.request)}`} (${call.format})`);
+      const reply = await host.send({ call, file, source });
+      if (!("done" in reply)) throw new Error("error" in reply ? reply.error : "it did not answer");
       const { frames, drawn, seconds } = reply.done;
       if (call.step === "data") log(`  ${shown(call.data)}`);
       else log(`  ${shown(call.clip)}: ${frames} frames (${drawn} drawn) in ${seconds?.toFixed(1)} s; and its JSON`);
-      return undefined;
     },
-    close() {
-      host?.close();
-    },
+    close: () => host.close(),
   };
 }
 
-/** What draws the video's made clips: its project's plugin, else its maker. Undefined when it has none. */
+/**
+ * What draws a video folder's made clips: its project's maker. Undefined when it has none. A
+ * project whose package.json names a plugin has its videos as files (video-file.ts), not folders.
+ */
 export async function drawerOf(video: LoadedVideo): Promise<Drawer | undefined> {
   if (madeScenes(video).length === 0) return undefined;
   const plugin = await pluginOf(video.dir);
-  if (plugin) return pluginDrawer(plugin, video.project, path.dirname(path.resolve(video.dir)));
+  if (plugin) throw new Error(`${plugin.package} names a plugin: its videos are files, each made with make <its folder>/<name>.yaml, not folders`);
   return makerDrawer(makerOf(video)!);
 }

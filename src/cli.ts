@@ -1,21 +1,23 @@
 // Entry point: npm run video -- <command> [video] [options]
-import { existsSync } from "node:fs";
-import { mkdir, writeFile, copyFile } from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
+import { mkdir, readFile, writeFile, copyFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { checkPages } from "./bundle.ts";
-import { loadClips, type SceneClips } from "./clip.ts";
+import { loadClips, madeFiles, readClipData, type SceneClips } from "./clip.ts";
 import { compose } from "./compose.ts";
 import { drawnTo, fitClip, requestDocument, requestFileOf, requestText, type Fit, type FitLine } from "./fit.ts";
-import { drawerOf, madeScenes, makerCalls, type Drawer } from "./make.ts";
-import type { MakerCall } from "./maker.ts";
+import { drawerOf, madeScenes, makerCalls, startPlugin, type Drawer, type PluginHost } from "./make.ts";
+import { MakerCall } from "./maker.ts";
 import { newVideo } from "./new.ts";
 import { hyperframes, normalizeLoudness, renderProject } from "./render.ts";
-import { loadVideo, type FormatName, type LoadedVideo } from "./script.ts";
+import { FORMATS, loadVideo, type FormatName, type LoadedVideo } from "./script.ts";
 import { cachePaths, cacheRoot, ready, setup, type Need } from "./setup.ts";
 import { toSrt } from "./srt.ts";
+import { codeKey, folderKey, keyOf, stagesIn } from "./stages.ts";
 import { buildTimeline, narrate, type SpokenLine, type Timeline } from "./timeline.ts";
 import { KokoroProvider, readWav, speak } from "./tts.ts";
+import { PROFILES, formatOf, readVideoFile, scriptOf, type VideoFile } from "./video-file.ts";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 // npm runs scripts in the package folder; paths on the command line are relative to where it was typed.
@@ -25,12 +27,15 @@ const { tts: TTS_CACHE, models: MODELS } = cachePaths(CACHE);
 // HyperFrames asks npm for a newer version on every run, from a process that outlives ours; the
 // tool pins its version, and runs offline.
 process.env.HYPERFRAMES_NO_UPDATE_CHECK = "1";
+// The HyperFrames the tool pins: a build checked or rendered by another is checked and rendered again.
+const HYPERFRAMES = (JSON.parse(readFileSync(path.join(ROOT, "package.json"), "utf8")) as { dependencies: Record<string, string> }).dependencies.hyperframes;
 const log = (msg: string) => console.log(msg);
 
 const HELP = `Usage: npm run video -- <command> [video] [options]
 
 A video is a folder holding a video.yaml: a bare name is a folder in this tool's videos/,
-anything with a slash is a path, relative to where the command is run.
+anything with a slash is a path, relative to where the command is run. A plugin's video is one
+file, <name>.yaml, and only make takes it (AGENTS.md, "A video file").
 
 Commands
   setup            Fetch once what the other commands need: the voice model and HyperFrames'
@@ -40,6 +45,9 @@ Commands
   make <video>     The whole video, inside its folder: the maker's data for each made clip, the
                    fit to the voice, the maker's drawing, check and build. Writes the folder's
                    clips/, build/ and out/ (AGENTS.md, "make")
+  make <file.yaml> A plugin's video: its plan, the voices and the fit, the drawing, check and the
+                   video, each stage from the cache when what it is made from is unchanged. Writes
+                   the project's .cache/<name>/ and out/<name>.mp4 and .srt
   build <video>    Narrate, compose, render and post-process a video into out/<name>/
   compose <video>  Narrate and generate the HyperFrames project in build/<name>/ (no render)
   check <video>    Compose, then run HyperFrames' lint and layout checks
@@ -52,6 +60,8 @@ Options
   --format <landscape|portrait>   Only this format (default: every format in the script)
   --draft                         Fast, lower-quality render for iteration
   --fit                           make only: stop after the fit, to try the lines and the timing
+  --profile <${Object.keys(PROFILES).join("|")}>   make of a file only: these settings over the rest;
+                                  the finished files are <name>-<profile>.*
   --make <name>                   new only: what the maker draws, when it is not the folder's name
   --out <folder>                  build only: write the finished files here instead of out/<name>/
 `;
@@ -196,21 +206,16 @@ async function render(
 }
 
 /**
- * `make`: the data for each made clip, the fit to the voice, the drawing, check and build, in that
- * order, stopping at the first that fails; the project's plugin or its maker writes the data and
- * draws. All it writes is in the video's folder (clips/, build/, out/), but for the voice cache,
- * which stays in the tool.
+ * `make` of a video folder: the data for each made clip, the fit to the voice, the drawing, check
+ * and build, in that order, stopping at the first that fails; the project's maker writes the data
+ * and draws. All it writes is in the video's folder (clips/, build/, out/), but for the voice
+ * cache, which stays in the tool.
  */
 async function make(dir: string, arg: string, only: string | undefined, opts: { fit: boolean; draft: boolean }) {
   const video = await loadVideo(dir);
   await checkPages(video);
   const formats = formatsOf(video, only);
-  const drawer = await drawerOf(video);
-  try {
-    await makeWith(drawer, video, dir, arg, only, formats, opts);
-  } finally {
-    drawer?.close();
-  }
+  await makeWith(await drawerOf(video), video, dir, arg, only, formats, opts);
 }
 
 /** make's five steps, with what draws its made clips (none when it has none). */
@@ -233,7 +238,7 @@ async function makeWith(
       const failed = await drawer.run(call, log);
       if (failed !== undefined) {
         const what = step === "data" ? "writing its data" : "drawing it";
-        throw new Error(`\nStopped: the ${drawer.kind} failed on scene "${scene}" (${call.format}), ${what}${failed}`);
+        throw new Error(`\nStopped: the maker failed on scene "${scene}" (${call.format}), ${what}${failed}`);
       }
     }
   };
@@ -261,6 +266,135 @@ async function makeWith(
   await render(video, timeline, formats, projects, path.join(video.dir, "out"), opts.draft);
 }
 
+/**
+ * `make <file>`: a plugin's video from its one file (AGENTS.md, "A video file"), in five steps:
+ * the plan, the voices and the fit, the drawing, check, and the video. Each stage is taken from the
+ * cache when what it is made from is unchanged (stages.ts), but the sound, mixed every time. It
+ * writes the project's .cache/<name>/ and out/, and the plugin runs only for a stage it makes.
+ */
+async function makeFile(file: string, opts: { fit: boolean; profile: string | undefined }) {
+  const video = await readVideoFile(file, opts.profile);
+  log(`Video: ${video.file}${video.profile ? `, profile ${video.profile}` : ""}`);
+  let started: Promise<PluginHost> | undefined;
+  const plugin = () => (started ??= startPlugin(video.plugin, log));
+  try {
+    await makeFileWith(video, opts.fit, plugin);
+  } finally {
+    // A plugin that did not start has nothing to close.
+    await started?.then((host) => host.close(), () => {});
+  }
+}
+
+async function makeFileWith(video: VideoFile, fitOnly: boolean, plugin: () => Promise<PluginHost>) {
+  const steps = fitOnly ? 2 : 5;
+  const begin = (n: number, what: string) => log(`\n== ${n}/${steps}: ${what}\n`);
+  const shown = (file: string) => path.relative(video.plugin.dir, file);
+  const cached = (what: string) => log(`From the cache: ${what}`);
+  const stages = await stagesIn(video.cache);
+  const code = await codeKey(video.plugin.file);
+  /** The plugin, started at the first stage that needs it: the one the file's `use:` names. */
+  const host = async () => {
+    let started: PluginHost;
+    try {
+      started = await plugin();
+    } catch (e) {
+      throw new Error(`\nStopped: ${(e as Error).message}`);
+    }
+    if (started.scene !== video.use) throw new Error(`\nStopped: ${shown(video.file)} says use: ${video.use}, and the plugin ${shown(video.plugin.file)} draws ${started.scene}`);
+    return started;
+  };
+  const call = async (job: MakerCall, what: string) => {
+    const plugin = await host();
+    try {
+      await plugin.run(MakerCall.parse(job), video.file, video.source, log);
+    } catch (e) {
+      throw new Error(`\nStopped: the plugin failed on ${shown(video.file)}, ${what}: ${(e as Error).message}`);
+    }
+  };
+
+  begin(1, "the plan");
+  // The plan's format is the stage's, which only the plugin knows: it is recorded with the plan.
+  const planFile = path.join(video.cache, "plan.json");
+  const planKey = keyOf("plan", video.use, video.source, code);
+  let planned = stages.cached("plan", planKey, [planFile]);
+  if (planned) cached(`the plan, ${shown(planFile)}`);
+  else {
+    await stages.forget("plan");
+    const { scene, stage } = await host();
+    const format = formatOf(scene, stage);
+    await call({ step: "data", name: video.name, format, data: planFile }, "writing its plan");
+    await stages.made("plan", planKey, { format });
+    planned = { key: planKey, format };
+  }
+  const format = planned.format as FormatName;
+  const plan = await readClipData(planFile);
+  const script = scriptOf(video, format, plan);
+  // The pipeline's video: its folder is the cache's, laid out as a video folder's made parts.
+  const loaded: LoadedVideo = { slug: video.name, dir: video.cache, file: video.file, project: undefined, script };
+  const files = madeFiles(video.cache, video.name, format);
+
+  begin(2, "the voices and the fit");
+  log(`Narration (${script.voice})`);
+  const spoken = await narrate(script, new KokoroProvider(MODELS), TTS_CACHE, log);
+  const voiced = spoken.flat().map((l) => [l.text, l.speaker, l.cue, l.pause, path.basename(l.audioFile), l.duration]);
+  const fitKey = keyOf("fit", plan, voiced, script.fps, script.timing);
+  // With --fit the fit is shown, from the cache or not.
+  if (!fitOnly && stages.cached("fit", fitKey, [files.request])) cached(`the fit, ${shown(files.request)}`);
+  else {
+    await stages.forget("fit");
+    const own = new Map([[video.name, { byFormat: { [format]: { file: files.clip, dataFile: files.data, data: plan } }, duration: plan.duration, events: plan.events }]]);
+    await mkdir(path.dirname(files.request), { recursive: true });
+    await writeRequests(loaded, own, await fitAll(loaded, own, spoken, true));
+    await stages.made("fit", fitKey);
+  }
+  if (fitOnly) return;
+
+  begin(3, "the drawing");
+  const drawKey = keyOf("drawing", await readFile(files.request, "utf8"), video.use, video.source, code);
+  if (stages.cached("drawing", drawKey, [files.clip, files.data, `${files.clip}.frames`])) cached(`the clip, ${shown(files.clip)}`);
+  else {
+    await stages.forget("drawing");
+    await call({ step: "draw", name: video.name, format, ...FORMATS[format], request: files.request, clip: files.clip, data: files.data }, "drawing it");
+    await stages.made("drawing", drawKey);
+  }
+
+  begin(4, "check");
+  const clips = await loadClips(loaded, [format]);
+  const clip = clips.get(video.name)!;
+  const timeline = buildTimeline(script, clips, spoken, log);
+  log(`Timeline: ${timeline.duration.toFixed(2)}s at ${timeline.fps} fps`);
+  if (!drawnTo((await fitAll(loaded, clips, spoken)).get(video.name)!, clip.events, clip.duration, script.fps)) {
+    throw new Error(`\nStopped: the plugin drew ${shown(files.clip)}, but not to the request.`);
+  }
+  const project = await compose(ROOT, loaded, clips, timeline, format, path.join(video.cache, "build"));
+  // What HyperFrames reads: the build but its own folder and the renders, and HyperFrames itself.
+  const built = await folderKey(project, (rel) => rel.startsWith(".hyperframes/") || rel.startsWith("renders/"));
+  const buildKey = keyOf("build", built, HYPERFRAMES);
+  if (stages.cached("check", buildKey)) cached("check, passed on this build");
+  else {
+    await stages.forget("check");
+    if (!(await checkProjects([format], { [format]: project }))) throw new Error("\nStopped: check found errors (above).");
+    await stages.made("check", buildKey);
+  }
+
+  begin(5, "the video");
+  const { quality, loudness } = video.settings;
+  const rendered = path.join(video.cache, "render.mp4");
+  const renderKey = keyOf("render", buildKey, quality, script.fps);
+  if (stages.cached("render", renderKey, [rendered])) cached(`the render, ${shown(rendered)}`);
+  else {
+    await stages.forget("render");
+    log(`Render (${quality})`);
+    await renderProject(ROOT, project, rendered, { fps: script.fps, draft: quality === "draft" });
+    await stages.made("render", renderKey);
+  }
+  log(`Sound: mixed at ${loudness} LUFS`);
+  await normalizeLoudness(rendered, `${video.out}.mp4`, loudness);
+  log(`  ${shown(`${video.out}.mp4`)}`);
+  await writeFile(`${video.out}.srt`, toSrt(timeline));
+  log(`Subtitles: ${shown(`${video.out}.srt`)}`);
+}
+
 async function main() {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
@@ -270,6 +404,7 @@ async function main() {
       fit: { type: "boolean", default: false },
       make: { type: "string" },
       out: { type: "string" },
+      profile: { type: "string" },
       help: { type: "boolean", short: "h", default: false },
     },
   });
@@ -303,6 +438,12 @@ async function main() {
   }
   if (values.fit && command !== "make") throw new Error("--fit is for make; the fit alone is request");
   if (values.make !== undefined && command !== "new") throw new Error("--make is for new; a script names its clip in make:");
+  // A plugin's video is one file, and make alone takes it: its format is its plugin's stage, its profile is picked here.
+  const isFile = arg.endsWith(".yaml");
+  if (isFile && command !== "make") throw new Error(`${command} takes a video folder; a video file (${arg}) is made with make`);
+  if (isFile && values.format !== undefined) throw new Error(`--format is for a video folder: a video file's format is its plugin's stage`);
+  if (isFile && values.draft) throw new Error("--draft is for a video folder: a video file's draft is --profile draft");
+  if (values.profile !== undefined && !isFile) throw new Error("--profile is for make of a video file (<name>.yaml)");
   // Only the maker's data: nothing spoken or drawn, so it needs nothing from setup.
   if (command === "new") return void (await newVideo(videoDir(arg), { make: values.make, format: values.format }, log));
   // Before anything is written: what the command needs is on this disk, or it names what is not.
@@ -310,6 +451,7 @@ async function main() {
   const needs: Need[] = command === "compose" || command === "request" || values.fit ? ["voice"] : ["voice", "browser"];
   Object.assign(process.env, ready(ROOT, CACHE, needs));
 
+  if (command === "make" && isFile) return makeFile(path.resolve(CALLER, arg), { fit: values.fit, profile: values.profile });
   if (command === "make") return make(videoDir(arg), arg, values.format, { fit: values.fit, draft: values.draft });
 
   if (command === "request") {

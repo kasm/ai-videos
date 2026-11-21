@@ -8,8 +8,9 @@ import path from "node:path";
 import { after, test } from "node:test";
 import { parse } from "yaml";
 import { loadClips, type ClipJson } from "./clip.ts";
-import { linesOf, newVideo } from "./new.ts";
+import { newVideo } from "./new.ts";
 import { loadVideo } from "./script.ts";
+import { linesOf } from "./video-file.ts";
 
 const MAKER = path.resolve(import.meta.dirname, "..", "videos", "make-clip.ts").split(path.sep).join("/");
 const scratch = await mkdtemp(path.join(os.tmpdir(), "ai-videos-new-"));
@@ -23,32 +24,6 @@ async function project(name: string, projectYaml?: string): Promise<string> {
   if (projectYaml !== undefined) await writeFile(path.join(dir, "project.yaml"), projectYaml);
   return dir;
 }
-
-test("each text becomes a line cued to the event it begins at, in time order", () => {
-  const data: ClipJson = {
-    format: "ai-videos-clip",
-    version: 1,
-    made: { by: "a test", from: "this table" },
-    duration: 6,
-    events: [
-      { name: "start", at: 0, span: "hold" },
-      { name: "turn", at: 2, span: "move" },
-      { name: "rest", at: 4, span: "hold" },
-    ],
-    texts: [
-      { text: "Rounded apart from its event.", from: 4.0004, to: 6 },
-      { text: "First.", from: 0, to: 2 },
-      { text: "Between two events: the last before it.", from: 3, to: 4 },
-      { text: "A second on the same event.", from: 3.5, to: 4 },
-    ],
-  };
-  assert.deepEqual(linesOf(data), [
-    { text: "First.", cue: "start" },
-    { text: "Between two events: the last before it.", cue: "turn" },
-    { text: "A second on the same event.", cue: "turn" },
-    { text: "Rounded apart from its event.", cue: "rest" },
-  ]);
-});
 
 /** A maker whose step one writes this data: a script of its own in `dir`, as the project file names it. */
 async function makerOf(dir: string, data: ClipJson): Promise<string> {
@@ -126,7 +101,7 @@ test("new writes the clip's texts as lines, and none of the project's settings",
   assert.equal((await loadClips(video, ["portrait"], { readVideo: false })).get("square")?.events.length, 5);
 });
 
-test("new never writes over a script, and needs a maker in a project file", async () => {
+test("new never writes over a script, and needs a maker in a project file, not a plugin", async () => {
   const root = await project("refusals", `maker: node "${MAKER}"\n`);
   const made = path.join(root, "square");
   await newVideo(made, {}, quiet); // the folder's name is what the maker draws
@@ -136,6 +111,10 @@ test("new never writes over a script, and needs a maker in a project file", asyn
   await assert.rejects(newVideo(path.join(alone, "square"), {}, quiet), /No project\.yaml beside .* to name the maker/);
   const noMaker = await project("no-maker", "voice: af_heart\n");
   await assert.rejects(newVideo(path.join(noMaker, "square"), {}, quiet), /project\.yaml names no maker/);
+  const plugin = await project("plugin", "voice: af_heart\n");
+  await writeFile(path.join(plugin, "package.json"), JSON.stringify({ "ai-videos": { plugin: "plugin.mjs" } }));
+  await writeFile(path.join(plugin, "plugin.mjs"), "");
+  await assert.rejects(newVideo(path.join(plugin, "square"), {}, quiet), /package\.json names a plugin: its videos are files, <name>\.yaml/);
   const failing = await project("failing", `maker: node -e "process.exit(3)"\n`);
   await assert.rejects(newVideo(path.join(failing, "square"), {}, quiet), /the maker failed writing "square"'s data \(landscape\) with exit code 3/);
   assert.ok(!existsSync(path.join(failing, "square", "video.yaml")));

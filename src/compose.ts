@@ -188,16 +188,19 @@ export async function compose(
     );
 
     for (const line of timed.lines) {
-      const name = `${String(line.n).padStart(2, "0")}-${path.basename(line.audioFile)}`;
-      await copyFile(line.audioFile, path.join(project, "assets", "vo", name));
+      const name = voiceOf(line);
+      await copyFile(line.audioFile, path.join(project, name));
       audio.push(
-        `      <audio id="vo-${String(line.n).padStart(2, "0")}" class="clip" data-start="${line.start}" data-duration="${line.duration}" data-track-index="2" data-volume="1" src="assets/vo/${name}"></audio>`,
+        `      <audio id="vo-${String(line.n).padStart(2, "0")}" class="clip" data-start="${line.start}" data-duration="${line.duration}" data-track-index="2" data-volume="1" src="${name}"></audio>`,
       );
     }
   }
 
+  // No absolute path in the build: it is the same however the tool and the video were reached
+  // (d: or D:), so a make can tell it unchanged (stages.ts).
+  const source = path.relative(project, video.file).split(path.sep).join("/");
   const index = `<!doctype html>
-<!-- Generated from ${video.file}. Edit the script, the page or the scene template, not this file. -->
+<!-- Generated from ${source}. Edit the script, the page or the scene template, not this file. -->
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -231,6 +234,11 @@ ${audio.join("\n")}
     path.join(project, "meta.json"),
     JSON.stringify({ id: `${video.slug}-${format}`, name: `${video.script.title} (${format})` }, null, 2),
   );
-  await writeFile(path.join(project, "timeline.json"), JSON.stringify(timeline, null, 2));
+  // The timeline as the build has it: each line's voice is the build's copy.
+  const own = { ...timeline, scenes: timeline.scenes.map((s) => ({ ...s, lines: s.lines.map((line) => ({ ...line, audioFile: voiceOf(line) })) })) };
+  await writeFile(path.join(project, "timeline.json"), JSON.stringify(own, null, 2));
   return project;
 }
+
+/** A line's voice in the build: its number and its file's name in the voice cache. */
+const voiceOf = (line: { n: number; audioFile: string }) => `assets/vo/${String(line.n).padStart(2, "0")}-${path.basename(line.audioFile)}`;
