@@ -57,7 +57,8 @@ const withBeat = (more: object) => {
 
 test("the-shy-visitor reads with the library: every name found, each mark a point on the ground", () => {
   const s = readScenario(path.join(root, "videos/the-shy-visitor.yaml"));
-  assert.deepEqual(Object.keys(s.characters), ["pip", "mo", "tuk"]);
+  // The checked scenario holds the whole library's characters, those it places among them.
+  assert.deepEqual(Object.keys(s.characters), Object.keys(libraryOf().raw.characters));
   assert.deepEqual(s.scenes[0]!.places, { pip: [960, 880], mo: [1440, 880], tuk: [-250, 880] });
   const beats = s.scenes.flatMap((scene) => scene.beats);
   assert.deepEqual(beats.find((beat) => beat.walk)!.walk, { who: "tuk", to: [480, 880] });

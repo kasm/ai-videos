@@ -18,7 +18,8 @@ a video with a spoken voice, offline and with no AI. The plan is the tool's
   its beat (the tool's `AGENTS.md`, "A video file").
 - `.cache/<name>/`: what the tool makes on the way (the plan, the request,
   the clip, the build); `out/<name>.mp4` and `out/<name>.srt`: the
-  finished video and its subtitles. Made, not in git, never edited.
+  finished video and its subtitles, and `out/<name>.html`, its web page.
+  Made, not in git, never edited.
 - `stories/<name>.md`: a story in prose (a book's chapter), the source of
   its episodes, `videos/<name>-1.yaml` and on. The tool wraps it in its
   prompt for a web chat, and imports the chat's reply, pasted into
@@ -78,6 +79,11 @@ Node 24. From this folder:
 - `--profile quiet` (or `youtube`, `draft`): the tool's settings of that
   name over the rest, into `out/<name>-quiet.mp4` (the tool's `AGENTS.md`,
   "Settings in layers").
+- `--as web`: the cartoon's web page instead, `out/<name>.html`: one file
+  that plays offline, with a play button and a seek bar. It draws each
+  frame with this plugin's code, the same SVG as the video's, and plays
+  the video's sound; after the video, it speaks and fits nothing again
+  (the tool's `AGENTS.md`, "The web page").
 
 `video` is the tool's command line, found at `../ai_videos`. The contract
 between the tool and this project is the tool's `AGENTS.md`, "Projects".
@@ -333,4 +339,5 @@ characters on one mark, is refused, with the place and the reason.
 - **The plugin's code is pure**: no Node API (the tool reads the files),
   and a frame's picture is a function of the scenario, the library and the moment alone:
   no clock, no random number, no font of the machine (a picture holds no
-  text; captions are the tool's). So the same code can draw in a web page.
+  text; captions are the tool's). So the same code draws the web page: the
+  tool bundles `src/plugin.ts` and what it imports for a browser.
