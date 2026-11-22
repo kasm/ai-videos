@@ -92,7 +92,16 @@
   The old commands are refused as unknown. `npm test` and `npm run
   typecheck` pass in both repos, and RayCraft's `media/` typecheck. No
   file of the tool or `cartoons` names the old contract, this plan's
-  history aside. **Next: step 8b.**
+  history aside.
+- Step 8b done 2026-11-22, from a session in RayCraft. Decided with the
+  user: `workflow.html` redrawn for the new way, both projects; RayCraft's
+  root `videos/` (the old maker's output, 7b's baselines) deleted with
+  the old made folders; ROADMAP's lines on its done plans and the paused
+  `state-tutorials` plan's done step 4 kept as written. Checked: a search
+  of RayCraft's tracked files for the old contract's names finds only
+  those and the done plans; the page's three diagrams looked at in
+  headless Chrome. RayCraft's `npm run verify` passes. **The plan is
+  done.**
 
 
 ## Goal
