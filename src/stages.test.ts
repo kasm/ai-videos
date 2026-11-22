@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
-import { codeKey, folderKey, keyOf, stagesIn } from "./stages.ts";
+import { codeKey, folderKey, inputsKey, keyOf, stagesIn } from "./stages.ts";
 
 const scratch = await mkdtemp(path.join(os.tmpdir(), "ai-videos-stages-"));
 after(() => rm(scratch, { recursive: true, force: true }));
@@ -54,6 +54,34 @@ test("a stage is from the cache while its key holds and its files are there; one
   // A record that does not read is nothing in the cache.
   await writeFile(path.join(dir, "stages.json"), "{ not json");
   assert.equal((await stagesIn(dir)).cached("plan", "k1"), undefined);
+});
+
+test("the files a plugin names: a file's bytes, a folder's files but node_modules and dot folders, one not there", async () => {
+  const project = await folder("inputs/project", { "package.json": "{}" });
+  await folder("inputs", { "tutorials/a.json": "1", "app/x.js": "x", "app/node_modules/y/index.js": "y" });
+  const inputs = ["../tutorials/a.json", "../app", "../none.json"];
+  const before = await inputsKey(project, inputs);
+  assert.equal(await inputsKey(project, inputs), before);
+  await folder("inputs", { "app/node_modules/y/index.js": "changed", "app/.cache/z": "z" });
+  assert.equal(await inputsKey(project, inputs), before);
+  await folder("inputs", { "app/x.js": "changed" });
+  const changed = await inputsKey(project, inputs);
+  assert.notEqual(changed, before);
+  await folder("inputs", { "tutorials/a.json": "2" });
+  assert.notEqual(await inputsKey(project, inputs), changed);
+  // One that comes to be there is a change too, and so is the list.
+  const listed = await inputsKey(project, inputs);
+  await folder("inputs", { "none.json": "{}" });
+  assert.notEqual(await inputsKey(project, inputs), listed);
+  assert.notEqual(await inputsKey(project, inputs.slice(0, 2)), await inputsKey(project, inputs));
+});
+
+test("a stage's last record is there whatever its key: what its key is made from", async () => {
+  const dir = path.join(scratch, "last");
+  const stages = await stagesIn(dir);
+  assert.equal(stages.last("plan"), undefined);
+  await stages.made("plan", "k1", { inputs: ["a.json"] });
+  assert.deepEqual((await stagesIn(dir)).last("plan"), { inputs: ["a.json"], key: "k1" });
 });
 
 test("the plugin's code: a file in its folder changes the key, node_modules and dot folders do not", async () => {

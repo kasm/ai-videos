@@ -77,7 +77,7 @@ const ClipLine = z.strictObject({
 const clipFile = z.string().min(1);
 
 /** Limits for one event's span, over the video's `timing.moves` (see "Fitting a clip to the voice"). */
-const EventLimits = z.strictObject({
+export const EventLimits = z.strictObject({
   /** A move: the slowest it may play, as a multiple of its own speed. */
   slowest: z.number().positive().max(1).optional(),
   /** A move: the fastest it may play, as a multiple of its own speed. */

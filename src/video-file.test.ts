@@ -176,6 +176,9 @@ test("the script: one made clip scene by the file's name, its lines the plan's, 
       narration: linesOf(PLAN).map((line) => ({ ...line, pause: 0 })),
     },
   ]);
+  // The plan's limits, when it gives some, are the scene's.
+  const limited = scriptOf(await readVideoFile(path.join(root, "videos", "meet.yaml")), "landscape", PLAN, { turn: { fastest: 3 } });
+  assert.deepEqual(limited.scenes, [{ ...script.scenes[0]!, limits: { turn: { fastest: 3 } } }]);
   const alone = await readVideoFile(path.join(root, "videos", "alone.yaml"));
   assert.throws(
     () => scriptOf(alone, "landscape", PLAN),

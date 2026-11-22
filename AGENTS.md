@@ -175,27 +175,44 @@ RayCraft keeps its maker.
   - `repair(raw, library)`, optional: what it mends in the source before `check`, only where there
     is one right answer. It gives the source mended, in the same format, so it could be written
     back, and `did`, a sentence for each thing it mended.
-  - `plan(source)`: its events and texts at its own pace, as step one writes them.
-  - `frame(source, moment, size)`: a moment (`moments`, The maker's shared code) as an SVG of the
-    whole stage, `width` × `height` pixels.
+  - `plan(source)`: its events and texts at its own pace, as step one writes them; and, optional,
+    `limits`: single events' own limits on the fit, by the event's name, as a clip scene's (see
+    Fitting): a move's `slowest` and `fastest`, a hold's `least`. One that names no event, or
+    the wrong kind, is refused.
+  - `inputs(source)`, optional: the project's files its plan and picture are made from, beyond the
+    video file, the library and its own folder (a tutorial the source names, the app that draws
+    it), each a file or a folder, as a path from the project's folder (see The cache).
+  - Its picture, one of the two (a plugin with both, or neither, is refused):
+    - `frame(source, moment, size)`, a plugin that draws: a moment (`moments`, The maker's shared
+      code) as an SVG of the whole stage, `width` × `height` pixels.
+    - `camera(source, request, size)`, a plugin that records: what takes its pictures (a page in a
+      browser) opened for the clip drawn to `request`, as `{ shot(moment), close() }`. `shot`
+      gives each moment's picture, in order, as a PNG of `width` × `height` pixels, sRGB and
+      opaque, the same buffer again for a picture held; `close` is called when the clip is drawn,
+      or failed.
 
-  Each function is pure: no Node APIs, no clock, no unseeded randomness. So a frame is the same in
-  every run, and the same code draws in the video's web page (see The web page), the module and
-  what it imports bundled for a browser.
+  A drawing plugin's functions are pure: no Node APIs, no clock, no unseeded randomness. So a frame
+  is the same in every run, and the same code draws in the video's web page (see The web page), the
+  module and what it imports bundled for a browser. A recording plugin runs with Node, in the
+  host's process: its `check` and `plan` may read the files `inputs` names, and its camera must
+  give the same pictures in every run all the same (`.frames` compares two runs). Its web page
+  plays the clip it recorded.
 - **What the host does** is the rest of both steps, the same for every plugin. Step one: the
   source mended, checked and planned, the plan written as the clip's data, and what was mended
-  said (`make` lists it, every time, and the file stays as written). Step two: the
-  request's spans checked against the plan's events, each moment's SVG turned into pixels by resvg
-  (no fonts: a picture holds no text) and encoded (`encoder`, crf 17), and the data written again:
-  each event at its span, the texts moved with their beats. A frame whose SVG is the one before is
-  not drawn again. Beside the clip's `.frames`, `<clip>.svgs` holds a hash of each frame's SVG (its
-  md5), a line a frame: what the web page draws is compared with it.
+  said (`make` lists it, every time, and the file stays as written), with the plan's limits and
+  inputs. Step two: the request's spans checked against the plan's events, each moment's picture
+  encoded (`encoder`, crf 17), and the data written again: each event at its span, the texts
+  moved with their beats. A drawing plugin's SVG is turned into pixels by resvg (no fonts: a
+  picture holds no text), and a frame whose SVG is the one before is not drawn again; beside the
+  clip's `.frames`, `<clip>.svgs` holds a hash of each frame's SVG (its md5), a line a frame: what
+  the web page draws is compared with it. A recording plugin's PNGs are encoded as they come
+  (`input: "png"`), `.frames` holding the md5 of each, and it has no `.svgs`.
 - **The process:** `make` starts the host at the first stage it makes (none when each is in the
   cache), in the `package.json`'s folder, and closes it when it is done. Ready, the host says the
-  plugin's scene, stage, guide and commands (their descriptions and examples). Each call is a
-  message, with the video file's source and the library, answered before the next; one that fails
-  says why, and `make` stops there. `import`'s call mends, checks and plans a source and writes
-  nothing. `src/host.test.ts` shows each case.
+  plugin's scene, stage, picture (`drawn` or `recorded`), guide and commands (their descriptions
+  and examples). Each call is a message, with the video file's source and the library, answered
+  before the next; one that fails says why, and `make` stops there. `import`'s call mends, checks
+  and plans a source and writes nothing. `src/host.test.ts` shows each case.
 
 ### A video file
 
@@ -273,23 +290,28 @@ The profiles are the tool's (`PROFILES`, `src/video-file.ts`): `youtube` (-14 LU
 made from (`src/stages.ts`). A stage whose key is the one recorded, its files all there, is taken
 from the cache, and the log says "From the cache". So a setting redoes only the stages it goes
 into, and the ones made from them. The first four are both modes'; then the page and the video's,
-as the outputs say (see A video file):
+as the outputs say (see A video file). A recording plugin's page plays its clip, so its drawing
+comes before the page: a step of its own when the video is made too, else the page's.
 
 | Stage | Made from | What it makes, in `.cache/<name>/` |
 | --- | --- | --- |
-| The plan | the source, `use`, the library (but its voices), the plugin's code | `plan.json`, and the format and what was mended, in `stages.json` |
+| The plan | the source, `use`, the library (but its voices), the plugin's code, its inputs | `plan.json`, and in `stages.json` the format, the picture, what was mended, the limits and the inputs |
 | The voices | each line's text, voice and `speed` (the tool's voice cache) | |
 | The fit | the plan, the voices, `fps`, `timing` | `clips/<name>-<format>.request.json` |
 | The sound | each line's voice and when it starts (the fit's timeline), the video's length, `loudness` | `sound.m4a` |
-| The drawing | the request, the source, the library (but its voices), the plugin's code | `clips/<name>-<format>.mp4`, its `.json`, `.frames` and `.svgs` |
+| The drawing | the request, the source, the library (but its voices), the plugin's code, its inputs | `clips/<name>-<format>.mp4`, its `.json`, `.frames` and (drawn) `.svgs` |
 | Check | the build (`build/<format>/`, but HyperFrames' own `.hyperframes/` and `renders/`), HyperFrames' version | |
 | The render | the build, `quality`, `fps` | `render.mp4` |
 | The video | the render's picture, the sound | `out/<name>.mp4` and `.srt`, written every time |
-| The page | the sound, the source, the library, the request, the plugin's code | `out/<name>.html`, written every time |
+| The page | the sound, the source, the library, the request, the plugin's code, or a recording plugin's clip | `out/<name>.html`, written every time |
 
 - The plugin's code is every file in the plugin's folder (but `node_modules` and dot folders)
   and the tool's files it runs through (`DRAWING`, `src/stages.ts`): keep the plugin in a folder
   of its own, as `cartoons`' `src/`.
+- Its inputs are the files its plan named (`inputs`, see Plugins), as they are now: a file's
+  bytes, a folder's files as the code's (`inputsKey`). The list is the one the plan named when it
+  was last made, kept with it: one changed, or come or gone, makes the plan again, which names
+  them anew, and the drawing with it. So a make with every stage in the cache starts no plugin.
 - The build names no absolute path, so it is the same however the drive is spelled (`d:` or
   `D:`).
 - A stage is forgotten before it is made again: one stopped half-way is made in full next time.
@@ -360,11 +382,14 @@ one that draws by other means, follows those alone.
 - **`encoder(clip, { width, height, fps, crf })`** starts ffmpeg (on the PATH) writing `clip`,
   its folder made first:
   - `await frame(pixels)` adds a frame: `width` × `height` pixels in rows from the top, four
-    bytes each (red, green, blue, alpha), sRGB and opaque. A frame of another size is refused. A
-    hold gives the same buffer again, and is not hashed again.
+    bytes each (red, green, blue, alpha), sRGB and opaque; with `input: "png"`, a PNG of that size
+    (a screenshot). A frame of another size is refused. A hold gives the same buffer again, and is
+    not hashed again.
   - `await end()` waits for ffmpeg, fails if it failed, and returns the number of frames. It
-    writes `<clip>.frames` beside the clip: a hash of each frame's pixels, a line a frame. Two
-    runs that drew the same pictures have the same file; where they differ, the line is the frame.
+    writes `<clip>.frames` beside the clip: a hash of each frame as given (its pixels, or its
+    PNG's bytes), a line a frame. Two runs that drew the same pictures have the same file; where
+    they differ, the line is the frame. `abort()` stops ffmpeg for a clip given up (a frame
+    failed), and writes none.
   - The clip is H.264, 4:2:0, marked BT.709, with nothing in it that differs by run (dates, the
     encoder's name). `crf` is the quality, lower is closer to the pixels: a maker chooses it
     (`videos/make-clip.ts` 24; a drawing with fine lines, 17).
@@ -423,14 +448,18 @@ stays in the tool. A clip scene with `clip:` paths plays as it was drawn: `make`
 
 `make <file> --as web`, or `make <file>` with `outputs: { web: true }` (off by default, see A video
 file), writes `out/<name>.html` (`src/page.ts`): one file that plays as the video does, offline. It needs the voices but not HyperFrames' Chrome, and it is made from the stages both
-modes share, so a page made after the video speaks, fits and mixes nothing again.
+modes share (and a recording plugin's drawing), so a page made after the video speaks, fits,
+mixes and draws nothing again.
 
 - **The picture:** the plugin's module and the tool's `moments`, bundled for a browser by esbuild,
   with the video file's source, the library and the request. The page mends and checks the source
   as the host does, then draws each frame's SVG with the plugin's `frame`: the SVG the video's
   frame was drawn from. `src/page.test.ts` runs the page's drawing with no Node and no page, and
   finds each frame's SVG the same as the video's `.svgs`. A plugin that does not bundle (it
-  imports a Node module) is refused, with esbuild's reason.
+  imports a Node module) is refused, with esbuild's reason. A recording plugin's picture is its
+  clip instead, the drawing's `.mp4` in the file as it is, played muted with the sound: set on the
+  sound's time when the two are more than two frames apart, and on the frame itself while paused.
+  Its code is not bundled.
 - **The rest:** the sound (`sound.m4a`, the same track the video plays), the captions (the clip
   scene's, split, timed and styled as the video's: `sceneCaptions`, `clipStyle`) and their font
   (Inter 700, each subset), all inside the file. It names no URL.

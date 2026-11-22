@@ -3,12 +3,17 @@
 // written for the test, its schema by hand, so the interface needs no schema library. ffmpeg draws
 // the clip.
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
+import { moments } from "./frames.ts";
 import { loadPlugin, runJob } from "./host.ts";
 import { drawerOf, pluginOf, startPlugin } from "./make.ts";
+import type { RecordingPlugin } from "./plugin.ts";
+import { run } from "./render.ts";
 import { loadVideo } from "./script.ts";
 
 const scratch = await mkdtemp(path.join(os.tmpdir(), "ai-videos-host-"));
@@ -78,8 +83,8 @@ const REQUEST = {
   duration: 1,
   frames: 10,
   spans: [
-    { event: "start", span: "hold", natural: 1, at: 0, duration: 0.3 },
-    { event: "slide", span: "move", natural: 1, at: 0.3, duration: 0.7, move: 0.4 },
+    { event: "start", span: "hold" as const, natural: 1, at: 0, duration: 0.3 },
+    { event: "slide", span: "move" as const, natural: 1, at: 0.3, duration: 0.7, move: 0.4 },
   ],
   lines: [],
 };
@@ -101,6 +106,7 @@ test("the plugin's host writes the plan as the clip's data, then draws the clip 
   try {
     assert.match(said[0]!, /^Plugin: square, .*plugin\.mjs \(its commands: colour\)$/);
     assert.equal(host.scene, "square");
+    assert.equal(host.picture, "drawn");
     assert.deepEqual(host.stage, { width: 160, height: 90 });
     // Its part of the prompt comes with it: the guide, and each command's description and example.
     assert.match(host.guide, /^A square waits, then slides/);
@@ -155,8 +161,9 @@ test("the plugin's host writes the plan as the clip's data, then draws the clip 
     await assert.rejects(host.run({ call: data, file: video, source: { ...SOURCE, colour: "blue" }, library }, quiet), /library\.yaml: no colour is named blue/);
 
     // The plugin mends the source before its check, and the plan's call says what it mended.
-    assert.deepEqual(await host.run({ call: data, file: video, source: SOURCE }, quiet), { repaired: [] });
-    assert.deepEqual(await host.run({ call: data, file: video, source: { ...SOURCE, colour: "d04040" } }, quiet), { repaired: ["the colour d04040 is #d04040"] });
+    // A plugin with no limits and no inputs gives none.
+    assert.deepEqual(await host.run({ call: data, file: video, source: SOURCE }, quiet), { repaired: [], limits: {}, inputs: [] });
+    assert.deepEqual((await host.run({ call: data, file: video, source: { ...SOURCE, colour: "d04040" } }, quiet)).repaired, ["the colour d04040 is #d04040"]);
     await host.run({ call: draw, file: video, source: { ...SOURCE, colour: "d04040" } }, quiet);
     assert.deepEqual(await readFile(`${files.clip}.frames`, "utf8"), frames.join("\n") + "\n", "drawn as the colour written whole");
 
@@ -208,6 +215,136 @@ test("the plugin is the nearest package.json's: none there, none named, or a mis
   await assert.rejects(pluginOf(path.join(unnamed, "videos", "sq.yaml")), /"ai-videos": \{ "plugin" \} is the plugin's file/);
   const gone = await project("gone", undefined, { "ai-videos": { plugin: "src/none.mjs" } });
   await assert.rejects(pluginOf(path.join(gone, "videos", "sq.yaml")), /names the plugin src\/none\.mjs, and there is no/);
+});
+
+/**
+ * The same square, recorded: its camera gives each moment as a PNG, written here by hand (as a
+ * screenshot comes, not from an SVG). Its plan gives limits, and it names the files it is made from;
+ * a source may say otherwise, or make a shot fail. The camera says when it opens and closes.
+ */
+const RECORDING = `
+import { crc32, deflateSync } from "node:zlib";
+const any = { "~standard": { version: 1, vendor: "test", validate: (v) => ({ value: v }), jsonSchema: { input: () => ({}), output: () => ({}) } } };
+const chunk = (type, data) => {
+  const head = Buffer.alloc(8);
+  head.writeUInt32BE(data.length, 0);
+  head.write(type, 4, "ascii");
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(Buffer.concat([head.subarray(4), data])), 0);
+  return Buffer.concat([head, data, crc]);
+};
+// White, with a red square at x: 8-bit RGB rows, each after its filter byte (none).
+const png = (width, height, x) => {
+  const row = width * 3 + 1;
+  const rows = Buffer.alloc(row * height, 255);
+  for (let y = 0; y < height; y++) {
+    rows[y * row] = 0;
+    if (y < height / 3 || y >= (height * 2) / 3) continue;
+    for (let px = x; px < x + height / 3; px++) rows.set([208, 64, 64], y * row + 1 + px * 3);
+  }
+  const ihdr = Buffer.from([0, 0, 0, 0, 0, 0, 0, 0, 8, 2, 0, 0, 0]);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(rows)), chunk("IEND", Buffer.alloc(0))]);
+};
+export default {
+  scene: "square",
+  stage: { width: 160, height: 90 },
+  commands: { colour: { description: "The square's colour.", example: "#d04040", schema: any } },
+  guide: "A square waits, then slides, recorded.",
+  check: (raw) => raw,
+  plan: (s) => ({
+    duration: s.wait + s.slide,
+    events: [{ name: "start", at: 0, span: "hold" }, { name: "slide", at: s.wait, span: "move" }],
+    texts: [{ text: "It waits.", from: 0, to: s.wait }, { text: "It slides.", from: s.wait, to: s.wait + s.slide }],
+    limits: s.limits ?? { start: { least: 0.5 }, slide: { fastest: 3 } },
+  }),
+  inputs: (s) => s.inputs ?? ["colours.txt", "../shared"],
+  async camera(s, request, { width, height }) {
+    globalThis.camera = ["opened, " + request.frames + " frames"];
+    let x, shot;
+    return {
+      async shot(m) {
+        if (m.time >= (s.fail ?? Infinity)) throw new Error("the page went away");
+        const next = Math.round(((m.span === 1 ? 20 + 100 * m.progress : 20) * width) / 160);
+        // The same picture is the same buffer: a hold.
+        if (next !== x) [x, shot] = [next, png(width, height, next)];
+        return shot;
+      },
+      async close() {
+        globalThis.camera.push("closed");
+      },
+    };
+  },
+};
+`;
+
+test("a plugin that records: its camera's PNGs are the clip, .frames hashes each, and its plan gives limits and inputs", async () => {
+  const root = await project("recorded", () => RECORDING);
+  const file = path.join(root, "src", "plugin.mjs");
+  const video = path.join(root, "videos", "sq.yaml");
+  const files = filesOf(root);
+  const said: string[] = [];
+  const host = await startPlugin((await pluginOf(video))!, (m) => said.push(m));
+  try {
+    assert.equal(host.picture, "recorded");
+    // The plan's call gives its limits and the files it is made from; the clip's data is the plan's events and texts alone.
+    const data = { step: "data", name: "sq", format: "landscape", data: files.data } as const;
+    assert.deepEqual(await host.run({ call: data, file: video, source: SOURCE }, quiet), {
+      repaired: [],
+      limits: { start: { least: 0.5 }, slide: { fastest: 3 } },
+      inputs: ["colours.txt", "../shared"],
+    });
+    assert.deepEqual(Object.keys(await json(files.data)), ["format", "version", "made", "duration", "events", "texts"]);
+
+    await writeFile(files.request, JSON.stringify(REQUEST));
+    const draw = { step: "draw", name: "sq", format: "landscape", width: 160, height: 90, ...files } as const;
+    await host.run({ call: draw, file: video, source: SOURCE }, (m) => said.push(m));
+    // The wait and the slide's first frame are one shot, each frame of the motion another, its end held.
+    assert.match(said.at(-1)!, /sq-landscape\.mp4: 10 frames \(5 recorded\) in [\d.]+ s; and its JSON/);
+    const probe = await run("ffprobe", ["-v", "error", "-count_frames", "-show_entries", "stream=width,height,nb_read_frames", "-of", "csv=p=0", files.clip]);
+    assert.equal(probe.stdout.trim(), "160,90,10");
+    // Each line of .frames is the md5 of the PNG the camera gave for that frame, as it gave it.
+    const plugin = (await loadPlugin(file)) as RecordingPlugin;
+    const camera = await plugin.camera(SOURCE, REQUEST, { width: 160, height: 90 });
+    const shots = [];
+    for (const moment of moments(REQUEST)) shots.push(createHash("md5").update(await camera.shot(moment)).digest("hex"));
+    assert.equal(await readFile(`${files.clip}.frames`, "utf8"), `${shots.join("\n")}\n`);
+    // A recorded clip has no SVGs to hash.
+    assert.equal(existsSync(`${files.clip}.svgs`), false);
+    assert.equal((await json(files.data)).made.from, "videos/sq.yaml, drawn to sq-landscape.request.json");
+  } finally {
+    host.close();
+  }
+});
+
+test("a recording plugin's camera is closed when a shot fails; its limits and inputs are checked", async () => {
+  const root = await project("recorded-refused", () => RECORDING);
+  const file = path.join(root, "src", "plugin.mjs");
+  const plugin = await loadPlugin(file);
+  const video = path.join(root, "videos", "sq.yaml");
+  const files = filesOf(root);
+  await mkdir(path.dirname(files.request), { recursive: true });
+  await writeFile(files.request, JSON.stringify(REQUEST));
+  const draw = { step: "draw", name: "sq", format: "landscape", width: 160, height: 90, ...files } as const;
+  await assert.rejects(runJob(plugin, file, { call: draw, file: video, source: { ...SOURCE, fail: 0.5 } }), /the page went away/);
+  assert.deepEqual((globalThis as { camera?: string[] }).camera, ["opened, 10 frames", "closed"]);
+
+  const data = { step: "data", name: "sq", format: "landscape", data: files.data } as const;
+  const planOf = (more: object) => runJob(plugin, file, { call: data, file: video, source: { ...SOURCE, ...more } });
+  await assert.rejects(planOf({ limits: { slid: { fastest: 2 } } }), /the plan's limits for "slid": no event of the plan has that name \(its events: start, slide\)/);
+  await assert.rejects(planOf({ limits: { start: { fastest: 2 } } }), /the plan's limits for "start": it is a hold, which takes least, not fastest/);
+  await assert.rejects(planOf({ limits: { slide: { fastest: 20 } } }), /the plan's limits for "slide" are not valid/);
+  await assert.rejects(planOf({ inputs: [path.join(root, "colours.txt")] }), /the plugin's inputs\) are not valid:[\s\S]*not an absolute one/);
+  // Import's check is refused by the same limits.
+  await assert.rejects(runJob(plugin, file, { call: { step: "check" }, file: video, source: { ...SOURCE, limits: { slid: {} } } }), /no event of the plan has that name/);
+});
+
+test("a plugin draws or records, one of the two", async () => {
+  const both = await project("both", () => RECORDING.replace("check: (raw) => raw,", "check: (raw) => raw, frame: () => '<svg/>',"));
+  await assert.rejects(loadPlugin(path.join(both, "src", "plugin.mjs")), /give frame \(a moment drawn as an SVG\) or camera \(a moment recorded as a PNG\), one of the two/);
+  const neither = await project("neither", () => RECORDING.replace("async camera(", "async notCamera("));
+  await assert.rejects(loadPlugin(path.join(neither, "src", "plugin.mjs")), /one of the two/);
 });
 
 test("a video folder with a made clip, in a project with a plugin, is refused: its videos are files", async () => {

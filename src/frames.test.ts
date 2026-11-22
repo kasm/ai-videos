@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { Resvg } from "@resvg/resvg-js";
 import { readClipData, type ClipJson } from "./clip.ts";
 import type { requestDocument } from "./fit.ts";
 import { clipData, encoder, moments, writeClipData, type ClipData, type Request } from "./frames.ts";
@@ -98,6 +100,33 @@ test("the encoder writes the clip, and a hash of each frame beside it", async ()
     assert.deepEqual(await readFile(again), await readFile(clip));
   } finally {
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("the encoder takes PNGs too: each one's bytes hashed, its size read from its header", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "aiv-frames-"));
+  try {
+    const png = (fill: string, width = 32, height = 16) =>
+      new Resvg(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="${width}" height="${height}" fill="${fill}"/></svg>`).render().asPng();
+    const [dark, light] = [png("#004080"), png("#ff4080")];
+    const clip = path.join(dir, "shots.mp4");
+    const out = encoder(clip, { width: 32, height: 16, fps: 10, crf: 24, input: "png" });
+    await assert.rejects(out.frame(Buffer.alloc(32 * 16 * 4)), /a frame of 2048 bytes is not a PNG/);
+    await assert.rejects(out.frame(png("#000000", 16, 16)), /a frame came out 16 by 16, not 32 by 16/);
+    for (const shot of [dark, dark, light, png("#004080")]) await out.frame(shot);
+    assert.equal(await out.end(), 4);
+    // The PNG's bytes, as the camera gave them: the same picture encoded alike has the same hash.
+    const md5 = (bytes: Buffer) => createHash("md5").update(bytes).digest("hex");
+    assert.equal(await readFile(`${clip}.frames`, "utf8"), `${[dark, dark, light, dark].map(md5).join("\n")}\n`);
+    const probe = await run("ffprobe", ["-v", "error", "-count_frames", "-show_entries", "stream=width,height,nb_read_frames,pix_fmt,r_frame_rate", "-of", "csv=p=0", clip]);
+    assert.equal(probe.stdout.trim(), "32,16,yuv420p,10/1,4");
+    // A clip given up half-way (a frame failed): ffmpeg stopped, and no hashes beside it.
+    const given = encoder(path.join(dir, "given-up.mp4"), { width: 32, height: 16, fps: 10, crf: 24, input: "png" });
+    await given.frame(dark);
+    given.abort();
+    assert.equal(existsSync(path.join(dir, "given-up.mp4.frames")), false);
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });
 

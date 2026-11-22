@@ -310,7 +310,7 @@ export async function importReply(file: string, log: (msg: string) => void): Pro
           const video = videoFileOf(withAdded, target, episode.raw);
           if (video.use !== host!.scene) throw new Error(`it says use: ${video.use}, and the plugin draws ${host!.scene}: write use: ${host!.scene}`);
           const { repaired, plan } = await host!.check(episode.name, video.source, withAdded.library);
-          const script = scriptOf(video, formatOf(host!.scene, host!.stage), plan);
+          const script = scriptOf(video, formatOf(host!.scene, host!.stage), plan, plan.limits);
           const unspoken = script.scenes.flatMap((s) => s.narration).find((line) => !voices.has(voiceOf(script, line)));
           if (unspoken) throw new Error(`"${unspoken.text}" is said in ${voiceOf(script, unspoken)}, which is not one of the tool's voices`);
           accepted.push({ episode, target, repaired });

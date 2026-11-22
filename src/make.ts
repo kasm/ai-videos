@@ -7,7 +7,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { madeFiles } from "./clip.ts";
 import type { Described, Job, Reply } from "./host.ts";
-import type { Library, Plan } from "./plugin.ts";
+import type { EventLimits, Library, Plan } from "./plugin.ts";
 import { MakerCall, makerArgs } from "./maker.ts";
 import { FORMATS, PROJECT_FILE, type FormatName, type LoadedVideo } from "./script.ts";
 
@@ -167,9 +167,9 @@ export interface PluginHost extends Described {
   /**
    * Runs one of make's calls on a video's source (its file, parsed, without the tool's keys) and
    * library, its progress logged; throws why it failed. A plan's call gives what the plugin mended
-   * in the source.
+   * in the source, the plan's limits on the fit, and the files it is made from (plugin.ts, inputs).
    */
-  run(job: Job & { call: MakerCall }, log: (msg: string) => void): Promise<{ repaired: string[] }>;
+  run(job: Job & { call: MakerCall }, log: (msg: string) => void): Promise<{ repaired: string[]; limits: Record<string, EventLimits>; inputs: string[] }>;
   /** Mends, checks and plans a video's source, writing nothing: what was mended, and the plan. Throws why it was refused. */
   check(file: string, source: unknown, library: Library | undefined): Promise<{ repaired: string[]; plan: Plan }>;
   /** Ends its process. */
@@ -199,10 +199,10 @@ export async function startPlugin(plugin: PluginFile, log: (msg: string) => void
       log(`${scene}: ${call.step === "data" ? `the plan of ${call.name}` : `${call.name}, drawn to ${path.basename(call.request)}`} (${call.format})`);
       const reply = await host.send(job);
       if (!("done" in reply)) throw new Error("error" in reply ? reply.error : "it did not answer");
-      const { frames, drawn, seconds, repaired = [] } = reply.done;
+      const { frames, drawn, seconds, repaired = [], limits = {}, inputs = [] } = reply.done;
       if (call.step === "data") log(`  ${shown(call.data)}`);
-      else log(`  ${shown(call.clip)}: ${frames} frames (${drawn} drawn) in ${seconds?.toFixed(1)} s; and its JSON`);
-      return { repaired };
+      else log(`  ${shown(call.clip)}: ${frames} frames (${drawn} ${ready.ready.picture}) in ${seconds?.toFixed(1)} s; and its JSON`);
+      return { repaired, limits, inputs };
     },
     close: () => host.close(),
   };

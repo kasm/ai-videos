@@ -12,7 +12,7 @@ import { z } from "zod";
 import type { ClipJson } from "./clip.ts";
 import { pluginOf, type PluginFile } from "./make.ts";
 import type { Library } from "./plugin.ts";
-import { FORMATS, overlay, settings, slug, Speaker, type FormatName, type VideoScript } from "./script.ts";
+import { FORMATS, overlay, settings, slug, Speaker, type EventLimitsScript, type FormatName, type VideoScript } from "./script.ts";
 
 /** The project's library, beside its package.json. */
 export const LIBRARY_FILE = "library.yaml";
@@ -246,9 +246,10 @@ export function linesOf(data: Pick<ClipJson, "events" | "texts">): { speaker?: s
 
 /**
  * The script the pipeline reads, from the video file and its plan: one made clip scene, by the
- * file's name, its lines the plan's texts. A speaker the cast gives no voice is refused.
+ * file's name, its lines the plan's texts, its limits the plan's (the host has checked them). A
+ * speaker the cast gives no voice is refused.
  */
-export function scriptOf(video: VideoFile, format: FormatName, plan: Pick<ClipJson, "events" | "texts">): VideoScript {
+export function scriptOf(video: VideoFile, format: FormatName, plan: Pick<ClipJson, "events" | "texts">, limits: Record<string, EventLimitsScript> = {}): VideoScript {
   const lines = linesOf(plan);
   if (lines.length === 0) throw new Error(`${video.file} has no line to say: its plan gives no text`);
   const { quality: _quality, outputs: _outputs, ...script } = video.settings;
@@ -264,6 +265,6 @@ export function scriptOf(video: VideoFile, format: FormatName, plan: Pick<ClipJs
     title: video.name,
     ...script,
     formats: [format],
-    scenes: [{ id: video.name, scene: "clip", make: video.name, limits: {}, narration: lines.map((line) => ({ ...line, pause: 0 })) }],
+    scenes: [{ id: video.name, scene: "clip", make: video.name, limits, narration: lines.map((line) => ({ ...line, pause: 0 })) }],
   };
 }

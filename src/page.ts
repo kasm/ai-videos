@@ -1,9 +1,10 @@
 // A video file's web page (AGENTS.md, "make", --as web): one HTML file with everything in it, that
-// plays as the video does. Each frame is the SVG the video's frame was drawn from, drawn by the
-// plugin's own code and the tool's moments, bundled for a browser; the sound is the video's one
-// track; the captions are the clip scene's, in its style. A play button and a seek bar, nothing
-// more, and no URL: it plays offline.
-import { readFile, writeFile } from "node:fs/promises";
+// plays as the video does. Each frame of a drawing plugin's picture is the SVG the video's frame was
+// drawn from, drawn by the plugin's own code and the tool's moments, bundled for a browser; a
+// recording plugin's picture is the clip it recorded, played with the sound. The sound is the
+// video's one track; the captions are the clip scene's, in its style. A play button and a seek
+// bar, nothing more, and no URL: it plays offline.
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { build } from "esbuild";
 import { CAPTION_FADE, clipStyle, sceneCaptions, type Caption } from "./compose.ts";
@@ -103,10 +104,15 @@ const scriptJson = (value: unknown) => JSON.stringify(value).replace(/</g, "\\u0
 
 const dataUrl = async (file: string, type: string) => `data:${type};base64,${(await readFile(file)).toString("base64")}`;
 
-/** The player: the sound's clock picks the frame, drawn when it changes, with the captions of its time. */
+/**
+ * The player: the sound's clock picks the frame, drawn when it changes, with the captions of its
+ * time. A recorded clip plays beside the sound instead, set back on its time when it drifts more
+ * than two frames from it, and on the frame itself while the sound is paused.
+ */
 const PLAYER = `(function () {
   var video = JSON.parse(document.getElementById("video").textContent);
-  var picture = drawing(video);
+  var clip = document.getElementById("clip");
+  var picture = clip ? null : drawing(video);
   var FPS = video.fps, LAST = video.frames - 1, FADE = video.fade, W = video.size.width, H = video.size.height;
   var frame = document.getElementById("frame"), stage = document.getElementById("stage"), image = document.getElementById("picture");
   var controls = document.getElementById("controls"), play = document.getElementById("play"), seek = document.getElementById("seek");
@@ -131,8 +137,10 @@ const PLAYER = `(function () {
     n = Math.max(0, Math.min(LAST, n));
     if (n === shown) return;
     shown = n;
-    image.innerHTML = picture.svgAt(n);
     var t = n / FPS;
+    if (picture) image.innerHTML = picture.svgAt(n);
+    // Halfway into the frame, so the clip shows that frame and not the one before it.
+    else if (sound.paused) clip.currentTime = Math.min(clip.duration || Infinity, t + 0.5 / FPS);
     captions.forEach(function (c) {
       var on = t >= c.start && t < c.end;
       c.box.style.display = on ? "" : "none";
@@ -145,6 +153,7 @@ const PLAYER = `(function () {
   }
 
   function tick() {
+    if (clip && !sound.paused && Math.abs(clip.currentTime - sound.currentTime) > 2 / FPS) clip.currentTime = sound.currentTime;
     show(Math.floor(sound.currentTime * FPS + 1e-3));
     if (!sound.paused) requestAnimationFrame(tick);
   }
@@ -156,10 +165,15 @@ const PLAYER = `(function () {
   });
   sound.addEventListener("play", function () {
     play.textContent = "Pause";
+    if (clip) {
+      clip.currentTime = sound.currentTime;
+      clip.play();
+    }
     requestAnimationFrame(tick);
   });
   sound.addEventListener("pause", function () {
     play.textContent = "Play";
+    if (clip) clip.pause();
   });
   sound.addEventListener("ended", function () {
     show(LAST);
@@ -175,16 +189,27 @@ const PLAYER = `(function () {
 })();`;
 
 /**
- * Writes the page of `video` to `out`: its drawing (the plugin's file, bundled), the caption font
- * (Inter 700, each subset), the sound (`sound`, an .m4a) and the player. Returns its size, bytes.
+ * What a page shows: a drawing plugin's picture (its file, bundled with its moments), or the clip a
+ * recording plugin drew (an .mp4, played muted beside the sound).
  */
-export async function writePage(root: string, opts: { title: string; source: string; pluginFile: string; video: PageVideo; sound: string; out: string }): Promise<number> {
-  const { video } = opts;
+export type PagePicture = { plugin: string } | { clip: string };
+
+/**
+ * Writes the page of `video` to `out`: its picture (the plugin's drawing, or its clip), the caption
+ * font (Inter 700, each subset), the sound (`sound`, an .m4a) and the player. Returns its size, bytes.
+ */
+export async function writePage(root: string, opts: { title: string; source: string; picture: PagePicture; video: PageVideo; sound: string; out: string }): Promise<number> {
+  const { video, picture } = opts;
   const { width, height } = video.size;
   const fonts = await fontSheet(root, "@fontsource/inter", 700, (file) => dataUrl(file, "font/woff2"));
   const captions = video.captions
     .map((c) => `      <div id="${c.id}" class="cl-cap" style="display: none"><p>${esc(c.text)}</p></div>`)
     .join("\n");
+  const shown =
+    "clip" in picture
+      ? `<div id="picture" class="cl-media"><video id="clip" muted playsinline preload="auto" width="${width}" height="${height}" src="${await dataUrl(picture.clip, "video/mp4")}"></video></div>`
+      : `<div id="picture" class="cl-media"></div>`;
+  const drawn = "clip" in picture ? "" : `\n  <script id="drawing">${await drawingScript(picture.plugin)}</script>`;
   const html = `<!doctype html>
 <!-- Made from ${esc(opts.source)} by the video tool (make --as web). One file: it plays offline. -->
 <html lang="en">
@@ -201,7 +226,7 @@ ${fonts}
   body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; overflow: hidden; }
   #frame { position: relative; overflow: hidden; }
   #stage { position: absolute; left: 0; top: 0; width: ${width}px; height: ${height}px; transform-origin: 0 0; }
-  #picture svg { display: block; }
+  #picture svg, #picture video { display: block; }
   #controls { display: flex; align-items: center; gap: 12px; font: 16px system-ui, sans-serif; }
   #play { min-width: 5.5em; padding: 0.4em 1em; border: 0; border-radius: 0.4em; background: #f2f2f2; color: #111111; font: inherit; cursor: pointer; }
   #seek { flex: 1; accent-color: #f2f2f2; }
@@ -213,7 +238,7 @@ ${await clipStyle(root, width, height)}
 <body>
   <div id="frame"><div id="stage"><div id="root" data-format="${video.format}">
       <div class="cl-bg"></div>
-      <div id="picture" class="cl-media"></div>
+      ${shown}
 ${captions}
   </div></div></div>
   <div id="controls">
@@ -221,12 +246,13 @@ ${captions}
     <input id="seek" type="range" min="0" max="${video.frames - 1}" step="1" value="0" aria-label="Seek" />
   </div>
   <audio id="sound" preload="auto" src="${await dataUrl(opts.sound, "audio/mp4")}"></audio>
-  <script id="video" type="application/json">${scriptJson(video)}</script>
-  <script id="drawing">${await drawingScript(opts.pluginFile)}</script>
+  <script id="video" type="application/json">${scriptJson(video)}</script>${drawn}
   <script id="player">${PLAYER}</script>
 </body>
 </html>
 `;
+  // The page may be the first thing a project's make writes into out/.
+  await mkdir(path.dirname(opts.out), { recursive: true });
   await writeFile(opts.out, html);
   return Buffer.byteLength(html);
 }

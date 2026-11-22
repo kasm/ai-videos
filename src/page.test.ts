@@ -102,7 +102,7 @@ test("the page draws the SVG of each of the video's frames, shows its captions, 
   await writeFile(sound, Buffer.from("not really a sound"));
   const video = pageVideo({ dir: root, file, source, library, request: REQUEST, size: { width: 160, height: 90 }, format: "landscape", timeline: TIMELINE });
   const out = path.join(root, "sq.html");
-  const bytes = await writePage(ROOT, { title: "sq", source: "videos/sq.yaml", pluginFile, video, sound, out });
+  const bytes = await writePage(ROOT, { title: "sq", source: "videos/sq.yaml", picture: { plugin: pluginFile }, video, sound, out });
   const html = await readFile(out, "utf8");
   assert.equal(bytes, Buffer.byteLength(html));
 
@@ -139,5 +139,27 @@ test("a plugin that does not bundle for a page says so", async () => {
   const video = pageVideo({ dir: root, file: path.join(root, "x.yaml"), source: {}, library: undefined, request: REQUEST, size: { width: 160, height: 90 }, format: "landscape", timeline: TIMELINE });
   const sound = path.join(root, "sound.m4a");
   await writeFile(sound, "");
-  await assert.rejects(writePage(ROOT, { title: "x", source: "x.yaml", pluginFile, video, sound, out: path.join(root, "x.html") }), /plugin\.mjs does not bundle for a web page: [\s\S]*missing\.mjs/);
+  await assert.rejects(writePage(ROOT, { title: "x", source: "x.yaml", picture: { plugin: pluginFile }, video, sound, out: path.join(root, "x.html") }), /plugin\.mjs does not bundle for a web page: [\s\S]*missing\.mjs/);
+});
+
+test("a recorded picture's page plays the clip, inside the file, with no drawing", async () => {
+  const root = path.join(scratch, "recorded");
+  await mkdir(root, { recursive: true });
+  // The page takes the clip as it is: its bytes, not what they show.
+  const clip = path.join(root, "sq-landscape.mp4");
+  await writeFile(clip, Buffer.from("not really a clip"));
+  const sound = path.join(root, "sound.m4a");
+  await writeFile(sound, Buffer.from("not really a sound"));
+  const video = pageVideo({ dir: root, file: path.join(root, "videos", "sq.yaml"), source: {}, library: undefined, request: REQUEST, size: { width: 160, height: 90 }, format: "landscape", timeline: TIMELINE });
+  const out = path.join(root, "sq.html");
+  await writePage(ROOT, { title: "sq", source: "videos/sq.yaml", picture: { clip }, video, sound, out });
+  const html = await readFile(out, "utf8");
+  assert.ok(html.includes(`<video id="clip" muted playsinline preload="auto" width="160" height="90" src="data:video/mp4;base64,${Buffer.from("not really a clip").toString("base64")}"></video>`));
+  assert.doesNotMatch(html, /<script id="drawing"/);
+  // The player plays it with the sound, and sets it on the frame shown when the sound is paused.
+  const player = scriptOf(html, "player");
+  assert.match(player, /var picture = clip \? null : drawing\(video\);/);
+  assert.match(player, /clip\.play\(\)/);
+  assert.match(player, /else if \(sound\.paused\) clip\.currentTime = /);
+  assert.match(html, /<div id="sq-cap-1" class="cl-cap" style="display: none"><p>It slides\.<\/p><\/div>/);
 });

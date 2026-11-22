@@ -15,11 +15,11 @@ import { newVideo } from "./new.ts";
 import { promptFor } from "./prompt.ts";
 import { writePage, pageVideo } from "./page.ts";
 import { hyperframes, muxSound, normalizeLoudness, renderProject } from "./render.ts";
-import { FORMATS, loadVideo, type FormatName, type LoadedVideo } from "./script.ts";
+import { FORMATS, loadVideo, type EventLimitsScript, type FormatName, type LoadedVideo } from "./script.ts";
 import { cachePaths, cacheRoot, ready, setup, type Need } from "./setup.ts";
 import { writeSound } from "./sound.ts";
 import { toSrt } from "./srt.ts";
-import { codeKey, folderKey, keyOf, stagesIn } from "./stages.ts";
+import { codeKey, folderKey, inputsKey, keyOf, stagesIn } from "./stages.ts";
 import { runStory, windowsIO } from "./story.ts";
 import { buildTimeline, narrate, type SpokenLine, type Timeline } from "./timeline.ts";
 import { KokoroProvider, readWav, speak } from "./tts.ts";
@@ -293,7 +293,8 @@ type Mode = (typeof MODES)[number];
  * `make <file>`: a plugin's video from its one file (AGENTS.md, "A video file"). First what both
  * modes share: the plan, the voices and the fit, and the sound. Then what its outputs turn on, or
  * the one `--as` names: its page, then the video (the drawing, check, and the render with the
- * sound). Each stage is taken from the cache when what it is made from is unchanged (stages.ts);
+ * sound); a recording plugin's drawing comes before its page, which plays the clip. Each stage is
+ * taken from the cache when what it is made from is unchanged (stages.ts);
  * the finished files are written every time, and returned. It holds the video's lock (lock.ts)
  * and writes the project's .cache/<name>/ and out/; the plugin runs only for a stage it makes.
  */
@@ -348,19 +349,24 @@ async function makeFileWith(video: VideoFile, opts: { fit: boolean; outputs: Mod
   };
 
   begin("the plan");
-  // The plan's format is the stage's, which only the plugin knows: it is recorded with the plan.
+  // The plan's format is the stage's, which only the plugin knows, and so are how it pictures, its
+  // limits and the files it is made from (plugin.ts, inputs): they are recorded with the plan.
   const planFile = path.join(video.cache, "plan.json");
-  // The library without its voices: a voice changed redoes the voices, not the plan.
-  const planKey = keyOf("plan", video.use, video.source, video.library?.raw, code);
-  let planned = stages.cached("plan", planKey, [planFile]);
+  // The library without its voices: a voice changed redoes the voices, not the plan. The files the
+  // plugin named last time go in too: one changed makes the plan again, which names them anew.
+  const planKeyOf = (inputs: string) => keyOf("plan", video.use, video.source, video.library?.raw, code, inputs);
+  let inputs = await inputsKey(video.plugin.dir, (stages.last("plan")?.inputs ?? []) as string[]);
+  let planned = stages.cached("plan", planKeyOf(inputs), [planFile]);
   if (planned) cached(`the plan, ${shown(planFile)}`);
   else {
     await stages.forget("plan");
-    const { scene, stage } = await host();
+    const { scene, stage, picture } = await host();
     const format = formatOf(scene, stage);
-    const { repaired } = await call({ step: "data", name: video.name, format, data: planFile }, "writing its plan");
-    await stages.made("plan", planKey, { format, repaired });
-    planned = { key: planKey, format, repaired };
+    const done = await call({ step: "data", name: video.name, format, data: planFile }, "writing its plan");
+    inputs = await inputsKey(video.plugin.dir, done.inputs);
+    const record = { format, picture, repaired: done.repaired, limits: done.limits, inputs: done.inputs };
+    await stages.made("plan", planKeyOf(inputs), record);
+    planned = { key: planKeyOf(inputs), ...record };
   }
   // What the plugin mended is said every time, from the cache too: the file still holds it.
   const repaired = (planned.repaired ?? []) as string[];
@@ -368,8 +374,9 @@ async function makeFileWith(video: VideoFile, opts: { fit: boolean; outputs: Mod
     log(`Mended by the plugin, in what it draws (${shown(video.file)} is as written):\n${repaired.map((r) => `  - ${r}`).join("\n")}`);
   }
   const format = planned.format as FormatName;
+  const recorded = planned.picture === "recorded";
   const plan = await readClipData(planFile);
-  const script = scriptOf(video, format, plan);
+  const script = scriptOf(video, format, plan, (planned.limits ?? {}) as Record<string, EventLimitsScript>);
   // The pipeline's video: its folder is the cache's, laid out as a video folder's made parts.
   const loaded: LoadedVideo = { slug: video.name, dir: video.cache, file: video.file, project: undefined, script };
   const files = madeFiles(video.cache, video.name, format);
@@ -411,14 +418,34 @@ async function makeFileWith(video: VideoFile, opts: { fit: boolean; outputs: Mod
     log(`  ${shown(sound)}`);
   }
 
+  const drawKey = keyOf("drawing", await readFile(files.request, "utf8"), video.use, video.source, video.library?.raw, code, inputs);
+  // A drawn clip has its SVGs' hashes beside it, for the page's test; a recorded one, none.
+  const drawnFiles = [files.clip, files.data, `${files.clip}.frames`, ...(recorded ? [] : [`${files.clip}.svgs`])];
+  const drawing = async () => {
+    if (stages.cached("drawing", drawKey, drawnFiles)) cached(`the clip, ${shown(files.clip)}`);
+    else {
+      await stages.forget("drawing");
+      await call({ step: "draw", name: video.name, format, ...FORMATS[format], request: files.request, clip: files.clip, data: files.data }, "drawing it");
+      await stages.made("drawing", drawKey);
+    }
+  };
+  const asVideo = opts.outputs.includes("video");
+  // A recorded picture's page plays the clip, so the clip is drawn first: a step of its own when
+  // the video follows, else the page's.
+  if (recorded && asVideo) {
+    begin("the drawing");
+    await drawing();
+  }
+
   const made: string[] = [];
   if (web) {
-    begin("the page");
+    begin(recorded && !asVideo ? "the drawing and the page" : "the page");
+    if (recorded && !asVideo) await drawing();
     const page = `${video.out}.html`;
     const bytes = await writePage(ROOT, {
       title: video.name,
       source: shown(video.file).split(path.sep).join("/"),
-      pluginFile: video.plugin.file,
+      picture: recorded ? { clip: files.clip } : { plugin: video.plugin.file },
       video: pageVideo({ dir: video.plugin.dir, file: video.file, source: video.source, library: video.library, request, size: FORMATS[format], format, timeline }),
       sound,
       out: page,
@@ -426,15 +453,11 @@ async function makeFileWith(video: VideoFile, opts: { fit: boolean; outputs: Mod
     log(`Page: ${shown(page)}, ${(bytes / 1e6).toFixed(1)} MB`);
     made.push(page);
   }
-  if (!opts.outputs.includes("video")) return made;
+  if (!asVideo) return made;
 
-  begin("the drawing");
-  const drawKey = keyOf("drawing", await readFile(files.request, "utf8"), video.use, video.source, video.library?.raw, code);
-  if (stages.cached("drawing", drawKey, [files.clip, files.data, `${files.clip}.frames`, `${files.clip}.svgs`])) cached(`the clip, ${shown(files.clip)}`);
-  else {
-    await stages.forget("drawing");
-    await call({ step: "draw", name: video.name, format, ...FORMATS[format], request: files.request, clip: files.clip, data: files.data }, "drawing it");
-    await stages.made("drawing", drawKey);
+  if (!recorded) {
+    begin("the drawing");
+    await drawing();
   }
 
   begin("check");

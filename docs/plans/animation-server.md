@@ -50,7 +50,22 @@
   make of a video being rendered was refused, naming the first; with the
   first killed half-way, the next make ran. The user accepted the step on
   these checks. `npm test` and `npm run typecheck` pass in both repos.
-  **Next: step 7.**
+- Step 7 split in two, 2026-11-22, with the user's yes: 7a, the tool
+  takes a plugin that records its picture; 7b, RayCraft's plugin on it.
+- Step 7a done 2026-11-22. Checked: `src/host.test.ts`'s recording
+  plugin makes a clip whose `.frames` are the md5 of its PNGs, with no
+  `.svgs`, its limits and inputs checked. In a scratch project, a
+  recording plugin at 1920 by 1080 made its video and page. Its `least: 3`
+  held its first beat 3.00 s in the request. Made again, every stage came
+  from the cache, no plugin started; with the file it names changed, the
+  plan and drawing were made again, the fit and sound from the cache. Its
+  page, in Chrome offline, played the clip with the sound (1.5 frames
+  apart), sought to frame 100 when paused, fetched nothing.
+  `the-shy-visitor`, drawn again through the new host, gave step 5's
+  `.frames` and `.svgs`. `npm test` and `npm run typecheck` pass in both
+  repos. **Next: step 7b.** Its baseline is made again with the old
+  maker first: `first-shadow`'s clip in RayCraft's `videos/` is older
+  than its request, and both requests predate steps 3 to 6.
 
 
 ## Goal
@@ -211,17 +226,29 @@ stopped is taken over. **Done when:** with one `story` command and the
 chat, a chapter becomes finished videos with no other command typed; a second make of a video being made is refused, naming the
 first; a make after one killed half-way runs.
 
-### 7. RayCraft as a plugin
+### 7a. A plugin that records its picture
+
+Effort: xhigh. Split from step 7 with the user's yes, 2026-11-22. A
+plugin may record its picture in place of drawing it as SVG (RayCraft's
+editor in Chrome): it gives each moment as a PNG, which the host
+encodes, `.frames` hashing each PNG. Its plan may give events their
+limits, and it names the files it is made from, for the cache; its page
+embeds the drawn clip. **Done when:** a test plugin that records makes a
+clip, its `.frames` the md5 of its PNGs and its limits in the request;
+a change to a file it names redoes its plan and drawing; its page plays
+the clip; `the-shy-visitor` still gives step 5's `.frames`; both repos'
+`npm test` and `npm run typecheck` pass.
+
+### 7b. RayCraft as a plugin
 
 Effort: xhigh. RayCraft's tutorial maker becomes the raycraft plugin,
-on the tool's shared code (this closes the `anime` line in RayCraft's
-`docs/backlog.md`): a
-scene names a tutorial whose steps play as beats; the opening is
-commands with their lines in the video file; its web mode embeds the
-clip; the prompt is offered only its tutorials. RayCraft's videos move
-to one file each. **Done when:** `first-shadow` and `water-switch`, made
-through the plugin, have the same requests and `.frames` as with the old
-maker.
+on 7a and the tool's shared code (this closes the `anime` line in
+RayCraft's `docs/backlog.md`): a scene names a tutorial whose steps
+play as beats; the opening is lines and limits on RayCraft's own legs,
+in the video file; the prompt is offered only its tutorials. RayCraft's
+videos move to one file each, in `media/`. **Done when:**
+`first-shadow` and `water-switch`, made through the plugin, have the
+same requests and `.frames` as with the old maker.
 
 ### 8. The old way goes
 

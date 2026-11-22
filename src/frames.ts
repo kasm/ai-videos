@@ -13,18 +13,30 @@ import path from "node:path";
 
 export { moments, type Moment, type Request } from "./moments.ts";
 
+/** The eight bytes every PNG begins with. */
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+/** A PNG's size, from its header (IHDR, the first chunk): undefined for what is not a PNG. */
+function pngSize(png: Uint8Array): { width: number; height: number } | undefined {
+  if (png.length < 24 || PNG_SIGNATURE.some((b, i) => png[i] !== b)) return undefined;
+  const view = new DataView(png.buffer, png.byteOffset, png.byteLength);
+  return { width: view.getUint32(16), height: view.getUint32(20) };
+}
+
 /**
- * ffmpeg writing `clip` from raw frames, `width` by `height` at `fps`; `crf` is the quality, lower
- * is closer to the pixels. Give each frame to `frame`, then wait for `end`, which also writes
- * `<clip>.frames`: a hash of each frame's pixels, a line a frame, to compare two runs by.
+ * ffmpeg writing `clip` from frames `width` by `height` at `fps`; `crf` is the quality, lower is
+ * closer to the pixels. A frame is raw pixels, or with `input: "png"` a PNG (a screenshot). Give
+ * each frame to `frame`, then wait for `end`, which also writes `<clip>.frames`: a hash of each
+ * frame as it was given (its pixels, or its PNG's bytes), a line a frame, to compare two runs by.
  */
-export function encoder(clip: string, { width, height, fps, crf }: { width: number; height: number; fps: number; crf: number }) {
+export function encoder(clip: string, { width, height, fps, crf, input = "rgba" }: { width: number; height: number; fps: number; crf: number; input?: "rgba" | "png" }) {
   mkdirSync(path.dirname(clip), { recursive: true });
+  const from = input === "png" ? ["-f", "image2pipe", "-c:v", "png"] : ["-f", "rawvideo", "-pix_fmt", "rgba", "-s", `${width}x${height}`];
   const ffmpeg = spawn(
     "ffmpeg",
     [
       "-y", "-loglevel", "error",
-      "-f", "rawvideo", "-pix_fmt", "rgba", "-s", `${width}x${height}`, "-framerate", String(fps), "-i", "-",
+      ...from, "-framerate", String(fps), "-i", "-",
       // Pictures are sRGB and players take HD video for BT.709: said here, the colours stay.
       "-vf", "scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv",
       "-c:v", "libx264", "-preset", "medium", "-crf", String(crf),
@@ -45,16 +57,29 @@ export function encoder(clip: string, { width, height, fps, crf }: { width: numb
   let last: Uint8Array | undefined;
   let hash = "";
   return {
-    /** Adds a frame: rows from the top, four bytes a pixel (red, green, blue, alpha), opaque. The same buffer again is a hold. */
+    /**
+     * Adds a frame: rows from the top, four bytes a pixel (red, green, blue, alpha), opaque; or a
+     * PNG of that size. The same buffer again is a hold.
+     */
     async frame(pixels: Uint8Array): Promise<void> {
       if (pixels !== last) {
-        if (pixels.length !== width * height * 4) throw new Error(`a frame of ${pixels.length} bytes is not ${width} by ${height} pixels of four bytes`);
+        if (input === "png") {
+          const size = pngSize(pixels);
+          if (!size) throw new Error(`a frame of ${pixels.length} bytes is not a PNG`);
+          if (size.width !== width || size.height !== height) throw new Error(`a frame came out ${size.width} by ${size.height}, not ${width} by ${height}`);
+        } else if (pixels.length !== width * height * 4) throw new Error(`a frame of ${pixels.length} bytes is not ${width} by ${height} pixels of four bytes`);
         last = pixels;
         hash = createHash("md5").update(pixels).digest("hex");
       }
       hashes.push(hash);
       // A full pipe is waited for; ffmpeg gone ends the wait, with its reason at the end.
       if (!stdin.write(pixels)) await Promise.race([once(stdin, "drain"), ended]);
+    },
+    /** Stops ffmpeg, for a clip that will not be finished (a frame failed): no `.frames` is written. */
+    abort(): void {
+      stdin.destroy();
+      ffmpeg.kill();
+      ended.catch(() => {});
     },
     /** Waits for ffmpeg to finish the clip, and writes the frames' hashes beside it. Returns how many frames it has. */
     async end(): Promise<number> {
