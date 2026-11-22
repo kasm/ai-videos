@@ -1,72 +1,52 @@
-// `make`'s calls to what draws a project's clips: its plugin (AGENTS.md, "Plugins"), or its maker
-// (AGENTS.md, "The maker"). Which calls a video folder needs, and running one: a plugin's in its
-// host process (host.ts), a maker's as a command line. cli.ts runs make's steps in order.
-import { fork, spawn } from "node:child_process";
+// A project's plugin (AGENTS.md, "Plugins"): the one the package.json above a video file names,
+// run in a host process of its own (host.ts), and make's calls to it, one at a time. cli.ts runs
+// make's stages.
+import { fork } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { madeFiles } from "./clip.ts";
+import { z } from "zod";
 import type { Described, Job, Reply } from "./host.ts";
 import type { EventLimits, Library, Plan } from "./plugin.ts";
-import { MakerCall, makerArgs } from "./maker.ts";
-import { FORMATS, PROJECT_FILE, type FormatName, type LoadedVideo } from "./script.ts";
+import { FORMATS, slug, type FormatName } from "./script.ts";
 
-/** The video's made clips: each clip scene with `make:`, by its id and what the maker draws. */
-export function madeScenes(video: LoadedVideo): { id: string; name: string }[] {
-  return video.script.scenes.flatMap((s) => (s.scene === "clip" && s.make !== undefined ? [{ id: s.id, name: s.make }] : []));
-}
+/** The host runs in the project's folder, not the tool's, so every file is named in full. */
+const file = z.string().refine((p) => path.isAbsolute(p), "give an absolute path");
 
-/** The maker of a video with made clips, and the folder it runs in; undefined when it has none. */
-export function makerOf(video: LoadedVideo): { maker: string; dir: string } | undefined {
-  const [first] = madeScenes(video);
-  if (!first) return undefined;
-  const scene = `Scene "${first.id}" is made (make: ${first.name})`;
-  if (!video.project) throw new Error(`${scene}, but no ${PROJECT_FILE} is beside ${video.dir} to name the maker that draws it`);
-  if (!video.project.script.maker) throw new Error(`${scene}, but ${video.project.file} names no maker`);
-  return { maker: video.project.script.maker, dir: video.project.dir };
-}
+const format = z.enum(Object.keys(FORMATS) as [FormatName, ...FormatName[]]);
 
-/** The maker's calls for step one (the data) or two (the drawing): every made scene, in each format asked. */
-export function makerCalls(video: LoadedVideo, formats: FormatName[], step: MakerCall["step"]): { scene: string; call: MakerCall }[] {
-  const dir = path.resolve(video.dir);
-  return madeScenes(video).flatMap(({ id, name }) =>
-    formats.map((format) => {
-      const files = madeFiles(dir, id, format);
-      const call =
-        step === "data"
-          ? { step, name, format, data: files.data }
-          : { step, name, format, ...FORMATS[format], request: files.request, clip: files.clip, data: files.data };
-      // Checked as the maker will check it, so the tool never sends a call its own schema refuses.
-      return { scene: id, call: MakerCall.parse(call) };
-    }),
-  );
-}
+const pixels = z.number().int().positive();
 
-/** An argument cmd.exe and sh both read as it is: a name, a flag, a path without spaces. */
-const PLAIN = /^[\w./\\:=,@+-]+$/;
+/** Step one: the plan, written as the clip's data (its events and texts at its own pace), before anything is drawn. */
+const DataCall = z.strictObject({
+  step: z.literal("data"),
+  /** The video file's name. */
+  name: slug,
+  /** The format of the plugin's stage. */
+  format,
+  /** Where to write the clip's data (ai-videos-clip, src/clip.ts). */
+  data: file,
+});
 
-/** The line the shell runs: the project's maker, then the call, each argument quoted where it needs it. */
-export function commandLine(maker: string, call: MakerCall): string {
-  const quote = (arg: string) => {
-    if (PLAIN.test(arg)) return arg;
-    // Inside double quotes cmd.exe still expands %VAR% and sh $VAR and `...`.
-    if (/["%$`]/.test(arg)) throw new Error(`${arg} can't go on a command line: it holds a quote, % or $`);
-    return `"${arg}"`;
-  };
-  return [maker, ...makerArgs(call).map(quote)].join(" ");
-}
+/** Step two: the clip drawn to the tool's request, and its data again, now with each event's `natural`. */
+const DrawCall = z.strictObject({
+  step: z.literal("draw"),
+  name: slug,
+  format,
+  /** The size to draw at: the format's. */
+  width: pixels,
+  height: pixels,
+  /** The request to draw to (ai-videos-request, src/fit.ts). */
+  request: file,
+  /** Where to write the clip. */
+  clip: file,
+  /** Where to write the clip's data. */
+  data: file,
+});
 
-/**
- * Runs a command line through the shell in `dir`, its output shown as it comes, and resolves to its
- * exit code. Through the shell, as a maker is written in the project file (Windows finds npm.cmd).
- */
-export function runShell(line: string, dir: string): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(line, { cwd: dir, shell: true, stdio: "inherit", windowsHide: true });
-    child.on("error", reject);
-    child.on("close", (code) => resolve(code ?? 1));
-  });
-}
+/** One of make's calls to the plugin's host. */
+export const Call = z.discriminatedUnion("step", [DataCall, DrawCall]);
+export type Call = z.infer<typeof Call>;
 
 /**
  * A project's plugin: its file, and the package.json that names it, in the project's folder. Its
@@ -80,7 +60,7 @@ export interface PluginFile {
 }
 
 /**
- * The plugin the project of a video names: the nearest package.json above its file or folder, its
+ * The plugin the project of a video names: the nearest package.json above its file, its
  * `"ai-videos": { "plugin": <a path from there> }`. Undefined when that package.json names none,
  * or there is no package.json above it.
  */
@@ -110,25 +90,6 @@ export async function pluginOf(video: string): Promise<PluginFile | undefined> {
     }
     if (path.dirname(dir) === dir) return undefined;
   }
-}
-
-/** What draws a video folder's made clips: its project's maker, one call at a time. */
-export interface Drawer {
-  /** Runs one call, its progress logged: undefined when it is done, else why it failed, as the end of a sentence. */
-  run(call: MakerCall, log: (msg: string) => void): Promise<string | undefined>;
-}
-
-/** The maker of a project file, run through the shell in the project file's folder. */
-export function makerDrawer({ maker, dir }: { maker: string; dir: string }): Drawer {
-  return {
-    async run(call, log) {
-      const line = commandLine(maker, call);
-      log(`${line}
-  (in ${dir})`);
-      const code = await runShell(line, dir);
-      return code === 0 ? undefined : ` with exit code ${code}; it says why above.`;
-    },
-  };
 }
 
 /** The host process, run by this file's own Node. */
@@ -169,7 +130,7 @@ export interface PluginHost extends Described {
    * library, its progress logged; throws why it failed. A plan's call gives what the plugin mended
    * in the source, the plan's limits on the fit, and the files it is made from (plugin.ts, inputs).
    */
-  run(job: Job & { call: MakerCall }, log: (msg: string) => void): Promise<{ repaired: string[]; limits: Record<string, EventLimits>; inputs: string[] }>;
+  run(job: Job & { call: Call }, log: (msg: string) => void): Promise<{ repaired: string[]; limits: Record<string, EventLimits>; inputs: string[] }>;
   /** Mends, checks and plans a video's source, writing nothing: what was mended, and the plan. Throws why it was refused. */
   check(file: string, source: unknown, library: Library | undefined): Promise<{ repaired: string[]; plan: Plan }>;
   /** Ends its process. */
@@ -206,15 +167,4 @@ export async function startPlugin(plugin: PluginFile, log: (msg: string) => void
     },
     close: () => host.close(),
   };
-}
-
-/**
- * What draws a video folder's made clips: its project's maker. Undefined when it has none. A
- * project whose package.json names a plugin has its videos as files (video-file.ts), not folders.
- */
-export async function drawerOf(video: LoadedVideo): Promise<Drawer | undefined> {
-  if (madeScenes(video).length === 0) return undefined;
-  const plugin = await pluginOf(video.dir);
-  if (plugin) throw new Error(`${plugin.package} names a plugin: its videos are files, each made with make <its folder>/<name>.yaml, not folders`);
-  return makerDrawer(makerOf(video)!);
 }

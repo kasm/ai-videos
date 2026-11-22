@@ -1,17 +1,10 @@
-// Generates a HyperFrames project (index.html + one file per scene) from script and timeline.
-import { copyFile, cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+// Generates a HyperFrames project (index.html + one file per scene) from the script and the timeline.
+import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { bundle, FONTS_CSS, GSAP_SRC } from "./bundle.ts";
-import type { SceneClips } from "./clip.ts";
+import type { SceneClip } from "./clip.ts";
 import { run } from "./render.ts";
-import {
-  FORMATS,
-  type ClipSceneScript,
-  type FormatName,
-  type LoadedVideo,
-  type MarkScript,
-  type PageScrollSceneScript,
-} from "./script.ts";
+import { FORMATS, type FormatName, type LoadedVideo, type SceneScript } from "./script.ts";
 import { captionsOf } from "./srt.ts";
 import type { TimedLine, TimedScene, Timeline } from "./timeline.ts";
 
@@ -24,73 +17,6 @@ function fill(template: string, values: Record<string, string | number>): string
     if (!(name in values)) throw new Error(`Scene template uses unknown placeholder {{${name}}}`);
     return String(values[name]);
   });
-}
-
-/** Pauses at punctuation, in characters' worth of speaking time. */
-const PAUSE: Record<string, number> = { ",": 5, ";": 6, ":": 6, ".": 9, "!": 9, "?": 9, "—": 6 };
-
-/**
- * Where in a spoken line a phrase begins, as a fraction of the line's duration. There are no word
- * timestamps, so this goes by characters, with punctuation counted as the pause it causes.
- */
-function phraseAt(text: string, phrase: string): number | null {
-  const index = text.toLowerCase().indexOf(phrase.toLowerCase());
-  if (index < 0) return null;
-  const weight = (s: string) => [...s].reduce((sum, ch) => sum + 1 + (PAUSE[ch] ?? 0), 0);
-  return weight(text.slice(0, index)) / weight(text);
-}
-
-/** A mark as the scene draws it: `at` is seconds from the scene's start. */
-interface TimedMark {
-  mark: MarkScript["mark"];
-  on: string;
-  area: [number, number, number, number];
-  from: string;
-  at: number;
-}
-
-const DRAW_EARLY = 0.12; // a mark starts this long before its word, so the stroke lands as it is said
-
-function timeMarks(sceneId: string, pageFile: string, pageHtml: string, line: TimedLine, marks: MarkScript[]): TimedMark[] {
-  return marks.map((m) => {
-    if (!pageHtml.includes(`data-mark="${m.on}"`)) {
-      throw new Error(`Scene "${sceneId}", line ${line.n}: mark on "${m.on}" has no element with data-mark="${m.on}" in ${pageFile}`);
-    }
-    let offset = 0.25;
-    if (typeof m.at === "number") offset = m.at;
-    else if (typeof m.at === "string") {
-      const f = phraseAt(line.text, m.at);
-      if (f === null) throw new Error(`Scene "${sceneId}", line ${line.n}: "${m.at}" is not in the line "${line.text}"`);
-      offset = Math.max(0, f * line.duration - DRAW_EARLY);
-    }
-    return {
-      mark: m.mark,
-      on: m.on,
-      area: m.area ?? [0, 0, 1, 1],
-      from: m.from ?? "left",
-      at: Math.round((line.localStart + offset) * 1000) / 1000,
-    };
-  });
-}
-
-/** A page-scroll scene's placeholders: the page, its style, and each line's cue and marks. */
-async function pageScrollScene(video: LoadedVideo, scene: PageScrollSceneScript, timed: TimedScene) {
-  const pageHtml = await readFile(path.join(video.dir, scene.page), "utf8");
-  const pageCss = scene.css ? await readFile(path.join(video.dir, scene.css), "utf8") : "";
-  for (const line of scene.narration) {
-    const cue = line.cue;
-    if (cue && cue !== "top" && cue !== "bottom" && !pageHtml.includes(`data-cue="${cue}"`)) {
-      throw new Error(`Scene "${scene.id}": cue "${cue}" has no element with data-cue="${cue}" in ${scene.page}`);
-    }
-  }
-  const lines = timed.lines.map((l, j) => ({
-    start: l.localStart,
-    duration: l.duration,
-    cue: l.cue ?? null,
-    pause: l.pause,
-    marks: timeMarks(scene.id, scene.page, pageHtml, l, scene.narration[j]!.draw ?? []),
-  }));
-  return { url: esc(scene.url), pageHtml, pageCss, linesJson: JSON.stringify(lines) };
 }
 
 const CAPTION_LINGER = 1.0; // seconds a caption may stay after its words
@@ -130,9 +56,9 @@ export async function clipStyle(root: string, width: number, height: number): Pr
  * A clip scene's placeholders: the clip, copied into the project; a still of its last frame when
  * the scene runs on past it; and the narration as captions, split and timed as the subtitles are.
  */
-async function clipScene(project: string, scene: ClipSceneScript, timed: TimedScene, clips: SceneClips, format: FormatName, fps: number) {
-  const clip = clips.byFormat[format]!;
-  if (!clip.video) throw new Error(`Scene "${scene.id}": ${clip.file} was not read`);
+async function clipScene(project: string, scene: SceneScript, timed: TimedScene, clips: SceneClip, fps: number) {
+  const clip = clips.clip;
+  if (!clip) throw new Error(`Scene "${scene.id}": its clip was not read`);
   const { width, height } = clip.video;
   const dir = path.join(project, "assets", "clips");
   await mkdir(dir, { recursive: true });
@@ -161,14 +87,13 @@ async function clipScene(project: string, scene: ClipSceneScript, timed: TimedSc
 }
 
 /**
- * Writes the HyperFrames project for one format into `<buildDir>/<format>` and returns that folder:
- * the tool's build/<name>/ for the single commands, the video folder's build/ for `make`. The scene
- * templates come from the tool, `root`.
+ * Writes the HyperFrames project for one format into `<buildDir>/<format>` and returns that folder.
+ * The scene template comes from the tool, `root`.
  */
 export async function compose(
   root: string,
   video: LoadedVideo,
-  clips: Map<string, SceneClips>,
+  clips: Map<string, SceneClip>,
   timeline: Timeline,
   format: FormatName,
   buildDir: string,
@@ -181,26 +106,18 @@ export async function compose(
     await rm(path.join(project, sub), { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
   await mkdir(path.join(project, "compositions"), { recursive: true });
-  // The video's own pictures: a page refers to them as assets/<file>. assets/vo/ is the narration's,
-  // assets/clips/ the clips', and assets/vendor/ GSAP's and the fonts' (bundle.ts).
-  const pageAssets = path.join(video.dir, "assets");
-  if (await stat(pageAssets).then((s) => s.isDirectory(), () => false)) {
-    await cp(pageAssets, path.join(project, "assets"), { recursive: true });
-  }
+  // assets/vo/ is the narration's, assets/clips/ the clips', and assets/vendor/ GSAP's and the font's (bundle.ts).
   await mkdir(path.join(project, "assets", "vo"), { recursive: true });
   await bundle(root, project);
 
   const hosts: string[] = [];
   const audio: string[] = [];
+  const template = await readFile(path.join(root, "scenes", "clip", "scene.html"), "utf8");
 
   for (const [i, scene] of video.script.scenes.entries()) {
     const timed = timeline.scenes[i]!;
-    const template = await readFile(path.join(root, "scenes", scene.scene, "scene.html"), "utf8");
     const values = { id: scene.id, width, height, format, duration: timed.duration };
-    const html =
-      scene.scene === "clip"
-        ? fill(template, { ...values, ...(await clipScene(project, scene, timed, clips.get(scene.id)!, format, timeline.fps)) })
-        : fill(template, { ...values, ...(await pageScrollScene(video, scene, timed)) });
+    const html = fill(template, { ...values, ...(await clipScene(project, scene, timed, clips.get(scene.id)!, timeline.fps)) });
     await writeFile(path.join(project, "compositions", `${scene.id}.html`), html);
 
     hosts.push(
@@ -220,7 +137,7 @@ export async function compose(
   // (d: or D:), so a make can tell it unchanged (stages.ts).
   const source = path.relative(project, video.file).split(path.sep).join("/");
   const index = `<!doctype html>
-<!-- Generated from ${source}. Edit the script, the page or the scene template, not this file. -->
+<!-- Generated from ${source}. Edit it or the scene template, not this file. -->
 <html lang="en">
   <head>
     <meta charset="UTF-8" />

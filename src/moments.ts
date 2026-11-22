@@ -1,6 +1,6 @@
-// Which moment each frame of a request shows (AGENTS.md, "The maker's shared code"): the part of
-// step two that is pure, so that a web page draws its frames with the same code as the video
-// (page.ts). It imports nothing; frames.ts exports it to the makers.
+// Which moment each frame of a request shows (AGENTS.md, "Moments"): the part of step two that is
+// pure, so that a web page draws its frames with the same code as the video (page.ts). It imports
+// nothing; plugin.ts exports it to the plugins, for their tests.
 
 /** What `moments` reads of a request (ai-videos-request, fit.ts); its other keys are for reading. */
 export interface Request {

@@ -134,7 +134,7 @@ test("the clip's data is written as the tool reads it, keys in the schema's orde
   const dir = await mkdtemp(path.join(tmpdir(), "aiv-frames-"));
   try {
     const clip = {
-      by: "a maker",
+      by: "a plugin",
       from: "a source",
       duration: 2,
       // Keys in another order, an extra one, and a `natural` not there yet (step one).
@@ -155,7 +155,7 @@ test("the clip's data is written as the tool reads it, keys in the schema's orde
         {
           format: "ai-videos-clip",
           version: 1,
-          made: { by: "a maker", from: "a source" },
+          made: { by: "a plugin", from: "a source" },
           duration: 2,
           events: [
             { name: "start", at: 0, span: "hold" },

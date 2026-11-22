@@ -1,161 +1,96 @@
-// A clip scene's checks, on copies of videos/clip-demo with its clips drawn here by the demo's maker
-// (src/demo.ts): each way a clip or its JSON can be wrong stops the build before any narration,
-// with a reason that names what to fix.
+// A drawn clip and the JSON beside it, as the check stage reads them back (clip.ts, loadClip): each
+// way they can be wrong stops the make with a reason that names what is wrong. The clip is drawn
+// here, a few frames by the host's encoder, its JSON written as the host writes it.
 import assert from "node:assert/strict";
 import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { after, before, test } from "node:test";
-import { loadClips, madeFiles } from "./clip.ts";
-import { drawnDemo } from "./demo.ts";
-import { loadVideo, type FormatName } from "./script.ts";
+import { loadClip, madeFiles } from "./clip.ts";
+import { encoder, writeClipData } from "./frames.ts";
 
-const FORMATS: FormatName[] = ["landscape", "portrait"];
 const scratch = await mkdtemp(path.join(os.tmpdir(), "ai-videos-clip-"));
 after(() => rm(scratch, { recursive: true, force: true }));
 
-/** The demo's script with its clips drawn, in both formats. */
-const MADE = path.join(scratch, "made");
-before(() => drawnDemo(MADE, FORMATS));
-
-/** A copy of the drawn demo, named `name`, changed by `edit` before it is loaded. */
-async function demo(name: string, edit?: (dir: string) => Promise<void>) {
-  const dir = path.join(scratch, name);
-  await cp(MADE, dir, { recursive: true });
-  await edit?.(dir);
-  return loadClips(await loadVideo(dir), FORMATS);
-}
-
-/** Changes one of the demo's JSON files. */
-async function editJson(dir: string, format: FormatName, change: (data: any) => void) {
-  const file = madeFiles(dir, "square", format).data;
-  const data = JSON.parse(await readFile(file, "utf8"));
-  change(data);
-  await writeFile(file, JSON.stringify(data));
-}
-
-test("the demo's clips load, with their events", async () => {
-  const clips = await demo("ok");
-  const square = clips.get("square")!;
-  // Drawn to its request: each span keeps its length at the clip's own pace.
-  assert.deepEqual(square.events.map((e) => `${e.name}:${e.span}:${e.natural}`), ["start:hold:5", "slide:move:1.5", "across:hold:3.5", "rise:move:1", "up:hold:2"]);
-  assert.equal(path.basename(square.byFormat.portrait!.file), "square-portrait.mp4");
-  assert.equal(square.byFormat.landscape!.video!.width, 1920);
-  assert.equal(square.byFormat.portrait!.video!.width, 1080);
-});
-
-test("a clip scene with clip: plays clips drawn elsewhere, by their paths", async () => {
-  const clips = await demo("by-path", async (dir) => {
-    const file = path.join(dir, "video.yaml");
-    const paths = "clip:\n      landscape: clips/square-landscape.mp4\n      portrait: clips/square-portrait.mp4";
-    await writeFile(file, (await readFile(file, "utf8")).replace(/make: square.*$/m, paths));
-  });
-  assert.equal(path.basename(clips.get("square")!.byFormat.landscape!.file), "square-landscape.mp4");
-});
-
-test("a made clip without its JSON says make writes it", async () => {
-  await assert.rejects(
-    demo("no-json", (dir) => rm(madeFiles(dir, "square", "portrait").data)),
-    /clip clips\/square-portrait\.mp4 has no JSON beside it \(.*square-portrait\.json\)\. It is made: "npm run video -- make <video>" writes it/,
-  );
-});
-
-test("a cue that is not an event", async () => {
-  await assert.rejects(
-    demo("bad-cue", async (dir) => {
-      const file = path.join(dir, "video.yaml");
-      await writeFile(file, (await readFile(file, "utf8")).replace("cue: rise", "cue: orbit"));
-    }),
-    /line 3: cue "orbit" is not an event of square-landscape\.json \(its events: start, slide, across, rise, up\)/,
-  );
-});
-
-test("a cue before one an earlier line named: a clip plays forward", async () => {
-  await assert.rejects(
-    demo("backward", async (dir) => {
-      const file = path.join(dir, "video.yaml");
-      await writeFile(file, (await readFile(file, "utf8")).replace("cue: rise", "cue: start"));
-    }),
-    /line 3: cue "start" comes before "slide", cued earlier; a clip plays forward/,
-  );
-});
-
-/** The demo's video.yaml with `limits` for its scene (after its clips, before its narration). */
-const withLimits = (limits: string) => async (dir: string) => {
-  const file = path.join(dir, "video.yaml");
-  await writeFile(file, (await readFile(file, "utf8")).replace("    narration:", `    limits:\n${limits}\n    narration:`));
+/** A square's clip: it waits, slides, waits again; 2 s at 30 fps, drawn to a request, so each event keeps its `natural`. */
+const DATA = {
+  by: "a test",
+  from: "videos/sq.yaml",
+  duration: 2,
+  events: [
+    { name: "start", at: 0, span: "hold" as const, natural: 0.5 },
+    { name: "slide", at: 0.5, span: "move" as const, natural: 1 },
+    { name: "end", at: 1.5, span: "hold" as const, natural: 0.5 },
+  ],
+  texts: [{ text: "A square waits.", from: 0, to: 0.5 }],
 };
 
-test("limits for single events load when each names an event of its kind", async () => {
-  await demo("limits", withLimits("      slide: { fastest: 3 }\n      across: { least: 2 }"));
-  const scene = (await loadVideo(path.join(scratch, "limits"))).script.scenes[0]!;
-  assert.deepEqual(scene.scene === "clip" && scene.limits, { slide: { fastest: 3 }, across: { least: 2 } });
+const MADE = path.join(scratch, "made");
+before(async () => {
+  const files = madeFiles(MADE, "sq", "landscape");
+  const out = encoder(files.clip, { width: 32, height: 18, fps: 30, crf: 24 });
+  const grey = new Uint8Array(32 * 18 * 4).fill(128);
+  for (let i = 0; i < 60; i++) await out.frame(grey);
+  await out.end();
+  writeClipData(files.data, DATA);
 });
 
-test("a limit that names no event", async () => {
-  await assert.rejects(
-    demo("limit-no-event", withLimits("      orbit: { fastest: 3 }")),
-    /limits: "orbit" is not an event of square-landscape\.json \(its events: start, slide, across, rise, up\)/,
-  );
+/** A copy of the drawn clip, named `name`, its JSON changed by `change` before it is read. */
+async function clip(name: string, change?: (data: any) => void) {
+  const dir = path.join(scratch, name);
+  await cp(MADE, dir, { recursive: true });
+  const files = madeFiles(dir, "sq", "landscape");
+  if (change) {
+    const data = JSON.parse(await readFile(files.data, "utf8"));
+    change(data);
+    await writeFile(files.data, JSON.stringify(data));
+  }
+  return loadClip(files.clip);
+}
+
+test("a drawn clip loads, with its events and its picture's size", async () => {
+  const loaded = await clip("ok");
+  assert.equal(path.basename(loaded.file), "sq-landscape.mp4");
+  assert.deepEqual(loaded.data.events.map((e) => `${e.name}:${e.span}:${e.natural}`), ["start:hold:0.5", "slide:move:1", "end:hold:0.5"]);
+  assert.deepEqual([loaded.video.width, loaded.video.height, loaded.video.fps], [32, 18, 30]);
 });
 
-test("a limit of another kind: a hold's least on a move", async () => {
-  await assert.rejects(demo("limit-kind", withLimits("      slide: { least: 2 }")), /limits: "slide" is a move: it takes slowest and fastest, not least/);
-});
-
-test("the JSON alone, before its clip is drawn, is enough for a request", async () => {
-  const dir = path.join(scratch, "json-only");
-  await cp(MADE, dir, { recursive: true, filter: (src) => !src.endsWith(".mp4") });
-  const video = await loadVideo(dir);
-  await assert.rejects(loadClips(video, FORMATS), /clip clips\/square-landscape\.mp4 is not at .*\. It is made/);
-  const clips = await loadClips(video, FORMATS, { readVideo: false });
-  assert.equal(clips.get("square")!.events.length, 5);
-  assert.equal(clips.get("square")!.byFormat.landscape!.video, undefined);
+test("a clip or its JSON missing is named", async () => {
+  await assert.rejects(loadClip(path.join(scratch, "none", "clips", "sq-landscape.mp4")), /^Error: No clip at .*sq-landscape\.mp4/);
+  const dir = path.join(scratch, "no-json");
+  await cp(MADE, dir, { recursive: true });
+  await rm(madeFiles(dir, "sq", "landscape").data);
+  await assert.rejects(loadClip(madeFiles(dir, "sq", "landscape").clip), /^Error: No clip data at .*sq-landscape\.json/);
 });
 
 test("JSON the schema refuses: a missing field, an unknown span", async () => {
   await assert.rejects(
-    demo("bad-shape", (dir) =>
-      editJson(dir, "landscape", (d) => {
-        delete d.made;
-        d.events[1].span = "pause";
-      }),
-    ),
+    clip("bad-shape", (d) => {
+      delete d.made;
+      d.events[1].span = "pause";
+    }),
     (err: Error) => /not valid clip data/.test(err.message) && /at made/.test(err.message) && /at events\[1\]\.span/.test(err.message),
   );
 });
 
 test("JSON the schema refuses: events out of order, a text past the end", async () => {
   await assert.rejects(
-    demo("bad-times", (dir) =>
-      editJson(dir, "landscape", (d) => {
-        d.events[3].at = 4;
-        d.texts[0].to = 99;
-      }),
-    ),
-    (err: Error) => /"rise" is not after "across"/.test(err.message) && /a text ends after the clip/.test(err.message),
+    clip("bad-times", (d) => {
+      d.events[2].at = 0.4;
+      d.texts[0].to = 99;
+    }),
+    (err: Error) => /"end" is not after "slide"/.test(err.message) && /a text ends after the clip/.test(err.message),
   );
 });
 
 test("a text may name its speaker, and a speaker that is not a name is refused", async () => {
-  const clips = await demo("speaker", (dir) => editJson(dir, "landscape", (d) => (d.texts[0].speaker = "pip")));
-  assert.equal(clips.get("square")!.byFormat.landscape!.data.texts[0]!.speaker, "pip");
+  assert.equal((await clip("speaker", (d) => (d.texts[0].speaker = "pip"))).data.texts[0]!.speaker, "pip");
   await assert.rejects(
-    demo("bad-speaker", (dir) => editJson(dir, "landscape", (d) => (d.texts[0].speaker = "Pip the First"))),
+    clip("bad-speaker", (d) => (d.texts[0].speaker = "Pip the First")),
     (err: Error) => /not valid clip data/.test(err.message) && /at texts\[0\]\.speaker/.test(err.message),
   );
 });
 
 test("JSON from another run: its length is not the clip's", async () => {
-  await assert.rejects(
-    demo("stale", (dir) => editJson(dir, "landscape", (d) => (d.duration = 12))),
-    /says the clip lasts 12 s, but .*square-landscape\.mp4 lasts [\d.]+ s/,
-  );
-});
-
-test("the formats' clips disagree on an event", async () => {
-  await assert.rejects(
-    demo("disagree", (dir) => editJson(dir, "portrait", (d) => (d.events[1].at = 5.5))),
-    /square-landscape\.json and square-portrait\.json put "slide" at [\d.]+ s and 5\.5 s/,
-  );
+  await assert.rejects(clip("stale", (d) => (d.duration = 12)), /says the clip lasts 12 s, but .*sq-landscape\.mp4 lasts [\d.]+ s/);
 });

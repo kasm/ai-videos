@@ -1,8 +1,8 @@
 // The child process a plugin runs in (AGENTS.md, "Plugins"). make.ts forks it with the plugin's
-// file and sends it make's calls (the maker's, maker.ts), one at a time, each with the video's
-// source. It does for every plugin what a maker did for itself: has the source checked, writes the
-// plan as the clip's data, and draws the clip to the request, a moment at a time, encoded by
-// frames.ts: a drawing plugin's SVG turned into pixels by resvg, a recording plugin's PNG as it is.
+// file and sends it make's calls (make.ts, Call), one at a time, each with the video's source. It
+// does for every plugin what is the same in each: has the source checked, writes the plan as the
+// clip's data, and draws the clip to the request, a moment at a time, encoded by frames.ts: a
+// drawing plugin's SVG turned into pixels by resvg, a recording plugin's PNG as it is.
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -11,17 +11,17 @@ import { Resvg } from "@resvg/resvg-js";
 import { z } from "zod";
 import type { requestDocument } from "./fit.ts";
 import { encoder, moments, writeClipData, type ClipText } from "./frames.ts";
-import type { MakerCall } from "./maker.ts";
+import type { Call } from "./make.ts";
 import type { DrawingPlugin, EventLimits as Limits, Library, Plan, Plugin, RecordingPlugin, Schema } from "./plugin.ts";
 import { EventLimits, FORMATS, slug } from "./script.ts";
 
 /**
  * A call for the plugin, with the video file and its source (the file, parsed, without the tool's
- * keys), and the project's library, when it has one: one of make's (maker.ts), or import's check,
+ * keys), and the project's library, when it has one: one of make's (make.ts), or import's check,
  * which mends, checks and plans the source and writes nothing.
  */
 export interface Job {
-  call: MakerCall | { step: "check" };
+  call: Call | { step: "check" };
   file: string;
   source: unknown;
   library?: Library;
@@ -99,8 +99,8 @@ const Inputs = z.array(
 );
 
 /**
- * The plan's limits, checked as a clip scene's are (clip.ts, loadClips): each names one of the
- * plan's events, a move's `slowest` and `fastest`, a hold's `least`.
+ * The plan's limits: each names one of the plan's events, a move's `slowest` and `fastest`, a
+ * hold's `least`.
  */
 function checkLimits(plan: Plan): void {
   for (const [name, limits] of Object.entries(plan.limits ?? {})) {
@@ -164,7 +164,7 @@ function readRequest(file: string): Request {
   try {
     text = readFileSync(file, "utf8");
   } catch {
-    throw new Error(`no request at ${file}: make writes it (make <video> --fit)`);
+    throw new Error(`no request at ${file}: make writes it (make <file> --fit)`);
   }
   return JSON.parse(text) as Request;
 }
@@ -192,7 +192,7 @@ function retime(plan: Plan, request: Request): ClipText[] {
  * before is not drawn again. Beside the clip's `.frames`, `<clip>.svgs` holds a hash of each frame's
  * SVG, a line a frame: what a web page of the video draws (page.ts) is compared with it.
  */
-async function draw(plugin: DrawingPlugin, source: unknown, call: Extract<MakerCall, { step: "draw" }>, request: Request) {
+async function draw(plugin: DrawingPlugin, source: unknown, call: Extract<Call, { step: "draw" }>, request: Request) {
   const size = { width: call.width, height: call.height };
   const out = encoder(call.clip, { ...size, fps: request.fps, crf: CRF });
   let drawn = 0;
@@ -232,7 +232,7 @@ async function draw(plugin: DrawingPlugin, source: unknown, call: Extract<MakerC
  * PNG encoded as it is, and `.frames` the hash of each PNG; the camera closed, whatever happened.
  * A frame whose PNG is the buffer of the one before is a hold, recorded once.
  */
-async function record(plugin: RecordingPlugin, source: unknown, call: Extract<MakerCall, { step: "draw" }>, request: Request) {
+async function record(plugin: RecordingPlugin, source: unknown, call: Extract<Call, { step: "draw" }>, request: Request) {
   const size = { width: call.width, height: call.height };
   const out = encoder(call.clip, { ...size, fps: request.fps, crf: CRF, input: "png" });
   let drawn = 0;

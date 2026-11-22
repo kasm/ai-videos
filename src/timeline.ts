@@ -1,5 +1,5 @@
 // Turns measured narration into a timeline: the voice sets the clock.
-import type { SceneClips } from "./clip.ts";
+import type { SceneClip } from "./clip.ts";
 import { voiceOf, type VideoScript } from "./script.ts";
 import { speak, type TtsProvider } from "./tts.ts";
 
@@ -11,8 +11,6 @@ export interface SpokenLine {
   /** Who says it, when the script names a speaker. */
   speaker?: string;
   cue?: string;
-  /** Extra silence before the line, seconds. */
-  pause: number;
   audioFile: string;
   /** The voice's length, seconds, as measured (not rounded). */
   duration: number;
@@ -23,8 +21,6 @@ export interface TimedLine {
   n: number;
   text: string;
   cue?: string;
-  /** Extra silence before the line, seconds (already counted in `start`). */
-  pause: number;
   audioFile: string;
   duration: number;
   /** Seconds from the start of the video. */
@@ -71,7 +67,6 @@ export async function narrate(
         text: line.text,
         ...(line.speaker ? { speaker: line.speaker } : {}),
         cue: line.cue,
-        pause: line.pause,
         audioFile: spoken.file,
         duration: spoken.duration,
       });
@@ -82,14 +77,14 @@ export async function narrate(
 }
 
 /**
- * Lines are laid end to end with the script's pauses. In a clip scene the clip plays as it was
- * drawn: a line cued to an event waits until the clip reaches it, and the scene lasts until both
- * the clip and the voice are done. A clip drawn to its request (see fit.ts) has every event where
+ * Lines are laid end to end with the script's gaps, and the clip plays as it was drawn: a line
+ * cued to an event waits until the clip reaches it, and the scene lasts until both the clip and
+ * the voice are done. A clip drawn to its request (see fit.ts) has every event where
  * the voice wants it, so no line waits for longer than a frame.
  */
 export function buildTimeline(
   script: VideoScript,
-  clips: Map<string, SceneClips>,
+  clips: Map<string, SceneClip>,
   spoken: SpokenLine[][],
   log: (msg: string) => void,
 ): Timeline {
@@ -103,7 +98,6 @@ export function buildTimeline(
     const lines: TimedLine[] = [];
     let local = lead;
     for (const line of spoken[i]!) {
-      local += line.pause;
       const event = clip && line.cue ? clip.events.find((e) => e.name === line.cue) : undefined;
       if (event && event.at > local) {
         // A fitted clip puts an event on the frame after the voice's time: less than a frame is no wait.
@@ -117,7 +111,6 @@ export function buildTimeline(
         n: line.n,
         text: line.text,
         cue: line.cue,
-        pause: line.pause,
         audioFile: line.audioFile,
         duration: round(line.duration),
         start: round(sceneStart + local),

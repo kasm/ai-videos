@@ -76,8 +76,23 @@
   edited in RayCraft's `src/` redrew `first-shadow`, its `.frames` the
   same. The prompt offers the seven tutorials. RayCraft's `npm run
   verify`, `media/`'s typecheck, and this tool's `npm test` and `npm run
-  typecheck` pass. **Next: step 8.** RayCraft's `media/videos/workflow.html`
-  still draws the old way, for both projects: its notes, in step 8.
+  typecheck` pass.
+- Step 8 split in two, 2026-11-22, with the user's yes: 8a here, 8b
+  (RayCraft's notes) from a session in RayCraft. The demo videos go, and
+  the page-scroll scene with them (the user's call).
+- Step 8a done 2026-11-22. Checked: every video of both projects made
+  through the new code, ten in all. The seven made before (`hello`,
+  `meet`, `sundown`, `the-shy-visitor`, `forest1-1`, `first-shadow`,
+  `water-switch`) were planned and drawn again, with the same `plan.json`,
+  request and `.frames` as before (and `the-shy-visitor`'s `.svgs`); their
+  builds differ only in a comment, the lines' `pause: 0` and the fonts
+  (Inter 700 alone). `forest1-2`, `forest1-3` and `two-stars` made for
+  the first time, `two-stars`' request the one of 7b's `--fit`.
+  `the-shy-visitor --as web` took the plan, fit and sound from the cache.
+  The old commands are refused as unknown. `npm test` and `npm run
+  typecheck` pass in both repos, and RayCraft's `media/` typecheck. No
+  file of the tool or `cartoons` names the old contract, this plan's
+  history aside. **Next: step 8b.**
 
 
 ## Goal
@@ -262,10 +277,21 @@ videos move to one file each, in `media/`. **Done when:**
 `first-shadow` and `water-switch`, made through the plugin, have the
 same requests and `.frames` as with the old maker.
 
-### 8. The old way goes
+### 8a. The old way leaves the tool
 
-The two-call maker, `new`, `request`, `video.yaml` and `project.yaml`
-leave the tool; its `AGENTS.md` and both projects' notes say only the new
-way. The tool's own demo videos move over or go: the user's call at this
-step. **Done when:** every video of both projects makes; the tool's
-tests and typecheck pass; no file names the old contract.
+Split from step 8 with the user's yes, 2026-11-22. The two-call maker,
+`new`, `request`, `video.yaml` and `project.yaml` leave the tool, and
+so do the commands that take a video folder; its `AGENTS.md` and
+`cartoons`' notes say only the new way. The tool's demo videos go, and
+the page-scroll scene with them (the user's call). **Done when:** every
+video of both projects makes; the tool's and `cartoons`' tests and
+typecheck pass; no file of the tool or `cartoons` names the old
+contract.
+
+### 8b. RayCraft's notes
+
+From a session in RayCraft. Its notes say only the new way:
+`media/videos/workflow.html`, which draws the old way for both projects,
+`.gitignore`'s video folders, the old made folders left in
+`media/videos/`. **Done when:** no file of RayCraft but its done plans
+names the old contract.

@@ -64,7 +64,7 @@ const REQUEST = {
 const TIMELINE: Timeline = {
   fps: 10,
   duration: 1,
-  scenes: [{ id: "sq", start: 0, duration: 1, lines: [{ n: 1, text: "It slides.", cue: "slide", pause: 0, audioFile: "x.wav", duration: 0.4, start: 0.3, localStart: 0.3 }] }],
+  scenes: [{ id: "sq", start: 0, duration: 1, lines: [{ n: 1, text: "It slides.", cue: "slide", audioFile: "x.wav", duration: 0.4, start: 0.3, localStart: 0.3 }] }],
 };
 
 /** A script of the page, by its id: its text as written. */

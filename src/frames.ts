@@ -1,10 +1,10 @@
-// What every maker repeats in step two (AGENTS.md, "The maker's shared code"): which moment each
-// frame of the request shows, the frames encoded into the clip, and the clip's data written back.
-// A maker's own part is the picture of a moment.
+// What the host does in step two for every plugin (host.ts): the frames encoded into the clip, and
+// the clip's data written back. Which moment each frame shows is moments.ts; the picture of a
+// moment is the plugin's.
 //
-// A project in another repository imports this file alone (package.json, "exports"), so it imports
-// nothing but Node's own modules and moments.ts, which imports nothing: the types here are written
-// out, not taken from fit.ts and clip.ts (frames.test.ts holds them equal).
+// plugin.ts gives the types here to projects in other repositories, which have none of the tool's
+// packages, so they are written out, not taken from fit.ts and clip.ts (frames.test.ts holds them
+// equal), and this file imports nothing but Node's own modules and moments.ts.
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { once } from "node:events";
@@ -125,13 +125,13 @@ export function clipData(clip: { by: string; from: string; request?: string; dur
     version: 1,
     made: { by: clip.by, from: `${clip.from}${clip.request === undefined ? "" : `, drawn to ${path.basename(clip.request)}`}` },
     duration: clip.duration,
-    // Each key in the schema's order, whatever the maker's objects hold besides.
+    // Each key in the schema's order, whatever the plugin's objects hold besides.
     events: clip.events.map(({ name, at, span, natural }) => ({ name, at, span, ...(natural === undefined ? {} : { natural }) })),
     texts: clip.texts.map(({ text, speaker, from, to }) => ({ text, ...(speaker === undefined ? {} : { speaker }), from, to })),
   };
 }
 
-/** Writes the clip's data to `file`, its folder made first: either step's, the times as the maker gives them. */
+/** Writes the clip's data to `file`, its folder made first: either step's, the times as the host gives them. */
 export function writeClipData(file: string, clip: Parameters<typeof clipData>[0]): void {
   mkdirSync(path.dirname(file), { recursive: true });
   writeFileSync(file, `${JSON.stringify(clipData(clip), null, 2)}\n`);

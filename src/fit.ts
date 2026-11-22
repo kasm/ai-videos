@@ -1,6 +1,6 @@
 // Fits a clip to the voice: from the measured narration and the clip's events, how long each span
 // of the clip should last (the request), so that each line cued to an event starts as the clip
-// reaches it. Whatever drew the clip draws it again to the request; the tool never retimes video.
+// reaches it. The plugin draws the clip again to the request; the tool never retimes video.
 //
 // Each cued line fixes when its event happens: when the voice gets to the line. The spans between
 // two fixed events share that time, in whole frames. Short of time, holds shrink first (to a frame),
@@ -10,7 +10,7 @@
 // ends with the scene: holds shrink to end it with the voice (and the tail), but moves keep their
 // speed, as no voice is waiting for them.
 //
-// One event may have limits of its own, over those (`limits` in a clip scene): a move its own
+// One event may have limits of its own, over those (the plan's `limits`): a move its own
 // `slowest` and `fastest`, a hold the `least` it shrinks to instead of a frame. A hold's `least`
 // longer than its own length makes it that long: it is what the hold must show.
 import path from "node:path";
@@ -24,7 +24,6 @@ export interface FitLine {
   /** Who says it, when the script names a speaker: the request passes it on. */
   speaker?: string;
   cue?: string;
-  pause: number;
   duration: number;
   /** Its voice, for the line's mouth track; a line without it gets none. */
   voice?: Voice;
@@ -157,7 +156,7 @@ function share(spans: Span[], total: number): Share[] {
 
 /**
  * The request for one clip scene: how long each span should last for the voice to land on its
- * events. `limits` are single events' own (loadClips has checked each names an event of its kind).
+ * events. `limits` are single events' own (the host has checked each names an event of its kind).
  */
 export function fitClip(
   events: ClipEvent[],
@@ -189,7 +188,6 @@ export function fitClip(
   let t = timing.lead; // the voice's clock, seconds from the scene's start
   const placed: Fit["lines"] = [];
   for (const line of lines) {
-    t += line.pause;
     let waits = 0;
     const k = line.cue === undefined ? undefined : index.get(line.cue);
     if (k === undefined && line.cue !== undefined) throw new Error(`cue "${line.cue}" is not an event of the clip`);
@@ -240,7 +238,7 @@ export function requestFileOf(clipFile: string): string {
 }
 
 /**
- * The request as a file, for whatever draws the clip. It draws each span from `at` for `duration`
+ * The request as a file, for the plugin that draws the clip. It draws each span from `at` for `duration`
  * seconds: a hold shows its picture that long; a move plays its motion over `move` seconds and holds
  * its last frame for the rest. The clip it draws lasts `duration`, and its JSON puts each event at
  * its span's `at` and keeps each span's `natural`, so a later fit starts from the clip's own pace.
@@ -270,8 +268,8 @@ export function requestText(document: ReturnType<typeof requestDocument>): strin
   return `${text}\n`;
 }
 
-/** Whether a clip is drawn to this fit already: each event where the fit puts it, and the same length, to half a frame. */
-export function drawnTo(fit: Fit, events: ClipEvent[], clipDuration: number, fps: number): boolean {
+/** Whether a clip is drawn to this fit, or its request, already: each event where it puts it, and the same length, to half a frame. */
+export function drawnTo(fit: { duration: number; spans: { at: number }[] }, events: ClipEvent[], clipDuration: number, fps: number): boolean {
   const slack = 0.5 / fps;
   return Math.abs(clipDuration - fit.duration) <= slack && events.every((e, i) => Math.abs(e.at - fit.spans[i]!.at) <= slack);
 }

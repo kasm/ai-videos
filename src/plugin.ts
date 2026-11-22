@@ -3,12 +3,15 @@
 // check, its commands and its guide, the plan of its beats and the picture of a moment, drawn as
 // an SVG or recorded by its camera. The tool does the rest.
 //
-// A project imports this file for its types alone (package.json, "exports"), so nothing here runs,
-// and a plugin needs none of the tool's packages: a schema is any library's that follows the
-// Standard Schema and Standard JSON Schema interfaces (standardschema.dev), as zod 4's do.
+// A project imports this file for its types (package.json, "exports"), and its tests for `moments`,
+// which imports nothing: nothing else here runs, so a plugin needs none of the tool's packages. A
+// schema is any library's that follows the Standard Schema and Standard JSON Schema interfaces
+// (standardschema.dev), as zod 4's do.
 import type { ClipEvent, ClipText, Moment, Request } from "./frames.ts";
 
 export type { ClipEvent, ClipText, Moment, Request };
+/** The moment each frame of a request shows, as the host gives them to the plugin: for a plugin's tests. */
+export { moments } from "./moments.ts";
 
 /** One problem a schema finds: its message, and where in the value. */
 export interface SchemaIssue {
@@ -46,7 +49,7 @@ export interface Command {
   schema: Schema;
 }
 
-/** A source's beats at its own pace: the made clip's events and texts (ai-videos-clip, clip.ts). */
+/** A source's beats at its own pace: the clip's events and texts (ai-videos-clip, clip.ts). */
 export interface Plan {
   /** The clip's length, seconds. */
   duration: number;

@@ -161,30 +161,27 @@ test("each text becomes a line cued to the event it begins at, in time order", (
   ]);
 });
 
-test("the script: one made clip scene by the file's name, its lines the plan's, every speaker with a voice", async () => {
+test("the script: one scene by the file's name, its lines the plan's, every speaker with a voice", async () => {
   const root = await project("script", { voice: "af_heart" }, { "meet.yaml": FILE, "alone.yaml": "use: cartoon\n" });
-  const script = scriptOf(await readVideoFile(path.join(root, "videos", "meet.yaml")), "landscape", PLAN);
+  const script = scriptOf(await readVideoFile(path.join(root, "videos", "meet.yaml")), PLAN);
   assert.equal(script.title, "meet");
-  assert.deepEqual(script.formats, ["landscape"]);
   assert.equal(script.loudness, -16);
   assert.deepEqual(script.scenes, [
     {
       id: "meet",
-      scene: "clip",
-      make: "meet",
       limits: {},
-      narration: linesOf(PLAN).map((line) => ({ ...line, pause: 0 })),
+      narration: linesOf(PLAN),
     },
   ]);
   // The plan's limits, when it gives some, are the scene's.
-  const limited = scriptOf(await readVideoFile(path.join(root, "videos", "meet.yaml")), "landscape", PLAN, { turn: { fastest: 3 } });
+  const limited = scriptOf(await readVideoFile(path.join(root, "videos", "meet.yaml")), PLAN, { turn: { fastest: 3 } });
   assert.deepEqual(limited.scenes, [{ ...script.scenes[0]!, limits: { turn: { fastest: 3 } } }]);
   const alone = await readVideoFile(path.join(root, "videos", "alone.yaml"));
   assert.throws(
-    () => scriptOf(alone, "landscape", PLAN),
+    () => scriptOf(alone, PLAN),
     /alone\.yaml: mo says "Rounded apart from its event\.", and the cast \(it is empty\) gives mo no voice: give mo a voice: under the character in .*library\.yaml, or under cast: in the file/,
   );
-  assert.throws(() => scriptOf(alone, "landscape", { ...PLAN, texts: [] }), /alone\.yaml has no line to say/);
+  assert.throws(() => scriptOf(alone, { ...PLAN, texts: [] }), /alone\.yaml has no line to say/);
 });
 
 test("the format is the one of the stage's shape", () => {

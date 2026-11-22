@@ -87,8 +87,8 @@ const EVENTS: ClipEvent[] = [
 
 test("a request gives each line its length, and its mouth track from the frame the line begins in", () => {
   const lines = [
-    { text: "One. Two.", cue: "start", pause: 0, duration: 1.2, voice: TWO_SENTENCES },
-    { text: "Three.", cue: "slide", pause: 0, duration: 0.2004, voice: voice([0.2, 0.3]) },
+    { text: "One. Two.", cue: "start", duration: 1.2, voice: TWO_SENTENCES },
+    { text: "Three.", cue: "slide", duration: 0.2004, voice: voice([0.2, 0.3]) },
   ];
   const fit = fitClip(EVENTS, 4, lines, TIMING);
   // The first line begins after the lead, the second a gap after it, as its event comes.
@@ -104,22 +104,22 @@ test("a request gives each line its length, and its mouth track from the frame t
 });
 
 test("the request's text keeps a mouth track on one line, and reads back as the request", () => {
-  const fit = fitClip(EVENTS, 4, [{ text: "Three [1, 2].", cue: "start", pause: 0, duration: 0.2, voice: voice([0.2, 0.3]) }], TIMING);
-  const document = requestDocument(fit, { from: "video.yaml, scene square", clip: "square.json", fps: FPS });
+  const fit = fitClip(EVENTS, 4, [{ text: "Three [1, 2].", cue: "start", duration: 0.2, voice: voice([0.2, 0.3]) }], TIMING);
+  const document = requestDocument(fit, { from: "videos/square.yaml, scene square", clip: "square.json", fps: FPS });
   const text = requestText(document);
   assert.deepEqual(JSON.parse(text), JSON.parse(JSON.stringify(document)));
   assert.match(text, /^ +"open": \[1, 1, 1, 1, 1, 1\]$/m);
   assert.equal(document.version, 1, "the version stays 1: a line's length and mouth are optional");
 });
 
-test("a request names each line's speaker, so a maker moves that mouth only; a line with none has no such key", () => {
+test("a request names each line's speaker, so a plugin moves that mouth only; a line with none has no such key", () => {
   const lines = [
-    { text: "Two friends meet.", cue: "start", pause: 0, duration: 0.2, voice: voice([0.2, 0.3]) },
-    { text: "Hello!", speaker: "pip", cue: "slide", pause: 0, duration: 0.2, voice: voice([0.2, 0.3]) },
-    { text: "Hello, Pip.", speaker: "mo", pause: 0, duration: 0.2, voice: voice([0.2, 0.3]) },
+    { text: "Two friends meet.", cue: "start", duration: 0.2, voice: voice([0.2, 0.3]) },
+    { text: "Hello!", speaker: "pip", cue: "slide", duration: 0.2, voice: voice([0.2, 0.3]) },
+    { text: "Hello, Pip.", speaker: "mo", duration: 0.2, voice: voice([0.2, 0.3]) },
   ];
   const fit = fitClip(EVENTS, 4, lines, TIMING);
-  const document = requestDocument(fit, { from: "video.yaml, scene square", clip: "square.json", fps: FPS });
+  const document = requestDocument(fit, { from: "videos/square.yaml, scene square", clip: "square.json", fps: FPS });
   assert.deepEqual(document.lines.map((l) => [l.speaker, l.mouth?.open.length]), [[undefined, 6], ["pip", 6], ["mo", 6]]);
   assert.deepEqual(Object.keys(document.lines[0]!), ["text", "cue", "at", "waits", "duration", "mouth"]);
   assert.deepEqual(Object.keys(document.lines[1]!), ["text", "speaker", "cue", "at", "waits", "duration", "mouth"]);

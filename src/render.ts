@@ -113,26 +113,8 @@ async function loudnessFilter(input: string, loudness: number, before = ""): Pro
 const AAC = ["-ar", "48000", "-c:a", "aac", "-b:a", "192k"];
 
 /**
- * Two-pass loudness normalization to `loudness` LUFS, the script's (-14 by default, the level
- * YouTube and most platforms play at), its peaks kept 1.5 dB below full scale.
- * Video is copied untouched; only the audio is re-encoded.
- */
-export async function normalizeLoudness(input: string, output: string, loudness = -14): Promise<void> {
-  await mkdir(path.dirname(output), { recursive: true });
-  const filter = await loudnessFilter(input, loudness);
-  const encode = await run("ffmpeg", [
-    "-hide_banner", "-nostats", "-y", "-i", input,
-    "-c:v", "copy",
-    "-af", filter, ...AAC,
-    "-movflags", "+faststart",
-    output,
-  ]);
-  if (encode.code !== 0) throw new Error(`ffmpeg loudness pass failed:\n${encode.stderr.slice(-600)}`);
-}
-
-/**
- * A mono sound file brought to `loudness` LUFS as `normalizeLoudness` does, into `output`, an .m4a.
- * It is measured and written as a render's track is: stereo, the sound in both channels whole.
+ * A mono sound file brought to `loudness` LUFS in two passes, its peaks kept 1.5 dB below full
+ * scale, into `output`, an .m4a: stereo, the sound in both channels whole.
  */
 export async function levelSound(input: string, output: string, loudness: number): Promise<void> {
   await mkdir(path.dirname(output), { recursive: true });

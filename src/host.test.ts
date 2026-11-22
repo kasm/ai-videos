@@ -11,10 +11,9 @@ import path from "node:path";
 import { after, test } from "node:test";
 import { moments } from "./frames.ts";
 import { loadPlugin, runJob } from "./host.ts";
-import { drawerOf, pluginOf, startPlugin } from "./make.ts";
+import { pluginOf, startPlugin } from "./make.ts";
 import type { RecordingPlugin } from "./plugin.ts";
 import { run } from "./render.ts";
-import { loadVideo } from "./script.ts";
 
 const scratch = await mkdtemp(path.join(os.tmpdir(), "ai-videos-host-"));
 // A host that failed may still be ending in its folder: Windows keeps the folder until it has.
@@ -209,8 +208,9 @@ test("a format the stage does not fill, a source its check refuses and a request
 });
 
 test("the plugin is the nearest package.json's: none there, none named, or a missing file", async () => {
-  // The tool's own videos: its package.json names no plugin, so the demo's maker draws.
-  assert.equal(await pluginOf(path.resolve(import.meta.dirname, "..", "videos", "clip-demo")), undefined);
+  // A package.json with no "ai-videos" (the tool's own) names no plugin: a video file there is refused (video-file.ts).
+  const plain = await project("plain", undefined, { name: "plain" });
+  assert.equal(await pluginOf(path.join(plain, "videos", "sq.yaml")), undefined);
   const unnamed = await project("unnamed", undefined, { "ai-videos": {} });
   await assert.rejects(pluginOf(path.join(unnamed, "videos", "sq.yaml")), /"ai-videos": \{ "plugin" \} is the plugin's file/);
   const gone = await project("gone", undefined, { "ai-videos": { plugin: "src/none.mjs" } });
@@ -345,12 +345,4 @@ test("a plugin draws or records, one of the two", async () => {
   await assert.rejects(loadPlugin(path.join(both, "src", "plugin.mjs")), /give frame \(a moment drawn as an SVG\) or camera \(a moment recorded as a PNG\), one of the two/);
   const neither = await project("neither", () => RECORDING.replace("async camera(", "async notCamera("));
   await assert.rejects(loadPlugin(path.join(neither, "src", "plugin.mjs")), /one of the two/);
-});
-
-test("a video folder with a made clip, in a project with a plugin, is refused: its videos are files", async () => {
-  const root = await project("folder");
-  const dir = path.join(root, "videos", "sq");
-  await mkdir(dir, { recursive: true });
-  await writeFile(path.join(dir, "video.yaml"), "title: sq\nscenes:\n  - id: sq\n    scene: clip\n    make: sq\n    narration:\n      - text: It waits.\n");
-  await assert.rejects(drawerOf(await loadVideo(dir)), /package\.json names a plugin: its videos are files, each made with make <its folder>\/<name>\.yaml/);
 });

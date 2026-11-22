@@ -1,17 +1,17 @@
-// What a build carries so that it renders offline (bundle.ts). Composed with a stand-in voice, the
-// demos' builds (a page scene, a clip scene) name no http URL and hold every file they link; a page
-// that would make the render go online is refused, naming what it asks for.
+// What a build carries so that it renders offline (bundle.ts). A clip drawn here by the host's
+// encoder, composed with a stand-in voice as make composes a video, names no http URL and holds
+// every file it links: GSAP, and the captions' font.
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
-import { checkPages, FONTS_CSS, GSAP_SRC, pageFetches } from "./bundle.ts";
-import { loadClips } from "./clip.ts";
+import { FONTS_CSS, GSAP_SRC } from "./bundle.ts";
+import { loadClip, madeFiles } from "./clip.ts";
 import { compose } from "./compose.ts";
-import { drawnDemo, VIDEOS } from "./demo.ts";
-import { loadVideo, type FormatName } from "./script.ts";
+import { encoder, writeClipData } from "./frames.ts";
+import { settings, type VideoScript } from "./script.ts";
 import { buildTimeline, narrate } from "./timeline.ts";
 import type { TtsProvider } from "./tts.ts";
 
@@ -31,20 +31,7 @@ const tone: TtsProvider = {
   },
 };
 
-/** The video in `dir`, composed in each of its formats into scratch: the projects' folders. */
-async function composed(dir: string, name: string): Promise<string[]> {
-  const video = await loadVideo(dir);
-  await checkPages(video);
-  const formats = video.script.formats as FormatName[];
-  const clips = await loadClips(video, formats);
-  const spoken = await narrate(video.script, tone, path.join(scratch, "tts"), () => {});
-  const timeline = buildTimeline(video.script, clips, spoken, () => {});
-  const projects: string[] = [];
-  for (const format of formats) projects.push(await compose(ROOT, video, clips, timeline, format, path.join(scratch, `build-${name}`)));
-  return projects;
-}
-
-/** A composed project's files that are text, by path inside it. */
+/** A text file of a composed project, by its path inside it. */
 async function texts(project: string): Promise<Map<string, string>> {
   const files = new Map<string, string>();
   for (const file of await readdir(project, { recursive: true })) {
@@ -53,57 +40,38 @@ async function texts(project: string): Promise<Map<string, string>> {
   return files;
 }
 
-test("the demos' builds name no http URL, and hold every file they link", async () => {
-  const made = path.join(scratch, "clip-demo");
-  await drawnDemo(made, ["landscape", "portrait"]);
-  const projects = [...(await composed(path.join(VIDEOS, "scroll-demo"), "scroll-demo")), ...(await composed(made, "clip-demo"))];
-  assert.equal(projects.length, 4);
-  for (const project of projects) {
-    const files = await texts(project);
-    assert.ok(files.has("index.html") && files.has(GSAP_SRC) && files.has(FONTS_CSS), [...files.keys()].join(", "));
-    for (const [file, text] of files) {
-      // GSAP's own code names XML namespaces and its licence by URL; it loads nothing.
-      if (file === GSAP_SRC) continue;
-      assert.doesNotMatch(text, /https?:\/\//, `${path.basename(path.dirname(project))}/${path.basename(project)}/${file}`);
-    }
-    const index = files.get("index.html")!;
-    assert.ok(index.includes(`<link rel="stylesheet" href="${FONTS_CSS}" />`) && index.includes(`<script src="${GSAP_SRC}"></script>`));
-    // Every face of the tool's fonts is a woff2 beside the sheet, and there.
-    const sheet = files.get(FONTS_CSS)!;
-    const urls = [...sheet.matchAll(/url\(([^)]+)\)/g)].map((m) => m[1]!);
-    assert.equal(urls.length, 3 * 7 + 2 * 6, "Inter: 3 weights in 7 subsets; JetBrains Mono: 2 in 6");
-    for (const url of urls) assert.ok(/^[\w.-]+\.woff2$/.test(url) && existsSync(path.join(project, path.dirname(FONTS_CSS), url)), url);
-    assert.deepEqual([...new Set([...sheet.matchAll(/font-family: '([^']+)'/g)].map((m) => m[1]))], ["Inter", "JetBrains Mono"]);
+test("a video's build names no http URL, and holds every file it links", async () => {
+  // A second of a grey square, drawn as a plugin's clip is, its data as the host writes it.
+  const files = madeFiles(path.join(scratch, "cache"), "sq", "landscape");
+  const out = encoder(files.clip, { width: 64, height: 36, fps: 30, crf: 24 });
+  const grey = new Uint8Array(64 * 36 * 4).fill(128);
+  for (let i = 0; i < 30; i++) await out.frame(grey);
+  await out.end();
+  writeClipData(files.data, { by: "a test", from: "videos/sq.yaml", duration: 1, events: [{ name: "start", at: 0, span: "hold" }], texts: [] });
+  const clip = await loadClip(files.clip);
+
+  const defaults = Object.fromEntries(Object.entries(settings).map(([key, schema]) => [key, schema.parse(undefined)]));
+  const script = { ...defaults, title: "sq", scenes: [{ id: "sq", limits: {}, narration: [{ text: "A square waits, and waits.", cue: "start" }] }] } as VideoScript;
+  const clips = new Map([["sq", { clip, duration: clip.data.duration, events: clip.data.events }]]);
+  const spoken = await narrate(script, tone, path.join(scratch, "tts"), () => {});
+  const timeline = buildTimeline(script, clips, spoken, () => {});
+  const project = await compose(ROOT, { slug: "sq", file: path.join(scratch, "videos", "sq.yaml"), script }, clips, timeline, "landscape", path.join(scratch, "build"));
+
+  const built = await texts(project);
+  assert.ok(built.has("index.html") && built.has(GSAP_SRC) && built.has(FONTS_CSS) && built.has("compositions/sq.html"), [...built.keys()].join(", "));
+  for (const [file, text] of built) {
+    // GSAP's own code names XML namespaces and its licence by URL; it loads nothing.
+    if (file === GSAP_SRC) continue;
+    assert.doesNotMatch(text, /https?:\/\//, file);
   }
-});
-
-const page = (html: string, css = "") => [
-  { name: "page.html", text: html, html: true },
-  { name: "page.css", text: css, html: false },
-];
-
-test("a page in the tool's fonts, its own pictures and links, asks for nothing", () => {
-  const css = `.page h1 { font: 900 2em/1.1 Inter, sans-serif; } .page code { font-family: "JetBrains Mono", monospace; } .page { background: url(assets/paper.png); }`;
-  const html = `<div class="page"><img src="assets/a.png" srcset="assets/a.png 1x, assets/a@2x.png 2x" width="10" height="10"><a href="https://raycraft.app">a link</a></div>`;
-  assert.deepEqual(pageFetches(page(html, css)), []);
-});
-
-test("a font the tool doesn't have, unless the page declares it", () => {
-  const css = `.page h1 { font-family: 'Fira Sans', sans-serif; } .page p { font: italic 1em Lora, serif; }`;
-  assert.deepEqual(pageFetches(page(`<div class="page" style="font-family: &quot;Comic Neue&quot;">x</div>`, css)), [
-    `page.html uses the font "Comic Neue", which is not one of the tool's (Inter, JetBrains Mono) and has no @font-face in the page: add one, its src a file in the video's assets/`,
-    `page.css uses the font "Fira Sans", which is not one of the tool's (Inter, JetBrains Mono) and has no @font-face in the page: add one, its src a file in the video's assets/`,
-    `page.css uses the font "Lora", which is not one of the tool's (Inter, JetBrains Mono) and has no @font-face in the page: add one, its src a file in the video's assets/`,
-  ]);
-  const declared = `@font-face { font-family: 'Fira Sans'; src: url(assets/fira.woff2) format('woff2'); }\n@font-face { font-family: Lora; src: url(assets/lora.woff2); }\n${css}`;
-  assert.deepEqual(pageFetches(page(`<div class="page">x</div>`, declared)), []);
-});
-
-test("anything loaded from the network: a picture, a stylesheet, a font's file, an import", () => {
-  const html = `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter"><img src="https://example.com/a.png"><video poster='//cdn.example.com/p.jpg'></video>`;
-  const css = `@import "https://example.com/more.css";\n@font-face { font-family: Lora; src: url("https://example.com/lora.woff2"); }`;
-  assert.deepEqual(
-    pageFetches(page(html, css)).map((l) => l.replace(/ from the network: .*/, "")),
-    ["page.html loads https://fonts.googleapis.com/css2?family=Inter", "page.html loads https://example.com/a.png", "page.html loads //cdn.example.com/p.jpg", "page.css loads https://example.com/lora.woff2", "page.css loads https://example.com/more.css"],
-  );
+  const index = built.get("index.html")!;
+  assert.ok(index.includes(`<link rel="stylesheet" href="${FONTS_CSS}" />`) && index.includes(`<script src="${GSAP_SRC}"></script>`));
+  // The voice ran past the clip: a still of its last frame holds.
+  assert.ok(existsSync(path.join(project, "assets", "clips", "sq.mp4")) && existsSync(path.join(project, "assets", "clips", "sq-last.png")));
+  // Every face of the captions' font is a woff2 beside the sheet, and there.
+  const sheet = built.get(FONTS_CSS)!;
+  const urls = [...sheet.matchAll(/url\(([^)]+)\)/g)].map((m) => m[1]!);
+  assert.equal(urls.length, 7, "Inter 700 in 7 subsets");
+  for (const url of urls) assert.ok(/^[\w.-]+\.woff2$/.test(url) && existsSync(path.join(project, path.dirname(FONTS_CSS), url)), url);
+  assert.deepEqual([...new Set([...sheet.matchAll(/font-family: '([^']+)'/g)].map((m) => m[1]))], ["Inter"]);
 });

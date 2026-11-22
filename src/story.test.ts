@@ -76,7 +76,7 @@ function user(steps: { type?: string; copied?: string }[]) {
 }
 
 /** A make that writes nothing, and says what it was asked. */
-function maker(root: string) {
+function makes(root: string) {
   const calls: string[] = [];
   return {
     calls,
@@ -100,7 +100,7 @@ test("a story through the chat: the prompt, an answer cut off and continued, wha
     { copied: second },
     { copied: mended },
   ]);
-  const { make, calls } = maker(root);
+  const { make, calls } = makes(root);
   const said: string[] = [];
   const made = await runStory(story, io, make, (m) => said.push(m));
   const log = said.join("\n");
@@ -127,7 +127,7 @@ test("a story through the chat: the prompt, an answer cut off and continued, wha
 
   // Run again, it goes on from the reply's file: no prompt, nothing asked, the same episodes made.
   const again = user([]);
-  const remade = maker(root);
+  const remade = makes(root);
   const said2: string[] = [];
   await runStory(story, again.io, remade.make, (m) => said2.push(m));
   assert.deepEqual([again.given, again.asked], [[], []]);
@@ -144,7 +144,7 @@ test("by default only the videos are made; done goes on with what there is", asy
     { type: GO_ON },
     { type: ` ${GO_ON.toUpperCase()} ` },
   ]);
-  const { make, calls } = maker(root);
+  const { make, calls } = makes(root);
   const said: string[] = [];
   const made = await runStory(story, io, make, (m) => said.push(m));
   assert.match(said.join("\n"), /The clipboard holds no YAML block: copy the chat's whole answer with its copy button, which keeps the ```yaml blocks\./);
@@ -156,7 +156,7 @@ test("by default only the videos are made; done goes on with what there is", asy
 test("nothing taken is nothing to make; a reply is no story", async () => {
   const { root, story } = await project("none");
   const { io } = user([{ copied: episode("sq-1", "blue") }, { type: GO_ON }, { type: GO_ON }]);
-  const { make, calls } = maker(root);
+  const { make, calls } = makes(root);
   await assert.rejects(runStory(story, io, make, () => {}), /Stopped: no episode of stories\/sq\.reply\.md was taken, so there is nothing to make\./);
   assert.deepEqual(calls, []);
   await assert.rejects(runStory(replyFileOf(story), io, make, () => {}), /sq\.reply\.md: a story is <name>\.md, its name in lowercase letters, digits and dashes \(a reply, <name>\.reply\.md, is not one\)/);

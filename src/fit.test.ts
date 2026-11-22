@@ -11,7 +11,7 @@ const F = TIMING.fps;
 
 const hold = (name: string, at: number): ClipEvent => ({ name, at, span: "hold" });
 const move = (name: string, at: number): ClipEvent => ({ name, at, span: "move" });
-const line = (duration: number, cue?: string): FitLine => ({ text: `${duration} s`, cue, pause: 0, duration });
+const line = (duration: number, cue?: string): FitLine => ({ text: `${duration} s`, cue, duration });
 const span = (fit: Fit, event: string) => fit.spans.find((s) => s.event === event)!;
 const frames = (seconds: number) => Math.round(seconds * F);
 
@@ -105,23 +105,23 @@ test("after the voice, the clip ends with the tail, its moves at their own speed
   assertAddsUp(fit);
 });
 
-/** The demo's events, and lines as long as its voice. */
-const DEMO_EVENTS = [hold("start", 0), move("slide", 5), hold("across", 6.5), move("rise", 10), hold("up", 11)];
-const DEMO_LINES = [line(4.003, "start"), line(4.787, "slide"), line(1.544, "rise"), line(3.498)];
+/** A square's clip that waits, slides, waits, rises and waits: its events, and lines as long as their voice. */
+const SQUARE_EVENTS = [hold("start", 0), move("slide", 5), hold("across", 6.5), move("rise", 10), hold("up", 11)];
+const SQUARE_LINES = [line(4.003, "start"), line(4.787, "slide"), line(1.544, "rise"), line(3.498)];
 
 test("a request adds up to the video's length, and a clip drawn to it puts every line on its event", () => {
-  const fit = fitClip(DEMO_EVENTS, 13, DEMO_LINES, TIMING);
+  const fit = fitClip(SQUARE_EVENTS, 13, SQUARE_LINES, TIMING);
   assertAddsUp(fit);
-  assert.ok(!drawnTo(fit, DEMO_EVENTS, 13, F), "the clip at its own pace is not drawn to the voice");
+  assert.ok(!drawnTo(fit, SQUARE_EVENTS, 13, F), "the clip at its own pace is not drawn to the voice");
 
   // The clip drawn to the request: each event at its span's `at`, its own pace kept as `natural`.
-  const drawn: ClipEvent[] = DEMO_EVENTS.map((e, i) => ({ ...e, at: fit.spans[i]!.at, natural: fit.spans[i]!.natural }));
+  const drawn: ClipEvent[] = SQUARE_EVENTS.map((e, i) => ({ ...e, at: fit.spans[i]!.at, natural: fit.spans[i]!.natural }));
   assert.ok(drawnTo(fit, drawn, fit.duration, F));
-  assert.deepEqual(fitClip(drawn, fit.duration, DEMO_LINES, TIMING), fit, "fitting it again asks for the same");
+  assert.deepEqual(fitClip(drawn, fit.duration, SQUARE_LINES, TIMING), fit, "fitting it again asks for the same");
 
   // Built as one scene, the video lasts what the request does, and each line starts where the fit put it.
   const script = { fps: F, timing: { lead: 0.6, gap: 0.4, tail: 1 }, scenes: [{ id: "square", narration: [] }] } as unknown as VideoScript;
-  const spoken: SpokenLine[] = DEMO_LINES.map((l, i) => ({ ...l, n: i + 1, audioFile: "" }));
+  const spoken: SpokenLine[] = SQUARE_LINES.map((l, i) => ({ ...l, n: i + 1, audioFile: "" }));
   const notes: string[] = [];
   const timeline = buildTimeline(script, new Map([["square", { byFormat: {}, duration: fit.duration, events: drawn }]]), [spoken], (m) => notes.push(m));
   assert.equal(timeline.duration, Math.round(fit.duration * 1000) / 1000, "the video's length is the request's");

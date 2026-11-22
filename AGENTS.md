@@ -1,65 +1,45 @@
 # ai-videos
 
-Videos made from web pages: a YAML script, a local voice (Kokoro), and HyperFrames rendering
-HTML to MP4 frame by frame. Everything runs locally on Node; there is no Python in this project.
+A local animation server. A project gives it a plugin that draws (or records) its scenes, and
+keeps each video as one YAML file; a local voice (Kokoro) says its lines, the plugin's clip is
+drawn to fit them, and HyperFrames renders the clip with its captions to MP4, or the tool writes a
+web page that plays the same. Everything runs locally on Node; there is no Python in this project.
 
 ## Commands
 
 ```
-npm run video -- setup                     once: fetch the voice model and HyperFrames' Chrome (see Offline)
-npm run video -- new <video>               a first video.yaml, from its clip's texts (see Projects, new)
-npm run video -- new <video> --make <name> the same, for a clip not named as the folder
-npm run video -- make <video>              the whole video, inside its folder (see Projects, make)
-npm run video -- make <video> --fit        only the made clips' data and the fit, in seconds
-npm run video -- make <dir>/<name>.yaml    a plugin's video, from its one file (see Projects, A video file)
+npm run video -- setup                        once: fetch the voice model and HyperFrames' Chrome (see Offline)
+npm run video -- make <dir>/<name>.yaml       a video, from its one file (see Projects, make)
+npm run video -- make <file> --fit            only the plan and the fit, in seconds
 npm run video -- make <file> --profile quiet  the same, a profile's settings over the rest
-npm run video -- make <file> --as web      its web page: one HTML file that plays offline (see The web page)
-npm run video -- story <story>.md          a story to its videos, by a web chat and the clipboard (see Projects, story)
-npm run -s video -- prompt <story>.md      the prompt for a web chat, on stdout (see Projects, prompt)
-npm run video -- import <reply file>       the chat's reply: its episodes as video files (see Projects, import)
-npm run video -- build <video>             narrate, render every format, write out/<name>/
-npm run video -- build <video> --draft     fast low-quality render for iteration
-npm run video -- build <video> --format portrait
-npm run video -- build <video> --out <dir> write the finished files to <dir> instead
-npm run video -- check <video>             lint, layout, contrast and pacing checks (run after every edit)
-npm run video -- preview <video>           live preview in the browser
-npm run video -- compose <video>           only generate build/<name>/<format>/
-npm run video -- request <video>           fit each clip to the voice: <clip>.request.json (see Clips)
-npm run video -- voices ["text"]           voice samples in out/voice-samples/
-npm test                                   the tool's tests (src/*.test.ts)
+npm run video -- make <file> --as web         its web page: one HTML file that plays offline (see The web page)
+npm run video -- story <story>.md             a story to its videos, by a web chat and the clipboard (see Projects, story)
+npm run -s video -- prompt <story>.md         the prompt for a web chat, on stdout (see Projects, prompt)
+npm run video -- import <reply file>          the chat's reply: its episodes as video files (see Projects, import)
+npm run video -- voices ["text"]              voice samples in out/voice-samples/
+npm test                                      the tool's tests (src/*.test.ts)
 npm run typecheck
 ```
 
-A `<video>` is a folder holding a `video.yaml`; a plugin's video is one file instead, and only
-`make` takes it (see A video file). A bare name (`scroll-demo`) is a folder in this
-tool's `videos/`; anything with a slash is a path to a folder anywhere on the disk, relative to
-where the command is typed, so another project runs the tool on its own folder:
+A video is a file of a project (see A video file), anywhere on the disk; a path is relative to
+where the command is typed, so a project runs the tool on its own files. Each project's
+`package.json` has a script for it, `"video": "npm --prefix ../ai_videos run -s video --"`:
 
 ```
-cd d:/some/project
-npm --prefix d:/m/web/ai_videos run video -- build media/videos/intro --out media/out
+cd d:/m/web/cartoons
+npm run -s video -- make videos/hello.yaml
 ```
 
-The folder's name is the video's `<name>`: it names `build/<name>/` and the finished files
-(`<name>-landscape.mp4`, `<name>.srt`), so it uses lowercase letters, digits and dashes. Pages,
-styles and `assets/` are found relative to the folder; scene templates, voices and the TTS cache
-always come from this tool. The single commands keep the build here, and only `build`'s `--out`
-writes the finished files elsewhere; `make` writes the build and the finished files inside the
-video's folder. The TTS cache always stays here.
+What `make` writes goes into the project's folder (`.cache/<name>/`, `out/`); the voice cache and
+the voice model always stay in this tool.
 
 ## Layout
 
 | Path | What it is |
 | --- | --- |
-| `videos/<name>/video.yaml` | The script: scenes, narration lines, cues. Source of truth for a video. |
-| `videos/<name>/page.html`, `page.css` | The page a `page-scroll` scene shows. |
-| `videos/<name>/assets/` | The page's pictures, copied into the build; the page refers to them as `assets/<file>`. |
-| `videos/project.yaml`, `videos/make-clip.ts` | The folder's videos as a project (see Projects): its project file, and its maker, which draws clip-demo's square. |
-| `videos/clip-demo/` | The `clip` scene's demo: a made clip (`make: square`); `make clip-demo` writes its `clips/`, `build/` and `out/`. |
-| `scenes/<name>/scene.html` | Reusable scene templates (HyperFrames sub-compositions with `{{placeholders}}`): `page-scroll`, `clip`. |
-| `src/` | The pipeline: `script` → `clip` → `tts` → `timeline` (and `fit` with `mouth`, for `request`) → `compose` (with `bundle`) → `render` → `srt`; `setup`, what the commands need on the disk; `new`, a first script; `frames` and `moments`, what a maker draws with (see The maker's shared code); `plugin` and `host`, a project's plugin and the process it runs in (see Plugins); `video-file`, `stages` and `lock`, a plugin's video as one file, its settings in layers, the cache of its stages and a make's lock on it (see A video file); `sound` and `page`, a video file's one sound track and its web page (see How loud, The web page); `prompt` and `import`, a story's prompt for a web chat and its reply taken in, and `story`, the two by the clipboard and the episodes made (see prompt, import, story). |
-| `build/` | Generated HyperFrames projects. Never edit; regenerated on every run. |
-| `out/` | Finished videos and subtitles. |
+| `scenes/clip/scene.html` | The scene template (a HyperFrames sub-composition with `{{placeholders}}`): the plugin's clip, muted, with the captions over it. |
+| `src/` | The pipeline: `video-file` (the file, its settings in layers, and the `script` the pipeline reads) → the plugin in its process (`plugin`, `make`, `host`): its plan → `tts` → `timeline` (and `fit` with `mouth`) → `sound` → the drawing (`moments`, `frames`, `clip`) → `compose` (with `bundle`) → `render` → `srt`; `page`, the web page; `stages` and `lock`, a make's cache and its lock (see The cache); `setup`, what the commands need on the disk; `prompt` and `import`, a story's prompt for a web chat and its reply taken in, and `story`, the two by the clipboard and the episodes made (see prompt, import, story). |
+| `out/voice-samples/` | What `voices` writes. |
 | `.cache/tts/` | Narration audio, keyed by text, voice and speed. |
 | `.cache/models/` | The voice model, fetched by `setup`. |
 | `.cache/setup.json` | Where `setup` found HyperFrames' Chrome, and for which HyperFrames. |
@@ -68,95 +48,27 @@ video's folder. The TTS cache always stays here.
 
 ## Projects
 
-A project with a maker (this tool's `videos/`) keeps its videos in one folder, a video folder
-each, and beside them one project file with what they share. A project with a plugin (`cartoons`,
-RayCraft's `media/`) keeps each video as one file instead; its package.json holds the settings they share, and its
+A project (`cartoons`, RayCraft's `media/`) keeps each video as one file, `videos/<name>.yaml`.
+Its `package.json` names its plugin and holds the settings its videos share, and its
 `library.yaml` what they name (see A video file, The library). This section is the contract
 between the tool and a project.
-
-### The project file
-
-`project.yaml` in the folder that holds the video folders (`videos/project.yaml` for
-`videos/clip-demo`). The schema is `ProjectFile` in `src/script.ts`:
-
-```yaml
-maker: node make-clip.ts              # draws a project's clips (below); run in this folder
-voice: af_heart                       # every line that names no speaker
-cast: { pip: am_puck, mo: bf_emma }   # optional: each speaker's voice (The cast, below)
-loudness: -22
-formats: [landscape]
-```
-
-Beside `maker` it holds any of the settings a `video.yaml` has: `voice`, `cast`, `speed`, `fps`,
-`formats`, `loudness` and `timing`. Every command reads it when it loads a video, and a video keeps
-no copy:
-
-- A setting its `video.yaml` writes overrides the project's, key by key: `timing: { moves:
-  { fastest: 1 } }` keeps the project's `timing.gap`. A list (`formats`) is replaced whole.
-- A setting neither writes takes the tool's default.
-- A folder with no project file beside it stands alone, on its `video.yaml` and the defaults.
-- A project file may set only these (`title` or `scenes` in it is refused), and is checked on its
-  own, so an error names the file that holds the mistake. `src/script.test.ts` shows each rule.
-
-### The cast
-
-A video with several speakers gives each a voice in `cast`, by name (lowercase letters, digits and
-dashes), and a line says who speaks it:
-
-```yaml
-narration:
-  - text: Two friends meet.    # no speaker: the video's voice
-    cue: meets
-  - speaker: pip               # the cast's voice for pip
-    text: Hello!
-```
-
-- A line's voice is its own `voice` if it writes one, else its `speaker`'s in the cast, else the
-  video's `voice` (`voiceOf`, `src/script.ts`). A video with no speakers needs no cast.
-- The cast is a setting like the others: a `video.yaml`'s `cast` overrides the project's speaker by
-  speaker, and may add its own. A project with a plugin keeps its cast in its library, a voice
-  under each character (see The library).
-- A speaker the cast does not name is refused when the video loads, with the line and the cast: it
-  is never said in the video's voice.
-- A clip's text may name its speaker (see Clips), `new` writes it into the line (a video file's
-  line has it from the plan), and the request passes it to the maker or the plugin, which moves
-  that character's mouth (see Fitting).
-- The narration's log names the speaker and voice of each line said in another voice than the
-  video's: `line 2 (pip, am_puck): 0.93s`.
-
-### A video folder
-
-The folder holds its script and everything made from it. The project's `.gitignore` keeps the
-made parts out of git; nothing made is edited by hand.
-
-| Path | What it is | Written by | In git |
-| --- | --- | --- | --- |
-| `video.yaml` | The script. | You or an AI; `new` writes a first one, a line per caption, each cued to its event. | yes |
-| `page.html`, `page.css`, `assets/` | A `page-scroll` scene's page. | You or an AI. | yes |
-| `clips/<scene>-<format>.json` | A made clip's data: its events and texts, at its own pace. | The maker, step one. | no |
-| `clips/<scene>-<format>.request.json` | The clip fitted to the voice (see Fitting). | `make`, as `request` does. | no |
-| `clips/<scene>-<format>.mp4` | The clip drawn to the request; its JSON is written again. | The maker, step two. | no |
-| `build/<format>/` | The HyperFrames project. | `make`, as `compose` does. | no |
-| `out/<name>-<format>.mp4`, `out/<name>.srt` | The finished video and its subtitles. | `make`, as `build` does. | no |
-
-A made clip is a clip scene with `make: <name>` in place of `clip:`, the name of what the maker
-draws (clip-demo's `square`); its files are the `clips/` ones above, by the scene's id. A clip
-scene with `clip:` paths plays a clip drawn elsewhere, as before.
 
 ### Plugins
 
 A project's plugin draws its videos: a module the tool runs in a child process of its own
-(`src/host.ts`), in place of a maker's command line. `cartoons` has one that draws (its
-`src/plugin.ts`), RayCraft one that records (its `media/plugin/plugin.ts`: a tutorial played by
-the editor in Chrome).
+(`src/host.ts`). `cartoons` has one that draws (its `src/plugin.ts`), RayCraft one that records
+(its `media/plugin/plugin.ts`: a tutorial played by the editor in Chrome).
 
 - **Where:** the nearest `package.json` above the video file names it, as a path from that
   folder: `"ai-videos": { "plugin": "./src/plugin.ts" }` (`pluginOf`, `src/make.ts`). The same
-  `"ai-videos"` holds the project's settings (see Settings in layers). The project's videos are
-  files (see A video file): a video folder there with a made clip is refused, and so is `new`. A
-  `package.json` with no `"ai-videos"` key (the tool's own) leaves the clips to the maker.
-- **What it is:** the module's default export, `Plugin` in `src/plugin.ts`, which a project
-  imports for its types alone (`import type { Plugin } from "ai-videos/plugin"`):
+  `"ai-videos"` holds the project's settings (see Settings in layers). A video file with no
+  `package.json` above it that names a plugin is refused.
+- **From another repository** the tool is a folder package: `"ai-videos": "file:<path to this
+  folder>"` in the project's `package.json`. It exports one module, `ai-videos/plugin`, which a
+  plugin imports for its types (`import type { Plugin } from "ai-videos/plugin"`) and its tests for
+  `moments` (see Moments). It runs nothing else, so the project needs none of the tool's packages,
+  and Node 24 runs it as it is written.
+- **What it is:** the module's default export, `Plugin` in `src/plugin.ts`:
   - `scene`: the scene it draws (`cartoon`): a video file's `use:` names it.
   - `stage`: the size its picture is drawn at. The video's format is the one of its shape; a stage
     no format has the shape of is refused.
@@ -175,16 +87,16 @@ the editor in Chrome).
   - `repair(raw, library)`, optional: what it mends in the source before `check`, only where there
     is one right answer. It gives the source mended, in the same format, so it could be written
     back, and `did`, a sentence for each thing it mended.
-  - `plan(source)`: its events and texts at its own pace, as step one writes them; and, optional,
-    `limits`: single events' own limits on the fit, by the event's name, as a clip scene's (see
-    Fitting): a move's `slowest` and `fastest`, a hold's `least`. One that names no event, or
-    the wrong kind, is refused.
+  - `plan(source)`: its events and texts at its own pace, as step one writes them (see The clip
+    and its JSON); and, optional, `limits`: single events' own limits on the fit, by the event's
+    name (see Fitting a clip to the voice): a move's `slowest` and `fastest`, a hold's `least`.
+    One that names no event, or the wrong kind, is refused.
   - `inputs(source)`, optional: the project's files its plan and picture are made from, beyond the
     video file, the library and its own folder (a tutorial the source names, the app that draws
     it), each a file or a folder, as a path from the project's folder (see The cache).
   - Its picture, one of the two (a plugin with both, or neither, is refused):
-    - `frame(source, moment, size)`, a plugin that draws: a moment (`moments`, The maker's shared
-      code) as an SVG of the whole stage, `width` × `height` pixels.
+    - `frame(source, moment, size)`, a plugin that draws: a moment (see Moments) as an SVG of the
+      whole stage, `width` × `height` pixels.
     - `camera(source, request, size)`, a plugin that records: what takes its pictures (a page in a
       browser) opened for the clip drawn to `request`, as `{ shot(moment), close() }`. `shot`
       gives each moment's picture, in order, as a PNG of `width` × `height` pixels, sRGB and
@@ -201,23 +113,23 @@ the editor in Chrome).
   source mended, checked and planned, the plan written as the clip's data, and what was mended
   said (`make` lists it, every time, and the file stays as written), with the plan's limits and
   inputs. Step two: the request's spans checked against the plan's events, each moment's picture
-  encoded (`encoder`, crf 17), and the data written again: each event at its span, the texts
-  moved with their beats. A drawing plugin's SVG is turned into pixels by resvg (no fonts: a
-  picture holds no text), and a frame whose SVG is the one before is not drawn again; beside the
-  clip's `.frames`, `<clip>.svgs` holds a hash of each frame's SVG (its md5), a line a frame: what
-  the web page draws is compared with it. A recording plugin's PNGs are encoded as they come
-  (`input: "png"`), `.frames` holding the md5 of each, and it has no `.svgs`.
+  encoded (see Moments), and the data written again: each event at its span, the texts moved
+  with their beats. A drawing plugin's SVG is turned into pixels by resvg (no fonts: a picture
+  holds no text), and a frame whose SVG is the one before is not drawn again; beside the clip's
+  `.frames`, `<clip>.svgs` holds a hash of each frame's SVG (its md5), a line a frame: what the web
+  page draws is compared with it. A recording plugin's PNGs are encoded as they come, `.frames`
+  holding the md5 of each, and it has no `.svgs`.
 - **The process:** `make` starts the host at the first stage it makes (none when each is in the
   cache), in the `package.json`'s folder, and closes it when it is done. Ready, the host says the
   plugin's scene, stage, picture (`drawn` or `recorded`), guide and commands (their descriptions
-  and examples). Each call is a message, with the video file's source and the library, answered
-  before the next; one that fails says why, and `make` stops there. `import`'s call mends, checks
-  and plans a source and writes nothing. `src/host.test.ts` shows each case.
+  and examples). Each call is a message (`Call`, `src/make.ts`), with the video file's source and
+  the library, answered before the next; one that fails says why, and `make` stops there.
+  `import`'s call mends, checks and plans a source and writes nothing. `src/host.test.ts` shows
+  each case.
 
 ### A video file
 
-A plugin's video is one file, `videos/<name>.yaml`: no folder, no `video.yaml`, no project file.
-`make` alone takes it (`src/video-file.ts`):
+A video is one file, `videos/<name>.yaml` (`src/video-file.ts`):
 
 ```yaml
 use: cartoon        # the scene its plugin draws: the plugin's `scene`
@@ -227,8 +139,8 @@ scenes: [ … ]
 ```
 
 - **Its keys:** `use` and the settings are the tool's; the plugin checks the rest. The settings
-  are a `video.yaml`'s but `formats`, and two more: `voice`, `cast`, `speed`, `fps`,
-  `loudness`, `timing`, `quality` (`high` or `draft`, the render), and `outputs`.
+  are `voice`, `cast`, `speed`, `fps`, `loudness`, `timing`, `quality` (`high` or `draft`, the
+  render), and `outputs`.
 - **Its outputs** are what `make` writes, each on or off: `outputs: { video: true, web: false }`,
   the server's. `video` is the video (see make), `web` its page (see The web page), made first
   when both are on. A project turns the pages on for all its videos with `"outputs": { "web":
@@ -236,9 +148,9 @@ scenes: [ … ]
   that one, whatever they say; with both off and no `--as`, `make` is refused. They go into no
   stage's key: turned on or off, they redo nothing made.
 - **Its lines** are written once, in the source: each of the plan's texts is a line, cued to the
-  event it begins at, with the text's speaker (`linesOf`, as `new` writes them). So a video file
-  has no `pause`, no line's own `voice` and no `limits`. A speaker the cast gives no voice is
-  refused, with the line.
+  event it begins at, with the text's speaker (`linesOf`). A line's voice is its speaker's (see
+  The cast), and single events' limits are the plan's (see Plugins). A speaker the cast gives no
+  voice is refused, with the line.
 - **Its format** is the one of its plugin's stage (1920 by 1080: landscape), and it has that
   one alone.
 - **Its name** is the file's: what is made goes into `.cache/<name>/`, and the finished files are
@@ -246,6 +158,22 @@ scenes: [ … ]
   folder, the `package.json`'s.
 
 `src/video-file.test.ts` shows each rule.
+
+### The cast
+
+A video with several speakers gives each a voice. The library gives each character its `voice`
+(see The library), which the tool takes as the cast, and a video file's own `cast:` goes over it,
+speaker by speaker. A line's speaker comes from the plugin's plan: a text a character says names
+it as `speaker` (lowercase letters, digits and dashes); the narrator's names none.
+
+- A line's voice is its speaker's in the cast, else the video's `voice`, the narrator's
+  (`voiceOf`, `src/script.ts`). A video with no speakers needs no cast.
+- A speaker the cast does not name is refused when the video is made, with the line and the
+  cast: it is never said in the video's voice.
+- The request passes each line's speaker to the plugin, which moves that character's mouth (see
+  Fitting a clip to the voice).
+- The narration's log names the speaker and voice of each line said in another voice than the
+  video's: `line 2 (pip, am_puck): 0.93s`.
 
 ### The library
 
@@ -270,10 +198,10 @@ backgrounds: { … }
 
 ### Settings in layers
 
-A video file's settings come in layers, each over the one before, key by key as over a project
-file (a table merges, a list is replaced):
+A video file's settings come in layers, each over the one before, key by key (a table merges, so
+`timing: { moves: { fastest: 1 } }` keeps `timing.gap`; a list is replaced):
 
-1. the server's: the tool's defaults;
+1. the server's: the tool's defaults (`settings`, `src/script.ts`);
 2. the project's: its `package.json`'s `"ai-videos"`, beside `plugin`, and its library's voices
    as its `cast` (see The library);
 3. the file's;
@@ -282,7 +210,8 @@ file (a table merges, a list is replaced):
 The profiles are the tool's (`PROFILES`, `src/video-file.ts`): `youtube` (-14 LUFS), `quiet`
 (-20 LUFS) and `draft` (the fast render). With a profile, the finished files take its name:
 `out/<name>-quiet.mp4`, `.srt`, `.html`. A mistake is reported against the file that holds it: the
-`package.json` or the video file.
+`package.json` or the video file. The project's settings are the user's; an AI changes them only
+when asked.
 
 ### The cache
 
@@ -328,128 +257,62 @@ or stop it. If no make is running, delete …/make.lock". A lock whose process i
 half-way) is taken over. Two different videos make at once, each with its own. `src/lock.test.ts`
 shows each case.
 
-### The maker
-
-A project with no plugin draws its made clips with a maker.
-`make` runs the project file's `maker` in the project file's folder, through the shell, with a
-call appended: the name, a format, and every file as an absolute path. A made clip takes two calls
-per format:
-
-```
-<maker> <name> --format=landscape --data=<clip's JSON>
-<maker> <name> --format=landscape --width=1920 --height=1080 --request=<request> --clip=<mp4> --data=<clip's JSON>
-```
-
-- Step one writes the clip's data (`ai-videos-clip`, see Clips) to `--data` without drawing it.
-- Step two draws the clip to the request (see Fitting) at `--width` × `--height` into `--clip`,
-  and writes its data again to `--data`, each event with its `natural`.
-- The format names a layout. Its size comes in the call (`FORMATS` in `src/script.ts`: landscape
-  1920×1080, portrait 1080×1920), so a maker keeps no table of its own.
-- A maker writes the files it is given, plus caches of its own beside the clip, named after it
-  (`<clip>.mp4.frames`). It exits 0 when they are written; otherwise it exits non-zero with the
-  reason on stderr, and `make` stops there.
-- The schema is `MakerCall` in `src/maker.ts`: `makerArgs` writes a call, and
-  `readMakerCall(process.argv.slice(2))` reads one in a maker written in TypeScript and refuses
-  anything the tool would not send. `src/maker.test.ts` shows both. `videos/make-clip.ts` is a
-  small maker that follows it.
-
-### The maker's shared code
-
-What a maker has of its own is the picture: what a moment looks like. The rest of step two is the
-same in every maker, and `src/frames.ts` holds it: which moment each frame of the request shows,
-the frames encoded into the clip, and the clip's data written back. A maker in TypeScript uses it
-instead of repeating it; the contract stays the files above, so a maker in another language, or
-one that draws by other means, follows those alone.
-
-- **From another repository** the tool is a folder package: `"ai-videos": "file:<path to this
-  folder>"` in the project's `package.json`, then `import { moments, encoder, writeClipData }
-  from "ai-videos/frames"`. It and `ai-videos/plugin` (types alone, see Plugins) are the modules
-  `package.json` exports, and they import nothing but Node's own modules (and `src/moments.ts`,
-  which imports nothing), so the project needs none of the tool's packages. Node 24 runs them as
-  they are written. The tool's own maker imports the file (`../src/frames.ts`).
-- **`moments(request)`** gives one moment for each of the request's `frames`, in order. It is pure
-  (`src/moments.ts`, which `frames.ts` exports), so the web page draws its frames with it too:
-  - `span`: which of the request's spans the frame is in, counted from 0. Each span begins on
-    the frame its `at` names; a request whose spans do not follow each other on whole frames is
-    refused.
-  - `progress`: how far through the span's motion, 0 to 1. A move goes evenly from 0 over its
-    `move` seconds (its `duration`, when the request gives no `move`) and stays at 1 for the
-    rest; a hold is at 0. Easing is the maker's, and so is what the spans before it left behind.
-  - `time` and `into`: the seconds since the clip began, and since the span did.
-  - `mouths`: how open each speaker's mouth is, by name, above 0 to 1, from the lines' tracks. A
-    speaker it does not name has a closed mouth; a line with no speaker opens none. Where two of
-    one speaker's lines meet in a frame, the wider mouth shows.
-- **`encoder(clip, { width, height, fps, crf })`** starts ffmpeg (on the PATH) writing `clip`,
-  its folder made first:
-  - `await frame(pixels)` adds a frame: `width` × `height` pixels in rows from the top, four
-    bytes each (red, green, blue, alpha), sRGB and opaque; with `input: "png"`, a PNG of that size
-    (a screenshot). A frame of another size is refused. A hold gives the same buffer again, and is
-    not hashed again.
-  - `await end()` waits for ffmpeg, fails if it failed, and returns the number of frames. It
-    writes `<clip>.frames` beside the clip: a hash of each frame as given (its pixels, or its
-    PNG's bytes), a line a frame. Two runs that drew the same pictures have the same file; where
-    they differ, the line is the frame. `abort()` stops ffmpeg for a clip given up (a frame
-    failed), and writes none.
-  - The clip is H.264, 4:2:0, marked BT.709, with nothing in it that differs by run (dates, the
-    encoder's name). `crf` is the quality, lower is closer to the pixels: a maker chooses it
-    (`videos/make-clip.ts` 24; a drawing with fine lines, 17).
-- **`writeClipData(file, { by, from, request, duration, events, texts })`** writes the clip's
-  JSON (see Clips) for either step, its keys in the schema's order. With `request`, the
-  request's file, `made.from` ends with `, drawn to <its name>`. The times are the maker's:
-  for step two, each event at its span's `at` with the span's `natural`, and the request's
-  `duration`.
-- Reading the call and the request stays the maker's (`readMakerCall` for the tool's own; a
-  project checks the request as far as it draws from it). `src/frames.test.ts` shows each of
-  the three, and that their types are the ones `fit` writes and `clip` reads.
-
-### `new`
-
-`npm run video -- new <video>` begins a video folder with no AI (`src/new.ts`). The folder needs
-a project file with a maker beside it; the folder itself may not exist yet. A plugin's video needs
-no `new`: it is one file, its lines written once in it (see A video file).
-
-1. It runs the maker's step one for the clip, in the project's first format (or `--format`'s),
-   into the folder's `clips/`. The clip is the folder's name, or `--make <name>`'s.
-2. It writes `video.yaml`: a title (the folder's name) and one made clip scene, its id the clip's
-   name, with a line per text of the clip's data, in time order. Each line is cued to the event
-   its text begins at: the last event at or before the text's `from`. A text's `speaker` is its
-   line's.
-
-The script holds no setting: the voice, formats and the rest are read from the project file, as
-for any video. So the speakers' voices go in the project's `cast`: `new` names each speaker it
-wrote that has no voice there yet, and `make` refuses the script until each has one.
-`new` never writes over a `video.yaml`. A clip whose data holds no text gets no
-script: write its lines by hand. `new` speaks and draws nothing, so it needs nothing from `setup`;
-`make --fit` then tries the lines. `src/new.test.ts` shows each case.
-
 ### `make`
 
-`npm run video -- make <video>` makes the whole video in five steps, in this order, and stops at
-the first that fails (`src/cli.ts`, `make`; the calls are `src/make.ts`). A video file is made in
-the same steps, by its plugin, each taken from the cache when it is unchanged (`makeFile`; see The
-cache), with the sound mixed by the tool before the drawing (see How loud), and its lock held (see
-The cache). Its outputs say what follows the sound: its page (see The web page), then the drawing,
-check and video; `--as` makes one of them (see A video file).
+`npm run video -- make <file>` makes a video in these stages, in this order, each taken from the
+cache when what it is made from is unchanged (see The cache), and stops at the first that fails
+(`makeFile`, `src/cli.ts`). It holds the video's lock (see The cache) and writes only in the
+project's `.cache/<name>/` and `out/`, but for the voice cache, which stays in the tool.
 
-1. The data: the maker's step one for each made clip, in each format.
-2. The fit: the voice spoken (from the cache when a line has not changed) and measured, and each
-   made clip fitted to it, as `request` does: the table, and `clips/<scene>-<format>.request.json`.
-   `--fit` stops here, in seconds, to try the lines and `timing` before anything is drawn.
-3. The drawing: the maker's step two for each made clip, in each format.
-4. The checks: `build/<format>/` composed and checked, as `check` does. A made clip not drawn to its
-   request, or a check's error, stops it.
-5. The video: each format rendered, at the script's loudness, into `out/`, with the subtitles.
+1. The plan: the plugin's step one (see Plugins), and what it mended, said.
+2. The voices and the fit: each line spoken (from the voice cache when it has not changed) and
+   measured, and the plan fitted to it (see Fitting a clip to the voice): the table, and the
+   request. `--fit` stops here, in seconds, to try the lines and `timing` before anything is drawn.
+3. The sound: the voices mixed at the video's loudness (see How loud).
 
-It writes only inside the video's folder (`clips/`, `build/`, `out/`), but for the voice cache, which
-stays in the tool. A clip scene with `clip:` paths plays as it was drawn: `make` writes it no request.
-`--format` makes one format, and `--draft` renders fast. With no made clip, steps 1 and 3 do nothing.
+Then what its outputs turn on (see A video file), or the one `--as` names:
+
+4. The page (see The web page).
+5. The drawing: the plugin's step two, the clip drawn to the request (a recording plugin's comes
+   before the page, which plays it).
+6. Check: the drawn clip read back (see The clip and its JSON), the build composed into
+   `.cache/<name>/build/<format>/` and checked by HyperFrames. A clip not drawn to its request, or
+   a check's error, stops it.
+7. The video: the build rendered, its picture with the sound, into `out/<name>.mp4`, with the
+   subtitles beside it.
+
+### Moments
+
+The host draws the clip a frame at a time, and gives the plugin the moment each frame shows:
+`moments(request)` (`src/moments.ts`) gives one for each of the request's `frames`, in order. It is
+pure, so the web page draws its frames with it too, and `ai-videos/plugin` exports it for a
+plugin's tests (`cartoons`' `src/plugin.test.ts`).
+
+- `span`: which of the request's spans the frame is in, counted from 0. Each span begins on the
+  frame its `at` names; a request whose spans do not follow each other on whole frames is refused.
+- `progress`: how far through the span's motion, 0 to 1. A move goes evenly from 0 over its
+  `move` seconds (its `duration`, when the request gives no `move`) and stays at 1 for the rest; a
+  hold is at 0. Easing is the plugin's, and so is what the spans before it left behind.
+- `time` and `into`: the seconds since the clip began, and since the span did.
+- `mouths`: how open each speaker's mouth is, by name, above 0 to 1, from the lines' tracks. A
+  speaker it does not name has a closed mouth; a line with no speaker opens none. Where two of one
+  speaker's lines meet in a frame, the wider mouth shows.
+
+The rest of the drawing is the host's (`src/frames.ts`): each picture encoded by ffmpeg (on the
+PATH) into H.264, 4:2:0, marked BT.709, crf 17, with nothing in it that differs by run (dates, the
+encoder's name); `<clip>.frames` beside it, a hash of each frame as given (its pixels, or its PNG's
+bytes), a line a frame, so two runs that drew the same pictures have the same file, and where they
+differ the line is the frame; and the clip's JSON (see The clip and its JSON). A picture held is
+the same buffer again, and is not hashed again. `src/frames.test.ts` shows each, and that their
+types are the ones `fit` writes and `clip` reads.
 
 ### The web page
 
 `make <file> --as web`, or `make <file>` with `outputs: { web: true }` (off by default, see A video
-file), writes `out/<name>.html` (`src/page.ts`): one file that plays as the video does, offline. It needs the voices but not HyperFrames' Chrome, and it is made from the stages both
-modes share (and a recording plugin's drawing), so a page made after the video speaks, fits,
-mixes and draws nothing again.
+file), writes `out/<name>.html` (`src/page.ts`): one file that plays as the video does, offline. It
+needs the voices but not HyperFrames' Chrome, and it is made from the stages both modes share (and
+a recording plugin's drawing), so a page made after the video speaks, fits, mixes and draws nothing
+again.
 
 - **The picture:** the plugin's module and the tool's `moments`, bundled for a browser by esbuild,
   with the video file's source, the library and the request. The page mends and checks the source
@@ -555,109 +418,62 @@ Only `setup` uses the network. It fetches once what no other command may fetch:
 - HyperFrames' Chrome (chrome-headless-shell), which HyperFrames keeps in its own cache
   (`~/.cache/hyperframes/`); `setup` records where, and for which HyperFrames, in `.cache/setup.json`.
 
-The rest comes with `npm ci`: the voices (in kokoro-js), GSAP and the fonts, which each build
-carries in `assets/vendor/` (`src/bundle.ts`), so a build names no URL, and esbuild, which bundles
-a web page's drawing (see The web page). Running `setup` again keeps
-what is there and only checks it.
+The rest comes with `npm ci`: the voices (in kokoro-js), GSAP and the captions' font, which each
+build carries in `assets/vendor/` (`src/bundle.ts`), so a build names no URL, and esbuild, which
+bundles a web page's drawing (see The web page). Running `setup` again keeps what is there and only
+checks it.
 
 Every other command first checks that what it needs is on the disk (`src/setup.ts`): the voice
 model's files, and for anything HyperFrames draws or checks, its Chrome. A piece missing stops the
 command before it writes anything, naming the piece and where it should be, with "run setup":
 nothing is fetched. HyperFrames gets its Chrome by path (`HYPERFRAMES_BROWSER_PATH`), so it never
-downloads one, and runs with its update check off. A page that would make the render go online is
-refused as well (see Writing a video). `src/setup.test.ts` and `src/bundle.test.ts` show each case.
+downloads one, and runs with its update check off. `src/setup.test.ts` and `src/bundle.test.ts`
+show each case.
 
 A cloud service (a voice, an avatar) would be a command of its own, run before `make` and writing
-files into the folder as a maker does, so that `make` stays offline.
+files into the project, so that `make` stays offline.
 
 ### What an AI writes
 
-An AI session writes sources: a `video.yaml` (its lines, cues and limits), a video file, a page
-and its assets, or a project's own sources (a RayCraft tutorial). It never writes a made file, and
-it is never a step of `make`: no command calls a model but the voice on this machine. The project
-file's settings, and a `package.json`'s, are the user's; an AI changes them only when asked. A video can begin without an AI:
-`new` writes its first script from the clip's own texts. A web chat writes no file at all: its
-reply to the prompt is imported (see `prompt`, `import`).
+An AI session writes sources: a video file, a project's library, or a project's own sources (a
+RayCraft tutorial). It never writes a made file, and it is never a step of `make`: no command calls
+a model but the voice on this machine. A `package.json`'s settings are the user's; an AI changes
+them only when asked. A web chat writes no file at all: its reply to the prompt is imported (see
+`prompt`, `import`).
 
 ## How loud
 
-The build's last step brings the whole soundtrack to the script's `loudness` (LUFS, default -14,
-the level YouTube and most platforms play at; -16 or -20 is quieter), its peaks 1.5 dB below full
-scale. A line's own level doesn't matter: this step sets the whole.
-
-A video file's soundtrack is the tool's own (`src/sound.ts`): each line's voice laid where the
-timeline starts it, on a track as long as the video, and brought to `loudness` once, as a
-render's track is (stereo, the voice in both channels). The video puts it with the render's
-picture, and the web page plays the same file.
+A video's soundtrack is the tool's own (`src/sound.ts`): each line's voice laid where the timeline
+starts it, on a track as long as the video, and brought once to the video's `loudness` (LUFS,
+default -14, the level YouTube and most platforms play at; -16 or -20 is quieter), its peaks 1.5 dB
+below full scale: stereo, the voice in both channels. A line's own level doesn't matter: this step
+sets the whole. The video puts it with the render's picture, and the web page plays the same file.
 
 ## How timing works
 
-The voice sets the clock. Each narration line is synthesized and measured, lines are laid end to
-end with the pauses in `timing` (`lead`, `gap`, `tail`), and the scene animates against those
-times. Changing a sentence re-times everything after it; nothing is timed by hand.
+The voice sets the clock. Each line is synthesized and measured, lines are laid end to end with
+the pauses in `timing` (`lead`, `gap`, `tail`), and the plugin's clip is drawn again to fit those
+times (see Fitting a clip to the voice). Changing a sentence re-times everything after it; nothing
+is timed by hand.
 
-## Writing a video
+## The clip and its JSON
 
-A scene is a `page-scroll` (a page, below) or a `clip` (a video file, see Clips).
-
-- One narration line is one or two sentences, about 19 words at most. Each line names a `cue`:
-  `top`, `bottom`, or the `data-cue` name of an element in the page. Omit `cue` to stay put.
-- `pause: <seconds>` on a line adds silence before it; the scroll to its cue happens in that time,
-  so a new section is in place before the voice reaches it.
-- `draw:` on a line lists hand-drawn marks (`circle`, `underline`, `arrow`, `box`, `check`), each
-  `on` the `data-mark` name of a page element, optionally an `area` of it as fractions
-  `[left, top, right, bottom]`, and `at`: a word or phrase of the line (drawn as it is said) or
-  seconds after the line starts. Arrows take `from` (`left`, `top-right`, ...). Marks stay until a
-  later line moves the page or draws again. Quote a YAML word such as `"true"` or `"no"`.
-- A marked element must have one box: an inline phrase gets `white-space: nowrap`. Pictures need
-  `width` and `height` attributes, so marks are placed before the images load.
-- Page CSS may set the marker: `--mark` (colour), `--mark-width` (em), `--mark-shadow`.
-- Page CSS: every rule starts with `.page`; portrait overrides start with
-  `[data-format="portrait"] .page`. Size everything in `em` (the scene sets the base size).
-- Nothing meant to be read goes below `0.84em` (28 px): video is watched on phones.
-- Fonts available by name: Inter (400, 700, 900) and JetBrains Mono (400, 700), upright; every
-  build carries them. Any other font needs an `@font-face` in the page, its `src` a file in the
-  video's `assets/`. Nothing a page shows comes from the network: a page that names another font,
-  or loads a URL (a picture, a stylesheet, a font file), stops every command before the narration,
-  with the font or the URL named.
-- A cue block must fit between the focus line and the bottom of the safe area: about 780 px tall
-  in landscape and 950 px in portrait.
-
-## Clips
-
-A `clip` scene plays a video file, muted, with the narration as captions over it. The clip comes
-from elsewhere: a project's maker draws it (`make:`, see Projects), or it was drawn by other means
-(`clip:` paths). The tool reads the JSON beside it and never looks inside the picture.
-
-```yaml
-  - id: square
-    scene: clip
-    make: square                       # a made clip: clips/square-<format>.mp4, drawn by the maker
-    # or a clip drawn elsewhere, in place of make:
-    clip:                              # or one path for every format: clip: clips/demo.mp4
-      landscape: clips/demo-16x9.mp4   # relative to the video folder; ../ is fine
-      portrait: clips/demo-9x16.mp4
-    limits:                            # optional: single events' own, over timing.moves (see Fitting)
-      slide: { fastest: 3 }            # a move: slowest and fastest, multiples of its own speed
-      start: { least: 2 }              # a hold: the shortest it may shrink to, seconds
-    narration:
-      - text: Here it slides, and a line can wait for it.
-        cue: slide                     # an event's name; omit to follow on from the line before
-```
-
-Beside each clip lies its JSON: the same path with `.json` for the extension
-(`clips/demo-16x9.mp4` → `clips/demo-16x9.json`). The schema is `ClipData` in `src/clip.ts`:
+A video's picture is its plugin's clip, played muted with the lines as captions over it
+(`scenes/clip/`). The tool reads the JSON beside the clip and never looks inside the picture. The
+host writes it twice (see Plugins): the plan, `.cache/<name>/plan.json`, the clip at its own pace;
+then the drawn clip's, `clips/<name>-<format>.json` beside its `.mp4`, each event at its span. The
+schema is `ClipData` in `src/clip.ts`:
 
 ```json
 {
   "format": "ai-videos-clip",
   "version": 1,
-  "made": { "by": "the tool or script that drew it", "from": "what it drew: a file, a project" },
+  "made": { "by": "the cartoon plugin, src/plugin.ts", "from": "videos/meet.yaml, drawn to meet-landscape.request.json" },
   "duration": 13,
   "events": [
-    { "name": "start", "at": 0, "span": "hold" },
-    { "name": "slide", "at": 5, "span": "move" },
-    { "name": "across", "at": 6.5, "span": "hold" }
+    { "name": "start", "at": 0, "span": "hold", "natural": 5 },
+    { "name": "slide", "at": 5, "span": "move", "natural": 1.5 },
+    { "name": "across", "at": 6.5, "span": "hold", "natural": 6.5 }
   ],
   "texts": [
     { "text": "A square waits on the left.", "from": 0, "to": 5 },
@@ -670,39 +486,28 @@ Beside each clip lies its JSON: the same path with `.json` for the extension
   a JSON left from another run.
 - `events` are named moments in order, the first at 0, each before the end. Names use lowercase
   letters, digits and dashes, once each. The span from an event to the next (from the last, to the
-  end) is a `hold`, where nothing moves, or a `move`. Narration lines cue to events by name, in
-  the clip's order (a line may cue the event the line before it cued).
+  end) is a `hold`, where nothing moves, or a `move`. Each line is cued to the event its text begins
+  at, in the clip's order.
 - A clip drawn to a request (below) gives each event `natural`: its span's length at the clip's
   own pace, from the request. Fitting starts from it, so a move sped up once is not sped up again.
-- `texts` are the clip's own words and when they apply (`from`, `to`, seconds). A text one of the
-  clip's characters says names it as `speaker`; a text with none is a narrator's. The tool reads
-  and checks them, and `new` writes them as a video's first lines; `make` speaks the script's
-  lines, not these.
-- With a clip per format, the clips must agree on length and events (names, spans, times within
-  half a frame): the formats share one timeline. Each format's clip may have its own `texts`.
+- `texts` are the clip's own words and when they apply (`from`, `to`, seconds): each is a line of
+  the video (see A video file). A text one of the clip's characters says names it as `speaker`; a
+  text with none is the narrator's.
 - The tool plays a clip as it was drawn. A cued line waits until the clip reaches its event, and
   the scene lasts until both the clip and the voice are done; past the clip's end, a still of its
-  last frame holds. `compose` says whether the clip is drawn to the voice, and notes each line that
-  waits for its event longer than a frame or starts later after it than the scene's `lead`.
-- Captions are the narration lines, split as the subtitles are, in the area social apps leave
-  clear. Each stays through the pause after its words, at most 1 s.
-- Every check on a clip runs before any narration is made, so `check` fails in a second with the
-  reason: a clip or its JSON missing, JSON the schema refuses, a length that does not match, the
-  formats' clips disagreeing, a cue that names no event or goes back. `src/clip.test.ts` covers each.
+  last frame holds. The log notes each line that waits for its event longer than a frame or
+  starts later after it than the scene's `lead`.
+- Captions are the lines, split as the subtitles are, in the area social apps leave clear. Each
+  stays through the pause after its words, at most 1 s.
+- The drawn clip is read back before the build (`loadClip`): a clip or its JSON missing, JSON the
+  schema refuses, or a length that does not match stops `make` with the reason.
+  `src/clip.test.ts` covers each.
 
 ### Fitting a clip to the voice
 
-The voice sets the clock; the clip is drawn again to fit it. The tool never retimes video itself.
-For a made clip, `make` runs the whole loop (`npm run video -- make clip-demo`). For a clip drawn
-elsewhere it takes three commands:
-
-```
-npm run video -- request <video>     measure the voice, write <clip>.request.json beside each clip
-(the clip's maker draws it again to the request, and writes its JSON)
-npm run video -- build <video>       "Clip <id>: drawn to the voice"
-```
-
-`request` reads only the JSON, so it works before the clip is drawn at all.
+The voice sets the clock; the clip is drawn again to fit it. The tool never retimes video itself:
+`make` fits the plan to the voice (`--fit` shows it, before anything is drawn), and the plugin
+draws the clip to the request.
 
 How the fit (`src/fit.ts`) shares the time, in whole frames of the video's `fps`:
 
@@ -715,11 +520,10 @@ How the fit (`src/fit.ts`) shares the time, in whole frames of the video's `fps`
   that a hold follows the last of them.
 - After the last cued event, the clip ends with the voice and `tail`: holds shrink or grow to get
   there, and moves keep their own speed.
-- A clip scene's `limits` give single events their own: a move its `slowest` and `fastest` instead
-  of `timing.moves`' (the fly-around faster than the rest), a hold the `least` it shrinks to
-  instead of a frame (a picture shown 2 s before the next line, the voice waiting for it). A
-  `least` longer than the hold makes it that long. `check` fails on a limit that names no event,
-  or `least` on a move and `slowest` or `fastest` on a hold.
+- The plan's `limits` (see Plugins) give single events their own: a move its `slowest` and
+  `fastest` instead of `timing.moves`' (the fly-around faster than the rest), a hold the `least`
+  it shrinks to instead of a frame (a picture shown 2 s before the next line, the voice waiting
+  for it). A `least` longer than the hold makes it that long.
 - Events land on whole frames, so a cued line starts up to a frame after the voice's own time.
 
 The request (`ai-videos-request`, version 1) lists every span, in order, from the first event:
@@ -734,59 +538,51 @@ spans add up to the request's `duration` (`frames` at `fps`), which is the scene
 drawn clip's JSON puts each event at its span's `at`, keeps its `natural`, and lasts `duration`.
 `src/fit.test.ts` shows each rule.
 
-The request also lists the lines, in the script's order, each with its voice as measured:
+The request also lists the lines, in the video's order, each with its voice as measured:
 
 ```json
 { "text": "Here I go!", "speaker": "square", "cue": "slide", "at": 5.033, "waits": 0, "duration": 1.544,
   "mouth": { "frame": 151, "open": [0.31, 1, 0.82, 0, 0, 0.64, 0.9, 0.12] } }
 ```
 
-- `speaker` is who says the line, as the script names it: the track is that character's mouth. A
-  line with no speaker has no such key: nobody on screen says it, so its track moves no mouth.
+- `speaker` is who says the line (see The cast): the track is that character's mouth. A line with
+  no speaker has no such key: nobody on screen says it, so its track moves no mouth.
 - `at` is when the voice begins the line, from the clip's start, and `waits` how long it waits
   there for the clip. `duration` is the voice's length: the line sounds from `at` for `duration`.
 - `mouth` is how open a mouth is while the line sounds, a number for each frame of the clip (the
   request's `fps`): `open[k]` is for frame `frame + k`, and `frame` is the frame the line begins in.
-  0 is closed and 1 is the line's loudest frame. A maker with a talking character draws its mouth
-  from it; in a frame no line's track covers, nobody speaks.
+  0 is closed and 1 is the line's loudest frame. A plugin with a talking character draws its mouth
+  from it (`mouths`, see Moments); in a frame no line's track covers, nobody speaks.
 - The track follows the voice's loudness, not its phonemes (`src/mouth.ts`): a frame's loudness is
   compared with the line's loudest, on the decibel scale, and 30 dB under it is closed. So the
   mouth is closed in the pauses between a line's sentences. `src/mouth.test.ts` shows it.
-- `speaker`, `duration` and `mouth` are optional, and the version stays 1: a maker that draws no
-  mouth (`videos/make-clip.ts`) reads the request as before, and a request written by other means may leave
-  them out.
 
-## Writing a scene template
+## The scene template
 
-Scene files follow the HyperFrames contract (see the `hyperframes` skill, `references/format.md`):
-everything inside `<template>`, root styled as `#root`, one paused GSAP timeline registered as
-`window.__timelines[id]`, and every tween a `fromTo` with `immediateRender: false` so any frame
-can be drawn on its own. No timers, no `Date.now()`, no unseeded randomness, no network calls.
-Portrait scenes keep reading text inside x 120–888 and y 288–1248, the area social apps leave clear.
+`scenes/clip/scene.html` follows the HyperFrames contract (see the `hyperframes` skill,
+`references/format.md`): everything inside `<template>`, root styled as `#root`, one paused GSAP
+timeline registered as `window.__timelines[id]`, and every tween a `fromTo` with
+`immediateRender: false` so any frame can be drawn on its own. No timers, no `Date.now()`, no
+unseeded randomness, no network calls. In portrait, the captions keep between x 120 and 888 and
+end above y 1248, the area social apps leave clear.
 
 ## Known quirks
 
 - HyperFrames is pinned to an exact version in `package.json`; it releases several times a day.
-  Upgrade deliberately, then run `setup` (the new version may pin another Chrome), `check` and a
-  build. GSAP is pinned to the version HyperFrames pins (`gsap` in `package.json`).
-- After `check`, HyperFrames keeps a helper process in the build folder for a few minutes, so that
+  Upgrade deliberately, then run `setup` (the new version may pin another Chrome) and a make. GSAP
+  is pinned to the version HyperFrames pins (`gsap` in `package.json`).
+- After a check, HyperFrames keeps a helper process in the build folder for a few minutes, so that
   folder cannot be deleted on Windows until it exits. `compose` clears only its own subfolders.
-- The portrait check runs with `--safe-zone off`: scrolled-off page text is outside the social safe
-  areas by design, and the scene parks each cue inside them.
 - HyperFrames' check writes its progress a line a step (`check: craft 1/599`, 634 lines for
-  water-switch). `check` and `make` fold them into a line per phase, on its last count, written over
-  in place on a terminal (`src/progress.ts`); its status, warnings, errors and verdict show as they
-  come. A new HyperFrames that words its counts otherwise shows them all again, unfolded.
+  water-switch). `make` folds them into a line per phase, on its last count, written over in place
+  on a terminal (`src/progress.ts`); its status, warnings, errors and verdict show as they come. A
+  new HyperFrames that words its counts otherwise shows them all again, unfolded.
 - HyperFrames telemetry is disabled on this machine (`npx hyperframes telemetry disable`). Its update
   check, which asks npm from a process that outlives the command, is off for every run of the tool
   (`HYPERFRAMES_NO_UPDATE_CHECK`, set in `src/cli.ts`).
-- Subtitles come from the script text and line timings; long lines are split in proportion to
-  their length, not by word timestamps.
-- With the single commands, two videos with the same folder name share `build/<name>/` and,
-  without `--out`, `out/<name>/`: build one at a time, or give the outside one its own `--out`.
-  `make` writes into each video's own folder.
+- Subtitles come from the lines and their timings; long lines are split in proportion to their
+  length, not by word timestamps.
 - A clip with long holds gets HyperFrames' "sparse keyframes" warning at render: few keyframes make
   preview seeking slow; rendering is unaffected.
-- A clip scene with more than a few captions gets HyperFrames' `timeline_track_too_dense` warning
-  (a caption is a timed element), as a long page gets `composition_file_too_large`. Both are size
-  hints, not faults.
+- A clip with more than a few captions gets HyperFrames' `timeline_track_too_dense` warning (a
+  caption is a timed element): a size hint, not a fault.

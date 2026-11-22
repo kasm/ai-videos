@@ -1,12 +1,11 @@
 // What the tool needs on the disk to run offline (setup.ts): a command with a piece missing names
 // it and stops before it writes or fetches anything. `setup` itself uses the network, so its test
-// is `npm run video -- setup`, then `make clip-demo`, on empty caches (AGENTS.md, "Offline").
+// is `npm run video -- setup`, then a make, on empty caches (AGENTS.md, "Offline").
 import assert from "node:assert/strict";
-import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
-import { VIDEOS } from "./demo.ts";
 import { run } from "./render.ts";
 import { cachePaths, missing, ready } from "./setup.ts";
 import { KokoroProvider, MODEL, MODEL_FILES } from "./tts.ts";
@@ -22,33 +21,36 @@ const HYPERFRAMES = JSON.parse(await readFile(path.join(ROOT, "node_modules", "h
 const cli = (cache: string, args: string[]) =>
   run(process.execPath, [path.join(ROOT, "src", "cli.ts"), ...args], { cwd: ROOT, env: { ...process.env, AI_VIDEOS_CACHE: cache } });
 
-/** A copy of the tool's demo project (its project file, its maker, clip-demo's script): make would run its maker. */
-async function demoProject(name: string) {
-  const project = path.join(scratch, name);
-  await mkdir(path.join(project, "clip-demo"), { recursive: true });
-  for (const file of ["project.yaml", "make-clip.ts", "clip-demo/video.yaml"]) await cp(path.join(VIDEOS, file), path.join(project, file));
-  return path.join(project, "clip-demo");
+/** A project with a plugin and one video file, videos/sq.yaml: make would start the plugin. */
+async function project(name: string) {
+  const dir = path.join(scratch, name);
+  await mkdir(path.join(dir, "videos"), { recursive: true });
+  await mkdir(path.join(dir, "src"));
+  await writeFile(path.join(dir, "package.json"), JSON.stringify({ "ai-videos": { plugin: "./src/plugin.mjs" } }));
+  await writeFile(path.join(dir, "src", "plugin.mjs"), "throw new Error('started');\n");
+  await writeFile(path.join(dir, "videos", "sq.yaml"), "use: square\n");
+  return dir;
 }
 
 test("make on empty caches names the voice model and Chrome, and starts nothing", async () => {
-  const video = await demoProject("empty");
+  const dir = await project("empty");
   const cache = path.join(scratch, "empty-cache");
   await mkdir(cache);
-  const { code, stdout, stderr } = await cli(cache, ["make", video]);
+  const { code, stdout, stderr } = await cli(cache, ["make", path.join(dir, "videos", "sq.yaml")]);
   assert.equal(code, 1, stderr);
   assert.ok(stderr.includes("Missing, and not fetched:"), stderr);
   assert.ok(stderr.includes(`the voice model (${MODEL}): ${MODEL_FILES.join(", ")} not in ${modelDir(cache)}`), stderr);
   assert.ok(stderr.includes(`HyperFrames' Chrome: none found by setup (no ${cachePaths(cache).record})`), stderr);
   assert.ok(stderr.includes(`Run "npm run video -- setup" once, with the network on`), stderr);
-  // Nothing begun: no step logged, the cache as empty as it was, the folder holding its script alone.
+  // Nothing begun: no step logged, the cache as empty as it was, the project as it was (no .cache/ or out/).
   assert.equal(stdout, "");
   assert.deepEqual(await readdir(cache), []);
-  assert.deepEqual(await readdir(video), ["video.yaml"]);
+  assert.deepEqual(await readdir(dir), ["package.json", "src", "videos"]);
 });
 
 test("make --fit only speaks: it names the voice model, not Chrome", async () => {
-  const video = await demoProject("fit");
-  const { code, stderr } = await cli(path.join(scratch, "fit-cache"), ["make", video, "--fit"]);
+  const dir = await project("fit");
+  const { code, stderr } = await cli(path.join(scratch, "fit-cache"), ["make", path.join(dir, "videos", "sq.yaml"), "--fit"]);
   assert.equal(code, 1, stderr);
   assert.ok(stderr.includes(`the voice model (${MODEL})`), stderr);
   assert.ok(!stderr.includes("Chrome"), stderr);

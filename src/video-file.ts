@@ -28,14 +28,12 @@ export const PROFILES = {
 } as const satisfies Record<string, Partial<FileSettingsScript>>;
 export type ProfileName = keyof typeof PROFILES;
 
-const { formats: _formats, ...shared } = settings;
-
 /** What make writes of a video file, each on or off: the video, and its web page (AGENTS.md, "The web page"). */
 const Outputs = z.strictObject({ video: z.boolean().default(true), web: z.boolean().default(false) }).prefault({});
 
-/** A video file's settings: a video.yaml's, but the formats (its plugin's stage gives its one), how it is rendered, and what is made. */
+/** A video file's settings: the server's (script.ts, settings), how it is rendered, and what is made. */
 export const FileSettings = z.strictObject({
-  ...shared,
+  ...settings,
   /** How the video is rendered: `high`, or `draft` (fast, for iteration). */
   quality: z.enum(["high", "draft"]).default("high"),
   /** What make writes: the video (on by default) and its web page (off by default). `--as` makes one of them, whatever this says. */
@@ -238,18 +236,18 @@ export function linesOf(data: Pick<ClipJson, "events" | "texts">): { speaker?: s
   return data.texts
     .toSorted((a, b) => a.from - b.from)
     .map(({ text, speaker, from }) => {
-      // A millisecond's slack, for a maker that rounds an event's time and its text's apart.
+      // A millisecond's slack, for a plugin that rounds an event's time and its text's apart.
       const event = data.events.findLast((e) => e.at <= from + 1e-3)!;
       return { ...(speaker ? { speaker } : {}), text, cue: event.name };
     });
 }
 
 /**
- * The script the pipeline reads, from the video file and its plan: one made clip scene, by the
- * file's name, its lines the plan's texts, its limits the plan's (the host has checked them). A
- * speaker the cast gives no voice is refused.
+ * The script the pipeline reads, from the video file and its plan: one scene, the plugin's clip,
+ * by the file's name, its lines the plan's texts, its limits the plan's (the host has checked
+ * them). A speaker the cast gives no voice is refused.
  */
-export function scriptOf(video: VideoFile, format: FormatName, plan: Pick<ClipJson, "events" | "texts">, limits: Record<string, EventLimitsScript> = {}): VideoScript {
+export function scriptOf(video: VideoFile, plan: Pick<ClipJson, "events" | "texts">, limits: Record<string, EventLimitsScript> = {}): VideoScript {
   const lines = linesOf(plan);
   if (lines.length === 0) throw new Error(`${video.file} has no line to say: its plan gives no text`);
   const { quality: _quality, outputs: _outputs, ...script } = video.settings;
@@ -261,10 +259,5 @@ export function scriptOf(video: VideoFile, format: FormatName, plan: Pick<ClipJs
         `give ${voiceless.speaker} a voice: under the character in ${path.join(video.plugin.dir, LIBRARY_FILE)}, or under cast: in the file`,
     );
   }
-  return {
-    title: video.name,
-    ...script,
-    formats: [format],
-    scenes: [{ id: video.name, scene: "clip", make: video.name, limits, narration: lines.map((line) => ({ ...line, pause: 0 })) }],
-  };
+  return { title: video.name, ...script, scenes: [{ id: video.name, limits, narration: lines }] };
 }

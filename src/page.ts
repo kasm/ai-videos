@@ -8,7 +8,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { build } from "esbuild";
 import { CAPTION_FADE, clipStyle, sceneCaptions, type Caption } from "./compose.ts";
-import { fontSheet } from "./bundle.ts";
+import { FONT, fontSheet } from "./bundle.ts";
 import type { Library } from "./plugin.ts";
 import type { FormatName } from "./script.ts";
 import type { Timeline } from "./timeline.ts";
@@ -201,7 +201,7 @@ export type PagePicture = { plugin: string } | { clip: string };
 export async function writePage(root: string, opts: { title: string; source: string; picture: PagePicture; video: PageVideo; sound: string; out: string }): Promise<number> {
   const { video, picture } = opts;
   const { width, height } = video.size;
-  const fonts = await fontSheet(root, "@fontsource/inter", 700, (file) => dataUrl(file, "font/woff2"));
+  const fonts = await fontSheet(root, FONT.pkg, FONT.weight, (file) => dataUrl(file, "font/woff2"));
   const captions = video.captions
     .map((c) => `      <div id="${c.id}" class="cl-cap" style="display: none"><p>${esc(c.text)}</p></div>`)
     .join("\n");
