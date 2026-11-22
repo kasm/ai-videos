@@ -22,7 +22,17 @@
   tool's tests (82) and typecheck passed too. With cartoons' `zod` hidden
   its checks passed on the root's; `git status --ignored` and `git clean
   -ndx` walk the loop (375 "Filename too long"), and skip it as a
-  repository. **Next: step 2.**
+  repository.
+- Step 2 done 2026-11-23: cartoons is in `cartoons/` with its 14
+  commits, rewritten into the folder by `git filter-repo` and merged; its
+  tree is the old repo's HEAD's. Checked from `cartoons/`: `npm test`
+  (47) and `npm run typecheck` pass, and the tool's (82); `make
+  videos/the-shy-visitor.yaml` with no `.cache/` drew its 1277 frames,
+  and its `.frames`, `.svgs`, request, `.mp4` and `.srt` are the old
+  folder's, byte for byte (made there first, all from the cache); `git
+  log -- cartoons` lists the 14; RayCraft's `make
+  videos/water-switch.yaml --fit` runs. `d:\m\web\cartoons` is as it
+  was. **Next: step 3.**
 
 
 ## Goal
