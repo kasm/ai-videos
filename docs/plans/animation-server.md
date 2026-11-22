@@ -42,7 +42,15 @@
   user opened the page beside the mp4 and accepted it. `npm
   test` and `npm run typecheck` pass in both repos (cartoons' scenario
   test fixed: it expected the library's three characters of step 3).
-  **Next: step 6.**
+- Step 6 done 2026-11-22. Checked: in a copy of `cartoons`, `story` ran
+  with the chat played by a script through the real clipboard: an answer
+  cut off and continued, an episode refused and mended, both episodes
+  made, a frame of each looked at. Run again, it went on from the
+  reply's file and took over the lock a killed run had left. A second
+  make of a video being rendered was refused, naming the first; with the
+  first killed half-way, the next make ran. The user accepted the step on
+  these checks. `npm test` and `npm run typecheck` pass in both repos.
+  **Next: step 7.**
 
 
 ## Goal
@@ -194,13 +202,13 @@ mp4 and accepts it.
 `story stories/<x>.md` takes a chapter through the web chat by the
 clipboard: the prompt copied, each reply pasted into
 `stories/<x>.reply.md` and imported, what was refused copied to paste
-back. Then it makes each episode: its page first, opened as the
-preview, then its video. Nothing stays running when it ends. A make
+back. Then it makes each episode, what the settings turn on: its
+video, and its page (off by default), made first and opened as the
+preview. Nothing stays running when it ends. A make
 holds a lock file in `.cache/<name>/`, so a second make of the same
 video is refused, naming the first, and a lock left by a make that was
 stopped is taken over. **Done when:** with one `story` command and the
-chat, a chapter becomes finished videos and pages with no other command
-typed; a second make of a video being made is refused, naming the
+chat, a chapter becomes finished videos with no other command typed; a second make of a video being made is refused, naming the
 first; a make after one killed half-way runs.
 
 ### 7. RayCraft as a plugin

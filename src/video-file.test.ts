@@ -63,7 +63,7 @@ test("the library: each character's voice is the project's cast, and the plugin 
 });
 
 test("settings in layers: the server's, the project's over them, the file's, then a profile's", async () => {
-  const project_ = { voice: "am_michael", fps: 24, loudness: -22, timing: { lead: 1 } };
+  const project_ = { voice: "am_michael", fps: 24, loudness: -22, timing: { lead: 1 }, outputs: { web: true } };
   const root = await project("layers", project_, { "meet.yaml": FILE }, LIBRARY);
   const file = path.join(root, "videos", "meet.yaml");
   const { settings } = await readVideoFile(file);
@@ -75,6 +75,12 @@ test("settings in layers: the server's, the project's over them, the file's, the
   assert.deepEqual(settings.cast, { pip: "am_puck", mo: "bm_fable", tuk: "am_puck" });
   assert.deepEqual(settings.timing, { lead: 1, gap: 0.2, tail: 1, moves: { slowest: 0.5, fastest: 2 } });
   assert.equal(settings.quality, "high");
+  // What is made: the server's video, and the project's page over its default.
+  assert.deepEqual(settings.outputs, { video: true, web: true });
+  const { settings: own } = await readVideoFile(path.join(await project("outputs", {}, { "a.yaml": "use: cartoon\noutputs: { video: false, web: true }\n" }), "videos", "a.yaml"));
+  assert.deepEqual(own.outputs, { video: false, web: true });
+  const { settings: plain } = await readVideoFile(path.join(await project("plain", {}, { "a.yaml": "use: cartoon\n" }), "videos", "a.yaml"));
+  assert.deepEqual(plain.outputs, { video: true, web: false }, "the server's: the video, and no page");
 
   // A profile goes over everything, and names the finished files.
   const quiet = await readVideoFile(file, "quiet");

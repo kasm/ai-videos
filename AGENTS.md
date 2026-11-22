@@ -14,6 +14,7 @@ npm run video -- make <video> --fit        only the made clips' data and the fit
 npm run video -- make <dir>/<name>.yaml    a plugin's video, from its one file (see Projects, A video file)
 npm run video -- make <file> --profile quiet  the same, a profile's settings over the rest
 npm run video -- make <file> --as web      its web page: one HTML file that plays offline (see The web page)
+npm run video -- story <story>.md          a story to its videos, by a web chat and the clipboard (see Projects, story)
 npm run -s video -- prompt <story>.md      the prompt for a web chat, on stdout (see Projects, prompt)
 npm run video -- import <reply file>       the chat's reply: its episodes as video files (see Projects, import)
 npm run video -- build <video>             narrate, render every format, write out/<name>/
@@ -56,7 +57,7 @@ video's folder. The TTS cache always stays here.
 | `videos/project.yaml`, `videos/make-clip.ts` | The folder's videos as a project (see Projects): its project file, and its maker, which draws clip-demo's square. |
 | `videos/clip-demo/` | The `clip` scene's demo: a made clip (`make: square`); `make clip-demo` writes its `clips/`, `build/` and `out/`. |
 | `scenes/<name>/scene.html` | Reusable scene templates (HyperFrames sub-compositions with `{{placeholders}}`): `page-scroll`, `clip`. |
-| `src/` | The pipeline: `script` → `clip` → `tts` → `timeline` (and `fit` with `mouth`, for `request`) → `compose` (with `bundle`) → `render` → `srt`; `setup`, what the commands need on the disk; `new`, a first script; `frames` and `moments`, what a maker draws with (see The maker's shared code); `plugin` and `host`, a project's plugin and the process it runs in (see Plugins); `video-file` and `stages`, a plugin's video as one file, its settings in layers, and the cache of its stages (see A video file); `sound` and `page`, a video file's one sound track and its web page (see How loud, The web page); `prompt` and `import`, a story's prompt for a web chat and its reply taken in (see prompt, import). |
+| `src/` | The pipeline: `script` → `clip` → `tts` → `timeline` (and `fit` with `mouth`, for `request`) → `compose` (with `bundle`) → `render` → `srt`; `setup`, what the commands need on the disk; `new`, a first script; `frames` and `moments`, what a maker draws with (see The maker's shared code); `plugin` and `host`, a project's plugin and the process it runs in (see Plugins); `video-file`, `stages` and `lock`, a plugin's video as one file, its settings in layers, the cache of its stages and a make's lock on it (see A video file); `sound` and `page`, a video file's one sound track and its web page (see How loud, The web page); `prompt` and `import`, a story's prompt for a web chat and its reply taken in, and `story`, the two by the clipboard and the episodes made (see prompt, import, story). |
 | `build/` | Generated HyperFrames projects. Never edit; regenerated on every run. |
 | `out/` | Finished videos and subtitles. |
 | `.cache/tts/` | Narration audio, keyed by text, voice and speed. |
@@ -209,8 +210,14 @@ scenes: [ … ]
 ```
 
 - **Its keys:** `use` and the settings are the tool's; the plugin checks the rest. The settings
-  are a `video.yaml`'s but `formats`, and `quality`: `voice`, `cast`, `speed`, `fps`,
-  `loudness`, `timing`, and `quality` (`high` or `draft`, the render).
+  are a `video.yaml`'s but `formats`, and two more: `voice`, `cast`, `speed`, `fps`,
+  `loudness`, `timing`, `quality` (`high` or `draft`, the render), and `outputs`.
+- **Its outputs** are what `make` writes, each on or off: `outputs: { video: true, web: false }`,
+  the server's. `video` is the video (see make), `web` its page (see The web page), made first
+  when both are on. A project turns the pages on for all its videos with `"outputs": { "web":
+  true }`, and a file `outputs: { video: false }` for its own. `--as video` or `--as web` makes
+  that one, whatever they say; with both off and no `--as`, `make` is refused. They go into no
+  stage's key: turned on or off, they redo nothing made.
 - **Its lines** are written once, in the source: each of the plan's texts is a line, cued to the
   event it begins at, with the text's speaker (`linesOf`, as `new` writes them). So a video file
   has no `pause`, no line's own `voice` and no `limits`. A speaker the cast gives no voice is
@@ -218,8 +225,8 @@ scenes: [ … ]
 - **Its format** is the one of its plugin's stage (1920 by 1080: landscape), and it has that
   one alone.
 - **Its name** is the file's: what is made goes into `.cache/<name>/`, and the finished files are
-  `out/<name>.mp4` and `out/<name>.srt`, or with `--as web` `out/<name>.html`, all in the
-  project's folder, the `package.json`'s.
+  `out/<name>.mp4` and `out/<name>.srt`, and the page `out/<name>.html`, all in the project's
+  folder, the `package.json`'s.
 
 `src/video-file.test.ts` shows each rule.
 
@@ -265,8 +272,8 @@ The profiles are the tool's (`PROFILES`, `src/video-file.ts`): `youtube` (-14 LU
 `make <file>` keeps each stage's key in `.cache/<name>/stages.json`: a hash of what the stage is
 made from (`src/stages.ts`). A stage whose key is the one recorded, its files all there, is taken
 from the cache, and the log says "From the cache". So a setting redoes only the stages it goes
-into, and the ones made from them. The first four are both modes'; the video's then follow, or the
-page:
+into, and the ones made from them. The first four are both modes'; then the page and the video's,
+as the outputs say (see A video file):
 
 | Stage | Made from | What it makes, in `.cache/<name>/` |
 | --- | --- | --- |
@@ -289,6 +296,15 @@ page:
 - `--fit` shows the fit even when it is in the cache.
 
 `src/stages.test.ts` shows each rule.
+
+**The lock.** A make of a video file holds `.cache/<name>/make.lock` from when it has read the file
+to its end, the stages and the finished files between (`src/lock.ts`). It names the process: its
+id, since when, and its command. A second make of the video while one runs, by any profile, from
+anything that runs `make` (a terminal, `story`, a session), is refused before it writes anything:
+"meet is being made by process 12345 (make videos/meet.yaml --as web), since …: wait for it to end,
+or stop it. If no make is running, delete …/make.lock". A lock whose process is gone (a make killed
+half-way) is taken over. Two different videos make at once, each with its own. `src/lock.test.ts`
+shows each case.
 
 ### The maker
 
@@ -386,8 +402,9 @@ script: write its lines by hand. `new` speaks and draws nothing, so it needs not
 `npm run video -- make <video>` makes the whole video in five steps, in this order, and stops at
 the first that fails (`src/cli.ts`, `make`; the calls are `src/make.ts`). A video file is made in
 the same steps, by its plugin, each taken from the cache when it is unchanged (`makeFile`; see The
-cache), with the sound mixed by the tool before the drawing (see How loud). `--as web` makes its
-page instead of the drawing, check and video (see The web page).
+cache), with the sound mixed by the tool before the drawing (see How loud), and its lock held (see
+The cache). Its outputs say what follows the sound: its page (see The web page), then the drawing,
+check and video; `--as` makes one of them (see A video file).
 
 1. The data: the maker's step one for each made clip, in each format.
 2. The fit: the voice spoken (from the cache when a line has not changed) and measured, and each
@@ -404,8 +421,8 @@ stays in the tool. A clip scene with `clip:` paths plays as it was drawn: `make`
 
 ### The web page
 
-`make <file> --as web` writes `out/<name>.html` (`src/page.ts`): one file that plays as the video
-does, offline. It needs the voices but not HyperFrames' Chrome, and it is made from the stages both
+`make <file> --as web`, or `make <file>` with `outputs: { web: true }` (off by default, see A video
+file), writes `out/<name>.html` (`src/page.ts`): one file that plays as the video does, offline. It needs the voices but not HyperFrames' Chrome, and it is made from the stages both
 modes share, so a page made after the video speaks, fits and mixes nothing again.
 
 - **The picture:** the plugin's module and the tool's `moments`, bundled for a browser by esbuild,
@@ -449,7 +466,8 @@ nearest `package.json` above the file with a plugin (`src/import.ts`).
 - **The blocks:** each whole YAML block (`` ```yaml `` to its fence) is an episode; blocks of
   another language are passed over. A block with no end, or one a new YAML block begins inside,
   was cut off and is not counted. When two blocks name one episode, the later counts. The log says
-  each, and whether the reply ends with `All episodes written.`
+  each, and whether the reply says `All episodes written.` after a block: said once, it stays
+  said, as the blocks the chat mends come after it.
 - **An episode** is its name (`episode:`), what it adds to the library (`library:`, by section, as
   `library.yaml` has them), and its video file: the block without those two keys, as written, its
   comments kept.
@@ -467,6 +485,38 @@ nearest `package.json` above the file with a plugin (`src/import.ts`).
   reply's file, they are imported with the rest, and the episodes already written are the same.
 
 Like `prompt`, it needs nothing from `setup`. `src/import.test.ts` shows each case.
+
+### `story`
+
+`npm run video -- story stories/<name>.md` takes a story to its videos in one command, through a
+web chat of the user's (`src/story.ts`). The tool and the chat meet on the clipboard, and the user
+presses Enter in the terminal when the chat's answer is copied. Windows only.
+
+| # | Who | What | Reads | Writes |
+| --- | --- | --- | --- | --- |
+| 1 | the tool | the prompt, on the clipboard (see prompt) | `stories/<name>.md`, `library.yaml`, the plugin | the clipboard |
+| 2 | the user | pastes it into a new chat; copies the chat's whole answer (its copy button keeps the blocks); presses Enter | | |
+| 3 | the tool | the answer added to the reply's file, which is then imported (see import) | the clipboard | `stories/<name>.reply.md`, `videos/<episode>.yaml`, `library.yaml` |
+| 3a | | cut off (no `All episodes written.`): the user types "continue" in the chat, copies its answer, presses Enter: 3 again | | |
+| 3b | the tool | refused: the message for the chat, on the clipboard; the user pastes it, copies the answer, presses Enter: 3 again | | the clipboard |
+| 4 | the tool | each episode taken, made as its outputs say: the pages first, each opened in the browser, then the videos (see make) | `videos/<episode>.yaml` | `.cache/<episode>/`, `out/<episode>.*` |
+
+- **What it refuses to add:** a clipboard with no text, one that still holds what was put there for
+  the chat (Enter pressed too soon), the answer added last, or one with no YAML block (the answer
+  copied without its blocks) and no `All episodes written.` Each is said, and Enter is waited for
+  again.
+- **`done`,** typed in place of Enter once the chat has answered, goes on with what there is: for a
+  chat that never says `All episodes written.`, or an episode it cannot mend. Only the episodes
+  taken are made; none taken stops it.
+- **The reply's file is all it keeps.** With `stories/<name>.reply.md` there, `story` copies no
+  prompt: it imports the file, and goes on from there. So a run stopped (Ctrl+C, a make that
+  failed) goes on when typed again, and one made already makes again from the cache. To begin
+  anew, in a new chat, delete the file.
+- **What it needs** is checked before the prompt: the voice, and HyperFrames' Chrome when the
+  project's outputs make a video (see Offline). Each make holds its video's lock (see The cache).
+- The clipboard is PowerShell's (`Set-Clipboard`, `Get-Clipboard`), its text through a file in
+  UTF-8; the browser is Explorer's, which opens a page in the default one. `src/story.test.ts`
+  runs the whole with a fake clipboard, keyboard, browser and make.
 
 ### Offline
 

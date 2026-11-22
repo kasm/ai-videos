@@ -30,11 +30,16 @@ export type ProfileName = keyof typeof PROFILES;
 
 const { formats: _formats, ...shared } = settings;
 
-/** A video file's settings: a video.yaml's, but the formats (its plugin's stage gives its one), and how it is rendered. */
+/** What make writes of a video file, each on or off: the video, and its web page (AGENTS.md, "The web page"). */
+const Outputs = z.strictObject({ video: z.boolean().default(true), web: z.boolean().default(false) }).prefault({});
+
+/** A video file's settings: a video.yaml's, but the formats (its plugin's stage gives its one), how it is rendered, and what is made. */
 export const FileSettings = z.strictObject({
   ...shared,
   /** How the video is rendered: `high`, or `draft` (fast, for iteration). */
   quality: z.enum(["high", "draft"]).default("high"),
+  /** What make writes: the video (on by default) and its web page (off by default). `--as` makes one of them, whatever this says. */
+  outputs: Outputs,
 });
 export type FileSettingsScript = z.infer<typeof FileSettings>;
 
@@ -246,7 +251,7 @@ export function linesOf(data: Pick<ClipJson, "events" | "texts">): { speaker?: s
 export function scriptOf(video: VideoFile, format: FormatName, plan: Pick<ClipJson, "events" | "texts">): VideoScript {
   const lines = linesOf(plan);
   if (lines.length === 0) throw new Error(`${video.file} has no line to say: its plan gives no text`);
-  const { quality: _quality, ...script } = video.settings;
+  const { quality: _quality, outputs: _outputs, ...script } = video.settings;
   const cast = Object.keys(script.cast);
   const voiceless = lines.find((l) => l.speaker !== undefined && !Object.hasOwn(script.cast, l.speaker));
   if (voiceless) {

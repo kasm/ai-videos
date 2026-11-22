@@ -41,6 +41,11 @@ test("the reply's whole YAML blocks count; one cut off, or begun again, does not
   // Cut off at the end: the reply does not say it is all.
   const short = readReply(`${fence}yaml\nepisode: a-1\n${fence}\n${fence}yaml\nepisode: a-2\n`);
   assert.deepEqual([short.blocks.length, short.cut, short.ended], [1, [4], false]);
+  // Said once, it stays said: the blocks the chat mends come after it.
+  const mended = readReply(`${fence}yaml\nepisode: a-1\n${fence}\nAll episodes written.\n${fence}yaml\nepisode: a-1\nuse: x\n${fence}\n`);
+  assert.deepEqual([mended.blocks.length, mended.ended], [2, true]);
+  // Said before any block, it is the chat's plan, not its end.
+  assert.equal(readReply(`I will end with "All episodes written."\n${fence}yaml\nepisode: a-1\n${fence}\n`).ended, false);
   // A block indented in the message is read as if it were not.
   assert.deepEqual(readReply(`1. One:\n   ${fence}yaml\n   episode: a-1\n   use: x\n   ${fence}\n`).blocks, [{ line: 2, text: "episode: a-1\nuse: x\n" }]);
 });
@@ -166,11 +171,13 @@ test("a reply imported: each episode the plugin takes is written, what it adds g
     ].join("\n"),
   );
   const said: string[] = [];
-  const refused = await importReply(reply, (m) => said.push(m));
+  const { refused, videos: taken, ended } = await importReply(reply, (m) => said.push(m));
   const log = said.join("\n");
+  assert.equal(ended, true);
 
   // The two the plugin takes are written as the blocks wrote them, and the library has what sq-1 adds.
   const videos = path.join(root, "videos");
+  assert.deepEqual(taken, [path.join(videos, "sq-1.yaml"), path.join(videos, "sq-2.yaml")]);
   assert.equal(await readFile(path.join(videos, "sq-1.yaml"), "utf8"), "use: square\ncolour: blue\nwho: bo\nsays: I am Bo.\n");
   assert.equal(await readFile(path.join(videos, "sq-2.yaml"), "utf8"), "use: square\ncolour: rouge\n");
   assert.equal(await readFile(path.join(root, "library.yaml"), "utf8"), `${library}  blue: '#4060d0' # new\n\ncharacters:\n  bo:\n    voice: am_echo\n`);
@@ -195,7 +202,8 @@ test("a reply imported: each episode the plugin takes is written, what it adds g
   // Imported again, as it is: nothing new, and nothing written over.
   await writeFile(path.join(videos, "sq-2.yaml"), "use: square\ncolour: red\n");
   const again: string[] = [];
-  await importReply(reply, (m) => again.push(m));
+  // The one kept with other text is another video: it is not the episode's.
+  assert.deepEqual((await importReply(reply, (m) => again.push(m))).videos, [path.join(videos, "sq-1.yaml")]);
   assert.match(again.join("\n"), /videos\/sq-1\.yaml: there already, as imported/);
   assert.match(again.join("\n"), /videos\/sq-2\.yaml: there already, with other text: kept\. Delete it to import this block\./);
   assert.doesNotMatch(again.join("\n"), /Library:/);

@@ -25,7 +25,10 @@ export interface Reply {
   blocks: Block[];
   /** The lines of the blocks cut off, which are not counted: one with no end, or one a new block began inside. */
   cut: number[];
-  /** Whether the reply says, after its last whole block, that every episode is in it. */
+  /**
+   * Whether the reply says, outside its blocks and after one, that every episode is in it. The
+   * chat says it after its last block; the blocks it mends come after, and it stays said.
+   */
   ended: boolean;
 }
 
@@ -39,7 +42,9 @@ export function readReply(text: string): Reply {
   const blocks: Block[] = [];
   const cut: number[] = [];
   let open: { line: number; indent: number; fence: string; yaml: boolean; body: string[] } | undefined;
-  let after = 0;
+  // The lines outside the blocks, after the first block's end.
+  const outside: string[] = [];
+  let closed = false;
   for (const [i, line] of lines.entries()) {
     const fence = FENCE.exec(line);
     if (open) {
@@ -47,7 +52,7 @@ export function readReply(text: string): Reply {
       if (close.length >= open.fence.length && close === open.fence[0]!.repeat(close.length)) {
         if (open.yaml) blocks.push({ line: open.line, text: open.body.join("\n") + "\n" });
         open = undefined;
-        after = i + 1;
+        closed = true;
       } else if (open.yaml && fence && isYaml(fence[3]!)) {
         // A YAML block begun inside one: the one before was cut off, and the chat began it again.
         cut.push(open.line);
@@ -59,11 +64,10 @@ export function readReply(text: string): Reply {
       }
     } else if (fence) {
       open = { line: i + 1, indent: fence[1]!.length, fence: fence[2]!, yaml: isYaml(fence[3]!), body: [] };
-    }
+    } else if (closed) outside.push(line);
   }
   if (open?.yaml) cut.push(open.line);
-  const rest = open ? "" : lines.slice(after).join("\n");
-  return { blocks, cut, ended: rest.toLowerCase().includes(ALL_WRITTEN.toLowerCase().replace(/\.$/, "")) };
+  return { blocks, cut, ended: outside.join("\n").toLowerCase().includes(ALL_WRITTEN.toLowerCase().replace(/\.$/, "")) };
 }
 
 /** One thing a block adds to the library: its section (`characters`), its name, and its text as written there. */
@@ -202,12 +206,21 @@ export function refusedMessage(refused: Map<string, string>): string {
   return ["The tool refused these episodes. Send each again, its block whole and mended:", "", ...items].join("\n");
 }
 
+/** What an import did: the episodes' video files, the message for the chat, and whether the reply says it is all. */
+export interface Imported {
+  /** The video file of each episode taken: written now, or there already as imported. Not one kept with other text. */
+  videos: string[];
+  /** The message for the chat, when something was refused. */
+  refused: string | undefined;
+  /** Whether the reply says every episode is in it (`Reply`'s `ended`). */
+  ended: boolean;
+}
+
 /**
  * Imports the reply in `file`: writes each episode the tool and the plugin take as
- * videos/<name>.yaml, and what they add to library.yaml, and writes nothing over. Returns the
- * message for the chat when something was refused.
+ * videos/<name>.yaml, and what they add to library.yaml, and writes nothing over.
  */
-export async function importReply(file: string, log: (msg: string) => void): Promise<string | undefined> {
+export async function importReply(file: string, log: (msg: string) => void): Promise<Imported> {
   const plugin = await pluginOf(file);
   if (!plugin) {
     throw new Error(
@@ -226,7 +239,7 @@ export async function importReply(file: string, log: (msg: string) => void): Pro
   if (reply.blocks.length === 0 && reply.cut.length === 0) throw new Error(`${file} holds no YAML block: paste the chat's reply into it, its blocks as the chat wrote them`);
   log(`Reply: ${shown(file)}: ${reply.blocks.length} whole block${reply.blocks.length === 1 ? "" : "s"}`);
   for (const line of reply.cut) log(`  The block at line ${line} is cut off: not counted.`);
-  if (!reply.ended) log(`  It does not end with "${ALL_WRITTEN}": if the chat stopped before the end, say "continue" in it, and add its answer to ${shown(file)}.`);
+  if (!reply.ended) log(`  It does not say "${ALL_WRITTEN}" after its blocks: if the chat stopped before the end, say "continue" in it, and add its answer to ${shown(file)}.`);
 
   // Each episode is its last whole block.
   const refused = new Map<string, string>();
@@ -320,20 +333,24 @@ export async function importReply(file: string, log: (msg: string) => void): Pro
     } else log(`Library: nothing added (${list}), as no episode is imported`);
   }
   for (const what of kept) log(`  ${what}: kept as the library has it; the reply draws it otherwise`);
+  const videos: string[] = [];
   for (const { episode, target, repaired } of accepted) {
     if (existsSync(target)) {
       const there = await readFile(target, "utf8");
-      if (there.replace(/\r\n/g, "\n") === episode.file) log(`${shown(target)}: there already, as imported`);
-      else log(`${shown(target)}: there already, with other text: kept. Delete it to import this block.`);
+      if (there.replace(/\r\n/g, "\n") === episode.file) {
+        log(`${shown(target)}: there already, as imported`);
+        videos.push(target);
+      } else log(`${shown(target)}: there already, with other text: kept. Delete it to import this block.`);
       continue;
     }
     await mkdir(path.dirname(target), { recursive: true });
     await writeFile(target, episode.file);
     log(`${shown(target)}: written`);
     if (repaired.length > 0) log(`  The plugin mends, in what it draws (the file is as written):\n${repaired.map((r) => `    - ${r}`).join("\n")}`);
+    videos.push(target);
   }
-  if (refused.size === 0) return undefined;
+  if (refused.size === 0) return { videos, refused: undefined, ended: reply.ended };
   const listed = new Map([...refused].toSorted(([a], [b]) => order.indexOf(a) - order.indexOf(b)));
   for (const [what, why] of listed) log(`Refused: ${what}: ${why.replace(/\n/g, "\n  ")}`);
-  return refusedMessage(listed);
+  return { videos, refused: refusedMessage(listed), ended: reply.ended };
 }
