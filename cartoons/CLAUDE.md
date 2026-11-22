@@ -1,9 +1,9 @@
 # Cartoons: notes for AI assistants
 
 Simple 2D cartoons with talking characters. Each cartoon is written as a
-scenario; the video tool (`../ai_videos`, a repo of its own) turns it into
-a video with a spoken voice, offline and with no AI. The plan is the tool's
-`docs/plans/animation-server.md`.
+scenario; the video tool (`..`, the root of this repo) turns it into a
+video with a spoken voice, offline and with no AI. This folder is one of
+the tool's projects, and a session for it is opened in the repo's root.
 
 ## Where things are
 
@@ -24,7 +24,7 @@ a video with a spoken voice, offline and with no AI. The plan is the tool's
   its episodes, `videos/<name>-1.yaml` and on. The tool wraps it in its
   prompt for a web chat, and imports the chat's reply, pasted into
   `stories/<name>.reply.md` (Running, below). The `episode` skill
-  (`.claude/skills/episode/`) answers the same prompt itself. Either way a
+  (the repo's `.claude/skills/episode/`) answers the same prompt itself. Either way a
   new character, with its voice, or a new background goes into
   `library.yaml` without asking (the user's standing yes), and nothing
   already there changes.
@@ -55,7 +55,8 @@ a video with a spoken voice, offline and with no AI. The plan is the tool's
 
 ## Running
 
-Node 24. From this folder:
+Node 24. From this folder (from the repo's root, `cd cartoons` first, or
+give the tool the paths from there: `make cartoons/videos/<name>.yaml`):
 
 - `npm test`: the tests (`node --test`); `npm run typecheck`.
 - `npm run -s video -- story stories/<name>.md`: the three below in one
@@ -93,11 +94,11 @@ Node 24. From this folder:
   the video's sound; after the video, it speaks and fits nothing again
   (the tool's `AGENTS.md`, "The web page").
 
-`video` is the tool's command line, found at `../ai_videos`. The contract
-between the tool and this project is the tool's `AGENTS.md`, "Projects".
-The tool is also a package here, a link to that folder (`"ai-videos":
-"file:../ai_videos"`; `npm install` makes it), so the tests need the
-folder too. Drawing needs `ffmpeg` on the PATH.
+`video` is the tool's command line, found at `..`. The contract between
+the tool and this project is the tool's `AGENTS.md`, "Projects". The tool
+is also a package here, a link to that folder (`"ai-videos": "file:.."`;
+`npm install` makes it), so the tests need the folder too. Drawing needs
+`ffmpeg` on the PATH.
 
 ## How a cartoon is drawn
 

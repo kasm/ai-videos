@@ -23,12 +23,15 @@ npm run typecheck
 
 A video is a file of a project (see A video file), anywhere on the disk; a path is relative to
 where the command is typed, so a project runs the tool on its own files. Each project's
-`package.json` has a script for it, `"video": "npm --prefix ../ai_videos run -s video --"`:
+`package.json` has a script for it, `"video": "npm --prefix <path to this folder> run -s video --"`
+(`cartoons/`' is `--prefix ..`):
 
 ```
-cd d:/m/web/cartoons
+cd cartoons
 npm run -s video -- make videos/hello.yaml
 ```
+
+From this folder, `npm run -s video -- make cartoons/videos/hello.yaml` makes the same.
 
 What `make` writes goes into the project's folder (`.cache/<name>/`, `out/`); the voice cache and
 the voice model always stay in this tool.
@@ -39,6 +42,7 @@ the voice model always stay in this tool.
 | --- | --- |
 | `scenes/clip/scene.html` | The scene template (a HyperFrames sub-composition with `{{placeholders}}`): the plugin's clip, muted, with the captions over it. |
 | `src/` | The pipeline: `video-file` (the file, its settings in layers, and the `script` the pipeline reads) → the plugin in its process (`plugin`, `make`, `host`): its plan → `tts` → `timeline` (and `fit` with `mouth`) → `sound` → the drawing (`moments`, `frames`, `clip`) → `compose` (with `bundle`) → `render` → `srt`; `page`, the web page; `stages` and `lock`, a make's cache and its lock (see The cache); `setup`, what the commands need on the disk; `prompt` and `import`, a story's prompt for a web chat and its reply taken in, and `story`, the two by the clipboard and the episodes made (see prompt, import, story). |
+| `cartoons/` | A project of the tool's, in this repo: the cartoon plugin (`cartoons/src/plugin.ts`), its library, videos and stories, and its notes, `cartoons/CLAUDE.md`. Its `episode` skill is the repo's, `.claude/skills/episode/`. |
 | `out/voice-samples/` | What `voices` writes. |
 | `.cache/tts/` | Narration audio, keyed by text, voice and speed. |
 | `.cache/models/` | The voice model, fetched by `setup`. |
@@ -48,7 +52,7 @@ the voice model always stay in this tool.
 
 ## Projects
 
-A project (`cartoons`, RayCraft's `media/`) keeps each video as one file, `videos/<name>.yaml`.
+A project (`cartoons/` in this repo, RayCraft's `media/`) keeps each video as one file, `videos/<name>.yaml`.
 Its `package.json` names its plugin and holds the settings its videos share, and its
 `library.yaml` what they name (see A video file, The library). This section is the contract
 between the tool and a project.
@@ -56,7 +60,7 @@ between the tool and a project.
 ### Plugins
 
 A project's plugin draws its videos: a module the tool runs in a child process of its own
-(`src/host.ts`). `cartoons` has one that draws (its `src/plugin.ts`), RayCraft one that records
+(`src/host.ts`). `cartoons/` has one that draws (its `src/plugin.ts`), RayCraft one that records
 (its `media/plugin/plugin.ts`: a tutorial played by the editor in Chrome).
 
 - **Where:** the nearest `package.json` above the video file names it, as a path from that
@@ -64,10 +68,10 @@ A project's plugin draws its videos: a module the tool runs in a child process o
   `"ai-videos"` holds the project's settings (see Settings in layers). A video file with no
   `package.json` above it that names a plugin is refused.
 - **From another repository** the tool is a folder package: `"ai-videos": "file:<path to this
-  folder>"` in the project's `package.json`. It exports one module, `ai-videos/plugin`, which a
-  plugin imports for its types (`import type { Plugin } from "ai-videos/plugin"`) and its tests for
-  `moments` (see Moments). It runs nothing else, so the project needs none of the tool's packages,
-  and Node 24 runs it as it is written.
+  folder>"` in the project's `package.json` (`cartoons/`, in this repo, the same: `"file:.."`). It
+  exports one module, `ai-videos/plugin`, which a plugin imports for its types (`import type {
+  Plugin } from "ai-videos/plugin"`) and its tests for `moments` (see Moments). It runs nothing
+  else, so the project needs none of the tool's packages, and Node 24 runs it as it is written.
 - **What it is:** the module's default export, `Plugin` in `src/plugin.ts`:
   - `scene`: the scene it draws (`cartoon`): a video file's `use:` names it.
   - `stage`: the size its picture is drawn at. The video's format is the one of its shape; a stage

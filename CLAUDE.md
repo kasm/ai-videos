@@ -14,7 +14,7 @@ read the rest only when a task needs it.
 - **Status lives in the plan's `## Now`:** update it when a step is done,
   with the date and how it was checked. What was built goes in commit
   messages, not in the plan; memory holds lessons, never status.
-- **The other repos:** a step that touches `cartoons`
-  (`d:\m\web\cartoons`) reads its `CLAUDE.md` first. A step that changes
-  RayCraft runs from a session there, where its guard hook, its notes and
-  its `task` skill apply.
+- **cartoons and RayCraft:** a step that touches `cartoons/` reads
+  `cartoons/CLAUDE.md` first. A step that changes RayCraft
+  (`d:\m\web\RayCraft`, a repo of its own) runs from a session there,
+  where its guard hook, its notes and its `task` skill apply.
