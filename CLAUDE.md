@@ -2,9 +2,9 @@
 
 ## The plan
 
-The current plan is `docs/plans/animation-server.md`: the tool as a local
-animation server, with plugins from `cartoons` and RayCraft. Its `## Now`
-names the next step; read the rest only when a task needs it.
+The current plan is `docs/plans/plugin-repos.md`: `cartoons` in this repo,
+then the tool renamed and made public. Its `## Now` names the next step;
+read the rest only when a task needs it.
 
 - **One session, one step.** First restate the step and its "Done when"
   to the user. Its design is worked out in chat, not written into the
