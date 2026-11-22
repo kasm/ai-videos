@@ -58,6 +58,12 @@ a video with a spoken voice, offline and with no AI. The plan is the tool's
 Node 24. From this folder:
 
 - `npm test`: the tests (`node --test`); `npm run typecheck`.
+- `npm run -s video -- story stories/<name>.md`: the three below in one
+  command, by the clipboard, for the user in a terminal on Windows: the
+  prompt copied for the chat, each answer the user copies added to
+  `stories/<name>.reply.md` and imported, what was refused copied to paste
+  back, then each episode made. With the reply's file there, it goes on
+  from it; to begin anew, delete it (the tool's `AGENTS.md`, "story").
 - `npm run -s video -- prompt stories/<name>.md > <file>`: the prompt for
   a web chat, the story in it: copy the file's whole text into the chat.
   Paste its reply into `stories/<name>.reply.md`; told "continue", add the
@@ -80,7 +86,9 @@ Node 24. From this folder:
   name over the rest, into `out/<name>-quiet.mp4` (the tool's `AGENTS.md`,
   "Settings in layers").
 - `--as web`: the cartoon's web page instead, `out/<name>.html`: one file
-  that plays offline, with a play button and a seek bar. It draws each
+  that plays offline, with a play button and a seek bar. `make` writes it
+  too when `"ai-videos"` (or the file) says `outputs: { web: true }`; it is
+  off by default (the tool's `AGENTS.md`, "A video file"). It draws each
   frame with this plugin's code, the same SVG as the video's, and plays
   the video's sound; after the video, it speaks and fits nothing again
   (the tool's `AGENTS.md`, "The web page").
