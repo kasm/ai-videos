@@ -1,0 +1,22 @@
+# Two characters, each with a voice of its own: Pip waits in the meadow, Mo walks in, and they talk.
+# The narrator's lines are said in the project's voice (package.json's "ai-videos"), Pip's and Mo's
+# in their own (library.yaml). The format is in CLAUDE.md ("The scenario").
+use: cartoon # the plugin that draws it; the voices are library.yaml's, the other settings package.json's "ai-videos"
+
+scenes:
+  - background: meadow
+    places: { pip: middle, mo: off-right }
+    faces: { mo: left } # Mo comes in from the right, looking at Pip
+    beats:
+      - name: waits
+        says:
+          - { who: narrator, text: "Pip is waiting in the meadow." }
+      - name: mo-walks-in
+        walk: { who: mo, to: right }
+        says:
+          - { who: pip, text: "Oh, someone is coming! Hello! Who are you?" }
+      - name: meets
+        says:
+          - { who: mo, text: "I am Mo. I live behind the hill." }
+          - { who: pip, text: "I am Pip. Shall we play?" }
+          - { who: mo, text: "Yes, let's play!" }

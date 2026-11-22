@@ -1,0 +1,73 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { checkScenario } from "./scenario.ts";
+import { timeline } from "./timeline.ts";
+
+const scene = (beats: unknown[]) => ({ background: "meadow", places: { pip: "left" }, beats });
+/** Pip, with an arm to wave, and two backgrounds. */
+const library = {
+  file: "library",
+  raw: {
+    characters: {
+      pip: {
+        shoulder: [50, -150],
+        parts: { body: [{ shape: "ellipse", at: [0, -100], size: [100, 200], fill: "#f2a33a" }], arm: [{ shape: "rect", at: [50, -110], size: [20, 100], fill: "#d9861f" }] },
+      },
+    },
+    backgrounds: { meadow: { fill: "#bfe3ff" }, night: { fill: "#101030" } },
+  },
+};
+const scenario = (...scenes: unknown[]) => checkScenario({ scenes }, "test", library);
+const says = (...texts: string[]) => texts.map((text) => ({ who: "narrator", text }));
+
+test("each beat is an event: a move with a walk, a hold without, one after another from 0", () => {
+  const t = timeline(
+    scenario(
+      scene([
+        { name: "walks-in", takes: 4, walk: { who: "pip", to: "middle" } },
+        { name: "stops", takes: 2.5 },
+        { name: "walks-on", takes: 1.5, walk: { who: "pip", to: "right" } },
+      ]),
+    ),
+  );
+  assert.deepEqual(t.events, [
+    { name: "walks-in", at: 0, span: "move" },
+    { name: "stops", at: 4, span: "hold" },
+    { name: "walks-on", at: 6.5, span: "move" },
+  ]);
+  assert.equal(t.duration, 8);
+});
+
+test("a turn and a jump are moves too; a beat that only changes a pose or the background is a hold", () => {
+  const t = timeline(
+    scenario(
+      scene([
+        { name: "turns", takes: 0.5, turn: { who: "pip" } },
+        { name: "waves", takes: 2, pose: { pip: "wave" } },
+        { name: "jumps", takes: 1.2, jump: { who: "pip", times: 2 }, pose: { pip: "stand" } },
+        { name: "night-falls", takes: 2, background: "night" },
+      ]),
+    ),
+  );
+  assert.deepEqual(t.events.map((e) => [e.name, e.span]), [["turns", "move"], ["waves", "hold"], ["jumps", "move"], ["night-falls", "hold"]]);
+});
+
+test("a beat's line has the beat's whole time, and keeps its speaker", () => {
+  const t = timeline(scenario(scene([{ name: "waits", takes: 1 }, { name: "talks", takes: 3, says: [{ who: "pip", text: "Hello!" }] }])));
+  assert.deepEqual(t.lines, [{ who: "pip", text: "Hello!", from: 1, to: 4 }]);
+});
+
+test("a beat's lines share its time in equal parts, the first from the beat's start", () => {
+  const t = timeline(scenario(scene([{ name: "talks", takes: 1, says: says("One.", "Two.", "Three.") }])));
+  assert.deepEqual(
+    t.lines.map((l) => [l.from, l.to]),
+    [[0, 0.333], [0.333, 0.667], [0.667, 1]],
+  );
+});
+
+test("scenes follow each other on one timeline", () => {
+  const t = timeline(scenario(scene([{ name: "first", takes: 2 }]), scene([{ name: "second", takes: 3, says: says("Later.") }])));
+  assert.deepEqual(t.events.map((e) => e.at), [0, 2]);
+  assert.deepEqual(t.lines, [{ who: "narrator", text: "Later.", from: 2, to: 5 }]);
+  assert.equal(t.duration, 5);
+});

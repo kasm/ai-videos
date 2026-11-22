@@ -1,0 +1,203 @@
+# What the cartoons name: each character, drawn once, with its voice, and the backgrounds. A video
+# file names them; the format is in CLAUDE.md ("The library"). `voice` is the video tool's (one of
+# Kokoro's: npm run -s video -- voices lists them); the rest is the cartoon plugin's.
+
+characters:
+  pip:
+    voice: am_puck
+    shoulder: [100, -203] # the middle of the arm's upper end: the arm turns around it
+    parts: # drawn in this order; written facing right; x right and y down from the point between the feet
+      body:
+        - { shape: rect, at: [0, -170], size: [220, 340], round: 110, fill: "#f2a33a" }
+      arm: # hanging down on Pip's front side, over the body
+        - { shape: rect, at: [100, -150], size: [44, 150], round: 22, fill: "#d9861f" }
+      eyes:
+        - { shape: ellipse, at: [-45, -250], size: [48, 60], fill: "#ffffff" }
+        - { shape: ellipse, at: [45, -250], size: [48, 60], fill: "#ffffff" }
+        - { shape: ellipse, at: [-30, -246], size: [20, 26], fill: "#2b2d42" } # looking right, the way Pip faces
+        - { shape: ellipse, at: [60, -246], size: [20, 26], fill: "#2b2d42" }
+      mouth:
+        - { shape: ellipse, at: [0, -170], size: [70, 18], fill: "#5b2333" }
+  mo:
+    voice: bf_emma
+    shoulder: [85, -265]
+    parts: # taller and narrower than Pip, and blue; written facing right too
+      body:
+        - { shape: rect, at: [0, -215], size: [190, 430], round: 95, fill: "#6aa9e9" }
+      arm:
+        - { shape: rect, at: [85, -200], size: [40, 170], round: 20, fill: "#3f7fc4" }
+      eyes:
+        - { shape: ellipse, at: [-40, -330], size: [44, 56], fill: "#ffffff" }
+        - { shape: ellipse, at: [40, -330], size: [44, 56], fill: "#ffffff" }
+        - { shape: ellipse, at: [-28, -326], size: [18, 24], fill: "#2b2d42" }
+        - { shape: ellipse, at: [52, -326], size: [18, 24], fill: "#2b2d42" }
+      mouth:
+        - { shape: ellipse, at: [0, -250], size: [60, 16], fill: "#27324f" }
+  tuk: # the small one, 170 by 240, and green (darker than the grass)
+    voice: bm_fable
+    shoulder: [75, -142]
+    parts:
+      body:
+        - { shape: rect, at: [0, -120], size: [170, 240], round: 85, fill: "#2f9e63" }
+      arm:
+        - { shape: rect, at: [75, -105], size: [36, 110], round: 18, fill: "#1f7547" }
+      eyes:
+        - { shape: ellipse, at: [-35, -172], size: [40, 50], fill: "#ffffff" }
+        - { shape: ellipse, at: [35, -172], size: [40, 50], fill: "#ffffff" }
+        - { shape: ellipse, at: [-23, -168], size: [16, 22], fill: "#2b2d42" }
+        - { shape: ellipse, at: [47, -168], size: [16, 22], fill: "#2b2d42" }
+      mouth:
+        - { shape: ellipse, at: [0, -108], size: [50, 14], fill: "#143d28" }
+  mole: # round black mole with pink snout and claws, 210 by 270
+    voice: am_liam
+    shoulder: [95, -160]
+    parts:
+      body:
+        - { shape: rect, at: [0, -135], size: [210, 270], round: 105, fill: "#2b2d38" }
+        - { shape: ellipse, at: [102, -165], size: [42, 30], fill: "#e89cae" }
+      arm:
+        - { shape: rect, at: [95, -115], size: [42, 120], round: 21, fill: "#3e4152" }
+      eyes:
+        - { shape: ellipse, at: [-40, -195], size: [38, 46], fill: "#ffffff" }
+        - { shape: ellipse, at: [40, -195], size: [38, 46], fill: "#ffffff" }
+        - { shape: ellipse, at: [-28, -192], size: [16, 20], fill: "#14151a" }
+        - { shape: ellipse, at: [52, -192], size: [16, 20], fill: "#14151a" }
+      mouth:
+        - { shape: ellipse, at: [0, -132], size: [56, 14], fill: "#7a2e43" }
+  rabbit: # tall grey-brown elderly rabbit with long ears, 190 by 390
+    voice: bm_george
+    shoulder: [85, -195]
+    parts:
+      body:
+        - { shape: rect, at: [-26, -340], size: [36, 110], round: 18, fill: "#9e9389" }
+        - { shape: rect, at: [26, -340], size: [36, 110], round: 18, fill: "#9e9389" }
+        - { shape: rect, at: [0, -160], size: [190, 320], round: 95, fill: "#b5aaa0" }
+        - { shape: ellipse, at: [95, -195], size: [30, 24], fill: "#e396a4" }
+      arm:
+        - { shape: rect, at: [85, -140], size: [38, 130], round: 19, fill: "#8c8177" }
+      eyes:
+        - { shape: ellipse, at: [-38, -235], size: [40, 48], fill: "#ffffff" }
+        - { shape: ellipse, at: [38, -235], size: [40, 48], fill: "#ffffff" }
+        - { shape: ellipse, at: [-26, -232], size: [16, 22], fill: "#2b2d42" }
+        - { shape: ellipse, at: [50, -232], size: [16, 22], fill: "#2b2d42" }
+      mouth:
+        - { shape: ellipse, at: [0, -165], size: [54, 14], fill: "#5b2333" }
+  squirrel: # slender russet red squirrel with tufted ears and bushy tail, 240 by 310
+    voice: af_bella
+    shoulder: [85, -180]
+    parts:
+      body:
+        - { shape: rect, at: [-82, -165], size: [78, 220], round: 39, fill: "#a8441e" }
+        - { shape: rect, at: [-32, -295], size: [26, 56], round: 13, fill: "#c95628" }
+        - { shape: rect, at: [32, -295], size: [26, 56], round: 13, fill: "#c95628" }
+        - { shape: rect, at: [0, -145], size: [175, 290], round: 88, fill: "#d96230" }
+      arm:
+        - { shape: rect, at: [85, -132], size: [36, 118], round: 18, fill: "#b3491e" }
+      eyes:
+        - { shape: ellipse, at: [-36, -215], size: [42, 50], fill: "#ffffff" }
+        - { shape: ellipse, at: [36, -215], size: [42, 50], fill: "#ffffff" }
+        - { shape: ellipse, at: [-24, -212], size: [18, 22], fill: "#1c1917" }
+        - { shape: ellipse, at: [48, -212], size: [18, 22], fill: "#1c1917" }
+      mouth:
+        - { shape: ellipse, at: [0, -150], size: [54, 14], fill: "#5b2333" }
+  marten: # sleek brown-golden pine marten, 210 by 310
+    voice: am_eric
+    shoulder: [85, -180]
+    parts:
+      body:
+        - { shape: rect, at: [-78, -140], size: [74, 180], round: 37, fill: "#694528" }
+        - { shape: rect, at: [0, -155], size: [180, 310], round: 90, fill: "#855936" }
+        - { shape: ellipse, at: [45, -145], size: [75, 110], fill: "#f2c97d" }
+      arm:
+        - { shape: rect, at: [85, -130], size: [36, 120], round: 18, fill: "#694528" }
+      eyes:
+        - { shape: ellipse, at: [-36, -225], size: [40, 48], fill: "#ffffff" }
+        - { shape: ellipse, at: [36, -225], size: [40, 48], fill: "#ffffff" }
+        - { shape: ellipse, at: [-24, -222], size: [16, 22], fill: "#1c1917" }
+        - { shape: ellipse, at: [48, -222], size: [16, 22], fill: "#1c1917" }
+      mouth:
+        - { shape: ellipse, at: [0, -162], size: [54, 14], fill: "#5b2333" }
+  badger: # broad black-and-white striped badger, 250 by 320
+    voice: bm_lewis
+    shoulder: [105, -185]
+    parts:
+      body:
+        - { shape: rect, at: [0, -160], size: [250, 320], round: 115, fill: "#3b3e45" }
+        - { shape: rect, at: [-35, -245], size: [26, 110], round: 13, fill: "#f0f2f5" }
+        - { shape: rect, at: [35, -245], size: [26, 110], round: 13, fill: "#f0f2f5" }
+      arm:
+        - { shape: rect, at: [105, -135], size: [44, 130], round: 22, fill: "#282a2e" }
+      eyes:
+        - { shape: ellipse, at: [-38, -235], size: [42, 48], fill: "#ffffff" }
+        - { shape: ellipse, at: [38, -235], size: [42, 48], fill: "#ffffff" }
+        - { shape: ellipse, at: [-26, -232], size: [18, 22], fill: "#14151a" }
+        - { shape: ellipse, at: [50, -232], size: [18, 22], fill: "#14151a" }
+      mouth:
+        - { shape: ellipse, at: [0, -165], size: [64, 15], fill: "#5b2333" }
+
+backgrounds:
+  meadow: # the plain meadow: the sky, the sun and the grass
+    fill: "#bfe3ff"
+    shapes:
+      - { shape: ellipse, at: [1560, 220], size: [180, 180], fill: "#ffd966" }
+      - { shape: rect, at: [960, 950], size: [1920, 260], fill: "#7cc36a" }
+  # The meadow with the hills on the left, at three times of day.
+  morning:
+    fill: "#bfe3ff" # the sky
+    shapes:
+      - { shape: ellipse, at: [1700, 230], size: [180, 180], fill: "#ffd966" } # the sun, high
+      - { shape: ellipse, at: [240, 850], size: [860, 400], fill: "#a9d9a0" } # the hills, far and pale
+      - { shape: ellipse, at: [800, 860], size: [620, 260], fill: "#b7e0ad" }
+      - { shape: rect, at: [960, 950], size: [1920, 260], fill: "#7cc36a" } # the grass
+  sundown:
+    fill: "#f6b26b"
+    shapes:
+      - { shape: rect, at: [960, 200], size: [1920, 400], fill: "#f9cb9c" } # the sky is paler higher up
+      - { shape: ellipse, at: [1750, 790], size: [240, 240], fill: "#e8542f" } # the sun, half behind the grass
+      - { shape: ellipse, at: [240, 850], size: [860, 400], fill: "#8fb276" }
+      - { shape: ellipse, at: [800, 860], size: [620, 260], fill: "#9dbd80" }
+      - { shape: rect, at: [960, 950], size: [1920, 260], fill: "#5f9a55" }
+  night:
+    fill: "#1b2a4a"
+    shapes:
+      - { shape: ellipse, at: [1180, 200], size: [160, 160], fill: "#f4f1de" } # the moon
+      - { shape: ellipse, at: [300, 160], size: [14, 14], fill: "#f4f1de" } # the stars
+      - { shape: ellipse, at: [620, 300], size: [10, 10], fill: "#f4f1de" }
+      - { shape: ellipse, at: [900, 120], size: [12, 12], fill: "#f4f1de" }
+      - { shape: ellipse, at: [1500, 340], size: [10, 10], fill: "#f4f1de" }
+      - { shape: ellipse, at: [1780, 180], size: [12, 12], fill: "#f4f1de" }
+      - { shape: ellipse, at: [240, 850], size: [860, 400], fill: "#223f4a" }
+      - { shape: ellipse, at: [800, 860], size: [620, 260], fill: "#27474d" }
+      - { shape: rect, at: [960, 950], size: [1920, 260], fill: "#2f5d46" }
+  glade: # sunlit forest glade with mossy ground and dark tree trunks
+    fill: "#cfe8b8"
+    shapes:
+      - { shape: rect, at: [190, 420], size: [150, 840], fill: "#5c4332" }
+      - { shape: rect, at: [1740, 420], size: [170, 840], fill: "#5c4332" }
+      - { shape: ellipse, at: [960, 110], size: [1920, 320], fill: "#4f8a42" }
+      - { shape: rect, at: [960, 950], size: [1920, 260], fill: "#5a9649" }
+  oak-foot: # foot of an ancient colossal oak beside a beech tree
+    fill: "#b8dba3"
+    shapes:
+      - { shape: rect, at: [240, 420], size: [360, 840], fill: "#4a3525" }
+      - { shape: rect, at: [1680, 420], size: [260, 840], fill: "#6e5d4f" }
+      - { shape: ellipse, at: [1680, 470], size: [90, 140], fill: "#241d17" }
+      - { shape: rect, at: [960, 950], size: [1920, 260], fill: "#4d853e" }
+  canopy: # high emerald forest canopy with sunlit boughs and leaves
+    fill: "#9cd48c"
+    shapes:
+      - { shape: ellipse, at: [480, 180], size: [1100, 380], fill: "#3e7834" }
+      - { shape: ellipse, at: [1480, 190], size: [1050, 380], fill: "#48853d" }
+      - { shape: rect, at: [960, 950], size: [1920, 260], fill: "#557d3e" }
+  elm-bower: # mossy platform high in an ancient elm beside a dark thicket
+    fill: "#96cf86"
+    shapes:
+      - { shape: ellipse, at: [1650, 360], size: [620, 740], fill: "#263d29" }
+      - { shape: ellipse, at: [620, 170], size: [1200, 360], fill: "#3e7834" }
+      - { shape: rect, at: [960, 950], size: [1920, 260], fill: "#4d7839" }
+  squirrel-drey: # warm cozy tree hollow lit by a golden resin-lamp
+    fill: "#3b2416"
+    shapes:
+      - { shape: ellipse, at: [960, 520], size: [1480, 860], fill: "#593722" }
+      - { shape: ellipse, at: [1520, 420], size: [260, 260], fill: "#f7c85c" }
+      - { shape: rect, at: [960, 950], size: [1920, 260], fill: "#6e472b" }

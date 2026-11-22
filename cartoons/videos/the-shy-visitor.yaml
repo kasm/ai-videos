@@ -1,0 +1,80 @@
+# The shy visitor, from stories/the-shy-visitor.md: Tuk comes over the hills, and Pip and Mo take
+# him in for the night. One scene in the meadow, from morning to night. The format is in CLAUDE.md
+# ("The scenario"); Pip, Mo, Tuk and the backgrounds are drawn in library.yaml.
+use: cartoon # the plugin that draws it; the voices are library.yaml's, the other settings package.json's "ai-videos"
+
+scenes:
+  - background: morning
+    places: { pip: middle, mo: right, tuk: off-left }
+    faces: { mo: left } # Pip and Mo look at each other; Tuk will come in facing right
+    beats:
+      - name: morning
+        says:
+          - { who: narrator, text: "It is a sunny morning in the meadow." }
+      - name: mo-sighs
+        says:
+          - { who: mo, text: "Oh, nothing ever happens here." }
+      - name: tuk-walks-in # he stops a little way off
+        walk: { who: tuk, to: left }
+        says:
+          - { who: narrator, text: "Just then, somebody new walks in." } # short lines: a caption of two rows covers the feet
+          - { who: narrator, text: "It is Tuk, who has come over the hills." }
+      - name: pip-turns # Pip sees him first
+        turn: { who: pip }
+      - name: pip-waves
+        pose: { pip: wave }
+        says:
+          - { who: pip, text: "Hello! Hello there!" }
+      - name: tuk-is-shy
+        pose: { pip: stand }
+        says:
+          - { who: narrator, text: "Tuk is shy." }
+      - name: tuk-says-hello
+        says:
+          - { who: tuk, text: "Hello." }
+      - name: tuk-turns-away
+        turn: { who: tuk }
+      - name: mo-points # Mo faces left already: the arm goes out over Pip's head, towards Tuk
+        pose: { mo: point }
+        says:
+          - { who: mo, text: "You there! Where do you come from?" }
+      - name: tuk-turns-back
+        turn: { who: tuk }
+        pose: { mo: stand }
+      - name: tuk-answers
+        says:
+          - { who: tuk, text: "I come from far away, behind the hills." }
+      - name: tuk-asks
+        says:
+          - { who: tuk, text: "I am looking for a place to sleep." }
+      - name: night-is-near
+        says:
+          - { who: tuk, text: "The night is near." }
+      - name: sun-goes-down # the background changes; nobody moves
+        background: sundown
+        says:
+          - { who: narrator, text: "And the sun goes down." }
+      - name: pip-invites
+        says:
+          - { who: pip, text: "You can stay with us, Tuk." }
+      - name: big-enough
+        says:
+          - { who: pip, text: "The meadow is big enough for three." }
+      - name: tuk-jumps # three hops
+        jump: { who: tuk, times: 3 }
+        says:
+          - { who: narrator, text: "Tuk is so glad!" }
+      - name: night-falls # the background changes again
+        background: night
+        says:
+          - { who: narrator, text: "Then the night falls, and the moon comes up." }
+      - name: good-night # all three wave
+        pose: { pip: wave, mo: wave, tuk: wave }
+        says:
+          - { who: pip, text: "Good night, Tuk." }
+          - { who: tuk, text: "Good night, Pip. Good night, Mo." }
+          - { who: mo, text: "Good night, you two." }
+      - name: mo-was-wrong
+        pose: { pip: stand, mo: stand, tuk: stand }
+        says:
+          - { who: narrator, text: "And Mo was wrong. Something did happen today." }
