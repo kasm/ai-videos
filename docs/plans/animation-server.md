@@ -189,14 +189,19 @@ video's in every frame; making the page after the video speaks and fits
 nothing again (the log); the user opens the file offline beside the
 mp4 and accepts it.
 
-### 6. The local server
+### 6. From a story to its videos, in one command
 
-`serve` keeps running: plugins stay warm, makes queue one at a time
-(two `make`s on one video no longer clash), and a page takes a chapter,
-gives the prompt to copy, takes the replies, previews a video and makes
-it in either mode. The command line runs the same jobs. **Done when:**
-from the page, a chapter becomes a finished video and page with no
-command typed; a second make doesn't start the plugin again.
+`story stories/<x>.md` takes a chapter through the web chat by the
+clipboard: the prompt copied, each reply pasted into
+`stories/<x>.reply.md` and imported, what was refused copied to paste
+back. Then it makes each episode: its page first, opened as the
+preview, then its video. Nothing stays running when it ends. A make
+holds a lock file in `.cache/<name>/`, so a second make of the same
+video is refused, naming the first, and a lock left by a make that was
+stopped is taken over. **Done when:** with one `story` command and the
+chat, a chapter becomes finished videos and pages with no other command
+typed; a second make of a video being made is refused, naming the
+first; a make after one killed half-way runs.
 
 ### 7. RayCraft as a plugin
 
