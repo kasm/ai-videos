@@ -32,7 +32,17 @@
   folder's, byte for byte (made there first, all from the cache); `git
   log -- cartoons` lists the 14; RayCraft's `make
   videos/water-switch.yaml --fit` runs. `d:\m\web\cartoons` is as it
-  was. **Next: step 3.**
+  was.
+- Step 3 done 2026-11-23: `d:\m\web\cartoons` deleted, the user's pick,
+  after its `out/` (17 files) and `.cache/` (6 videos besides
+  the-shy-visitor's) were copied into `cartoons/`, every `out/` file
+  checked by md5. Checked: the step's `git grep` finds nothing; a fresh
+  `claude -p` in `ai_videos` lists `episode` and names
+  `cartoons/src/plugin.ts`; `prompt cartoons/stories/the-shy-visitor.md`
+  and `make cartoons/videos/hello.yaml --fit` run from the root. The
+  copied caches make their plan and drawing again: the plugin's code key
+  hashes bytes, and the old checkout's line endings were mixed. **Next:
+  step 4.**
 
 
 ## Goal
