@@ -29,6 +29,7 @@ export default {
   scene: "square",
   stage: { width: 160, height: 90 },
   commands: { colour: { description: "The square's colour.", example: "#d04040", schema: text("a colour") } },
+  guide: "A square waits, then slides: write its colour, and how long it waits and slides.",
   check(raw, file, library) {
     if (typeof raw?.colour !== "string") throw new Error(file + ": give the square a colour");
     if (raw.colour.startsWith("#")) return raw;
@@ -100,6 +101,9 @@ test("the plugin's host writes the plan as the clip's data, then draws the clip 
     assert.match(said[0]!, /^Plugin: square, .*plugin\.mjs \(its commands: colour\)$/);
     assert.equal(host.scene, "square");
     assert.deepEqual(host.stage, { width: 160, height: 90 });
+    // Its part of the prompt comes with it: the guide, and each command's description and example.
+    assert.match(host.guide, /^A square waits, then slides/);
+    assert.deepEqual(host.commands, { colour: { description: "The square's colour.", example: "#d04040" } });
     const data = { step: "data", name: "sq", format: "landscape", data: files.data } as const;
     await host.run({ call: data, file: video, source: SOURCE }, (m) => said.push(m));
     assert.deepEqual(await json(files.data), {
@@ -151,6 +155,14 @@ test("the plugin's host writes the plan as the clip's data, then draws the clip 
     assert.deepEqual(await host.run({ call: data, file: video, source: { ...SOURCE, colour: "d04040" } }, quiet), { repaired: ["the colour d04040 is #d04040"] });
     await host.run({ call: draw, file: video, source: { ...SOURCE, colour: "d04040" } }, quiet);
     assert.deepEqual(await readFile(`${files.clip}.frames`, "utf8"), frames.join("\n") + "\n", "drawn as the colour written whole");
+
+    // Import's check mends, checks and plans a source, and writes nothing.
+    const before = await readFile(files.data, "utf8");
+    const checked = await host.check(path.join(root, "videos", "new.yaml"), { ...SOURCE, colour: "d04040" }, undefined);
+    assert.deepEqual(checked.repaired, ["the colour d04040 is #d04040"]);
+    assert.deepEqual(checked.plan.events.map((e) => e.name), ["start", "slide"]);
+    assert.equal(await readFile(files.data, "utf8"), before);
+    await assert.rejects(host.check(video, { ...SOURCE, colour: "blue" }, library), /library\.yaml: no colour is named blue/);
   } finally {
     host.close();
   }

@@ -13,6 +13,8 @@ npm run video -- make <video>              the whole video, inside its folder (s
 npm run video -- make <video> --fit        only the made clips' data and the fit, in seconds
 npm run video -- make <dir>/<name>.yaml    a plugin's video, from its one file (see Projects, A video file)
 npm run video -- make <file> --profile quiet  the same, a profile's settings over the rest
+npm run -s video -- prompt <story>.md      the prompt for a web chat, on stdout (see Projects, prompt)
+npm run video -- import <reply file>       the chat's reply: its episodes as video files (see Projects, import)
 npm run video -- build <video>             narrate, render every format, write out/<name>/
 npm run video -- build <video> --draft     fast low-quality render for iteration
 npm run video -- build <video> --format portrait
@@ -53,7 +55,7 @@ video's folder. The TTS cache always stays here.
 | `videos/project.yaml`, `videos/make-clip.ts` | The folder's videos as a project (see Projects): its project file, and its maker, which draws clip-demo's square. |
 | `videos/clip-demo/` | The `clip` scene's demo: a made clip (`make: square`); `make clip-demo` writes its `clips/`, `build/` and `out/`. |
 | `scenes/<name>/scene.html` | Reusable scene templates (HyperFrames sub-compositions with `{{placeholders}}`): `page-scroll`, `clip`. |
-| `src/` | The pipeline: `script` → `clip` → `tts` → `timeline` (and `fit` with `mouth`, for `request`) → `compose` (with `bundle`) → `render` → `srt`; `setup`, what the commands need on the disk; `new`, a first script; `frames`, what a maker draws with (see The maker's shared code); `plugin` and `host`, a project's plugin and the process it runs in (see Plugins); `video-file` and `stages`, a plugin's video as one file, its settings in layers, and the cache of its stages (see A video file). |
+| `src/` | The pipeline: `script` → `clip` → `tts` → `timeline` (and `fit` with `mouth`, for `request`) → `compose` (with `bundle`) → `render` → `srt`; `setup`, what the commands need on the disk; `new`, a first script; `frames`, what a maker draws with (see The maker's shared code); `plugin` and `host`, a project's plugin and the process it runs in (see Plugins); `video-file` and `stages`, a plugin's video as one file, its settings in layers, and the cache of its stages (see A video file); `prompt` and `import`, a story's prompt for a web chat and its reply taken in (see prompt, import). |
 | `build/` | Generated HyperFrames projects. Never edit; regenerated on every run. |
 | `out/` | Finished videos and subtitles. |
 | `.cache/tts/` | Narration audio, keyed by text, voice and speed. |
@@ -160,7 +162,10 @@ RayCraft keeps its maker.
     an `example` and a `schema`. A schema is any library's with the Standard Schema and Standard
     JSON Schema interfaces (`~standard.validate`, `~standard.jsonSchema`; standardschema.dev), as
     zod 4's have. A plugin whose example fails its schema, or whose schema writes no JSON Schema,
-    is refused when it loads.
+    is refused when it loads. The prompt writes each command's description and example.
+  - `guide`: its part of the prompt, in Markdown (see `prompt`): what its videos can show, the
+    format of its source with an example, how to turn a story into it, and how to draw what its
+    library holds. The tool adds the commands, the library and the voices.
   - `check(raw, file, library)`: the source, checked into the plugin's own type: the video file,
     read and parsed from YAML by the tool, without the tool's keys, and what it names found in the
     library (`{ file, raw }`, undefined without a `library.yaml`; see The library). An error names
@@ -182,9 +187,11 @@ RayCraft keeps its maker.
   each event at its span, the texts moved with their beats. A frame whose SVG is the one before is
   not drawn again.
 - **The process:** `make` starts the host at the first stage it makes (none when each is in the
-  cache), in the `package.json`'s folder, and closes it when it is done. Each call is a message,
-  with the video file's source and the library, answered before the next; one that fails says
-  why, and `make` stops there. `src/host.test.ts` shows each case.
+  cache), in the `package.json`'s folder, and closes it when it is done. Ready, the host says the
+  plugin's scene, stage, guide and commands (their descriptions and examples). Each call is a
+  message, with the video file's source and the library, answered before the next; one that fails
+  says why, and `make` stops there. `import`'s call mends, checks and plans a source and writes
+  nothing. `src/host.test.ts` shows each case.
 
 ### A video file
 
@@ -386,6 +393,54 @@ It writes only inside the video's folder (`clips/`, `build/`, `out/`), but for t
 stays in the tool. A clip scene with `clip:` paths plays as it was drawn: `make` writes it no request.
 `--format` makes one format, and `--draft` renders fast. With no made clip, steps 1 and 3 do nothing.
 
+### `prompt`
+
+`npm run -s video -- prompt stories/<name>.md` writes the prompt for a story (a book's chapter) to
+stdout, for any web chat to answer with no tools and no files of its own (`src/prompt.ts`). The
+story's project is the nearest `package.json` above it with a plugin, which is started for its
+guide and commands, then closed. What it reads goes to stderr. In order:
+
+1. The tool's part: the task, and what a reply is: one YAML block per episode, its name on top
+   (`episode: <name>-1`, `<name>-2`…, or `<name>` for a story of one episode), then `library:` with
+   only what the library lacks (each new character with its `voice`), then the video file. A reply
+   ends with the line `All episodes written.`; one cut off is told "continue", and begins the
+   block that was cut off again, whole.
+2. The plugin's `guide`, then its commands, each with its description and its example as written.
+3. `library.yaml` as written, when the project has one.
+4. The voices: the narrator's (the project's `voice`), the library's characters', and the rest of
+   kokoro-js's, which nobody has, grouped by English and gender, best first (Kokoro's grades).
+5. The story, as written.
+
+It speaks and draws nothing, so it needs nothing from `setup`. `src/prompt.test.ts` shows each part.
+
+### `import`
+
+`npm run video -- import <reply file>` takes a chat's reply, pasted into a file (its messages one
+after another when the chat was told "continue"), and writes what is in it into the project: the
+nearest `package.json` above the file with a plugin (`src/import.ts`).
+
+- **The blocks:** each whole YAML block (`` ```yaml `` to its fence) is an episode; blocks of
+  another language are passed over. A block with no end, or one a new YAML block begins inside,
+  was cut off and is not counted. When two blocks name one episode, the later counts. The log says
+  each, and whether the reply ends with `All episodes written.`
+- **An episode** is its name (`episode:`), what it adds to the library (`library:`, by section, as
+  `library.yaml` has them), and its video file: the block without those two keys, as written, its
+  comments kept.
+- **The checks:** each episode is checked as `make` checks it, against the library with what the
+  reply adds, before anything is written: a new character's voice is one of the tool's, the file's
+  `use:` and settings are valid, the plugin mends and checks its source and plans it, and each line
+  has a voice the tool speaks in. The plugin runs in its host, for this one call (see Plugins).
+- **What it writes:** `videos/<name>.yaml` for each episode it takes, and the entries the library
+  lacks into `library.yaml`, each at the end of its section as the block wrote it, the rest of the
+  file as it was (a section it lacks goes at the end). The library is written only when an episode
+  is taken. Nothing is written over: a video file already there is said to be the same, or kept,
+  and a character or background the library has is kept as it is.
+- **What it refused** comes out as a message to paste back into the chat, each episode with why,
+  and the command exits with 1. Pasted, the chat answers with those blocks mended: added to the
+  reply's file, they are imported with the rest, and the episodes already written are the same.
+
+Like `prompt`, it needs nothing from `setup`. `src/import.test.ts` shows each case.
+
 ### Offline
 
 Only `setup` uses the network. It fetches once what no other command may fetch:
@@ -414,7 +469,8 @@ An AI session writes sources: a `video.yaml` (its lines, cues and limits), a vid
 and its assets, or a project's own sources (a RayCraft tutorial). It never writes a made file, and
 it is never a step of `make`: no command calls a model but the voice on this machine. The project
 file's settings, and a `package.json`'s, are the user's; an AI changes them only when asked. A video can begin without an AI:
-`new` writes its first script from the clip's own texts.
+`new` writes its first script from the clip's own texts. A web chat writes no file at all: its
+reply to the prompt is imported (see `prompt`, `import`).
 
 ## How loud
 

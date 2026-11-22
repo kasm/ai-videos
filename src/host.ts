@@ -16,20 +16,30 @@ import { FORMATS, slug } from "./script.ts";
 
 /**
  * A call for the plugin, with the video file and its source (the file, parsed, without the tool's
- * keys), and the project's library, when it has one.
+ * keys), and the project's library, when it has one: one of make's (maker.ts), or import's check,
+ * which mends, checks and plans the source and writes nothing.
  */
 export interface Job {
-  call: MakerCall;
+  call: MakerCall | { step: "check" };
   file: string;
   source: unknown;
   library?: Library;
 }
 
+/** What a plugin says of itself when it is ready: its scene, its stage, and its part of the prompt. */
+export interface Described {
+  scene: string;
+  stage: { width: number; height: number };
+  guide: string;
+  /** Each command's description and example (its schema stays in the plugin's process). */
+  commands: Record<string, { description: string; example: unknown }>;
+}
+
 /** What the host says: once that it is ready (or why not), then once for each job. */
 export type Reply =
-  | { ready: { scene: string; stage: { width: number; height: number }; commands: string[] } }
+  | { ready: Described }
   | { failed: string }
-  | { done: { frames?: number; drawn?: number; seconds?: number; repaired?: string[] } }
+  | { done: { frames?: number; drawn?: number; seconds?: number; repaired?: string[]; plan?: Plan } }
   | { error: string };
 
 /** The clip's quality (x264's crf, lower is closer to the pixels): a plugin's picture is a drawing, and its edges stay clean. */
@@ -56,6 +66,7 @@ const PluginShape = z.object({
       schema: z.custom<Schema>(isSchema, "give a schema with ~standard.validate and ~standard.jsonSchema (as zod 4's have)"),
     }),
   ),
+  guide: z.string().trim().min(1, "give the plugin's part of the prompt (plugin.ts, guide)"),
   check: fn,
   repair: fn.optional(),
   plan: fn,
@@ -163,14 +174,15 @@ async function draw(plugin: Plugin, source: unknown, call: Extract<MakerCall, { 
 /**
  * One of make's calls: step one writes the plan as the clip's data, and says what the plugin
  * mended in the source; step two draws the clip and writes its data again. Each has the source
- * mended, then checked.
+ * mended, then checked. Import's check gives what was mended and the plan, and writes nothing.
  */
 export async function runJob(plugin: Plugin, pluginFile: string, job: Job): Promise<Extract<Reply, { done: unknown }>["done"]> {
   const { call, file } = job;
-  fills(plugin, call.format, call.step === "draw" ? call : FORMATS[call.format]);
+  if (call.step !== "check") fills(plugin, call.format, call.step === "draw" ? call : FORMATS[call.format]);
   const repaired = plugin.repair?.(job.source, job.library) ?? { source: job.source, did: [] };
   const source = plugin.check(repaired.source, file, job.library);
   const plan = plugin.plan(source);
+  if (call.step === "check") return { repaired: repaired.did, plan };
   const shown = (f: string) => path.relative(process.cwd(), f).split(path.sep).join("/");
   const made = { by: `the ${plugin.scene} plugin, ${shown(pluginFile)}`, from: shown(file) };
   if (call.step === "data") {
@@ -211,7 +223,8 @@ if (import.meta.main) {
         ),
       );
     });
-    await send({ ready: { scene: plugin.scene, stage: plugin.stage, commands: Object.keys(plugin.commands) } });
+    const commands = Object.fromEntries(Object.entries(plugin.commands).map(([name, { description, example }]) => [name, { description, example }]));
+    await send({ ready: { scene: plugin.scene, stage: plugin.stage, guide: plugin.guide, commands } });
   } catch (e) {
     await send({ failed: message(e) });
     process.exit(1);

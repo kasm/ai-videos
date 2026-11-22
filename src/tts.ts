@@ -98,6 +98,28 @@ export class KokoroProvider implements TtsProvider {
   }
 }
 
+/** One of the voices the tool speaks in: its name, its English (`en-us` or `en-gb`), and Kokoro's grade of it (A best). */
+export interface Voice {
+  name: string;
+  language: string;
+  gender: "Female" | "Male";
+  grade: string;
+}
+
+/**
+ * The voices kokoro-js speaks, from its own table, read without the model: so a command that only
+ * names them (the prompt, import) needs nothing from setup.
+ */
+export async function kokoroVoices(): Promise<Voice[]> {
+  const { KokoroTTS } = await import("kokoro-js");
+  // The table is behind a getter of the class that reads nothing of an instance.
+  const table = Object.getOwnPropertyDescriptor(KokoroTTS.prototype, "voices")?.get?.call(undefined) as
+    | Record<string, { language: string; gender: "Female" | "Male"; overallGrade: string }>
+    | undefined;
+  if (!table) throw new Error("kokoro-js has no table of its voices: it is not the version package.json pins");
+  return Object.entries(table).map(([name, { language, gender, overallGrade }]) => ({ name, language, gender, grade: overallGrade }));
+}
+
 const TRIM_VERSION = 1;
 const SILENCE = 0.004;
 const PAD_SECONDS = 0.03;

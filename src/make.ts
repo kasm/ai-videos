@@ -6,7 +6,8 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { madeFiles } from "./clip.ts";
-import type { Job, Reply } from "./host.ts";
+import type { Described, Job, Reply } from "./host.ts";
+import type { Library, Plan } from "./plugin.ts";
 import { MakerCall, makerArgs } from "./maker.ts";
 import { FORMATS, PROJECT_FILE, type FormatName, type LoadedVideo } from "./script.ts";
 
@@ -161,15 +162,16 @@ function startHost(plugin: PluginFile) {
   };
 }
 
-/** A project's plugin in its own process: what it draws, and its calls, one at a time. */
-export interface PluginHost {
-  scene: string;
-  stage: { width: number; height: number };
+/** A project's plugin in its own process: what it draws, its part of the prompt, and its calls, one at a time. */
+export interface PluginHost extends Described {
   /**
-   * Runs one call on a video's source (its file, parsed, without the tool's keys) and library, its
-   * progress logged; throws why it failed. A plan's call gives what the plugin mended in the source.
+   * Runs one of make's calls on a video's source (its file, parsed, without the tool's keys) and
+   * library, its progress logged; throws why it failed. A plan's call gives what the plugin mended
+   * in the source.
    */
-  run(job: Job, log: (msg: string) => void): Promise<{ repaired: string[] }>;
+  run(job: Job & { call: MakerCall }, log: (msg: string) => void): Promise<{ repaired: string[] }>;
+  /** Mends, checks and plans a video's source, writing nothing: what was mended, and the plan. Throws why it was refused. */
+  check(file: string, source: unknown, library: Library | undefined): Promise<{ repaired: string[]; plan: Plan }>;
   /** Ends its process. */
   close(): void;
 }
@@ -182,12 +184,16 @@ export async function startPlugin(plugin: PluginFile, log: (msg: string) => void
     host.close();
     throw new Error(`the plugin did not start: ${"failed" in ready ? ready.failed : "error" in ready ? ready.error : "it said something else"}`);
   }
-  const { scene, stage, commands } = ready.ready;
-  log(`Plugin: ${scene}, ${plugin.file} (its commands: ${commands.join(", ") || "none"})`);
+  const { scene, commands } = ready.ready;
+  log(`Plugin: ${scene}, ${plugin.file} (its commands: ${Object.keys(commands).join(", ") || "none"})`);
   const shown = (file: string) => path.relative(plugin.dir, file);
   return {
-    scene,
-    stage,
+    ...ready.ready,
+    async check(file, source, library) {
+      const reply = await host.send({ call: { step: "check" }, file, source, ...(library ? { library } : {}) });
+      if (!("done" in reply)) throw new Error("error" in reply ? reply.error : "it did not answer");
+      return { repaired: reply.done.repaired ?? [], plan: reply.done.plan! };
+    },
     async run(job, log) {
       const { call } = job;
       log(`${scene}: ${call.step === "data" ? `the plan of ${call.name}` : `${call.name}, drawn to ${path.basename(call.request)}`} (${call.format})`);

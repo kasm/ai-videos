@@ -1,6 +1,7 @@
 // What a project's plugin is (AGENTS.md, "Plugins"): the module that draws a project's scenes, run
 // by the tool in a child process of its own (host.ts). A plugin holds what is its own: its source's
-// check, its commands, the plan of its beats and the picture of a moment. The tool does the rest.
+// check, its commands and its guide, the plan of its beats and the picture of a moment. The tool
+// does the rest.
 //
 // A project imports this file for its types alone (package.json, "exports"), so nothing here runs,
 // and a plugin needs none of the tool's packages: a schema is any library's that follows the
@@ -79,6 +80,12 @@ export interface Plugin<Source = unknown> {
   stage: { width: number; height: number };
   /** The commands of its scenario, by name. */
   commands: Record<string, Command>;
+  /**
+   * Its part of the prompt (prompt.ts), in Markdown: what its videos can show, the format of its
+   * source with an example, how to draw what its library holds, and how to turn a story into it.
+   * The tool adds its commands (description and example), the library and the voices.
+   */
+  guide: string;
   /**
    * The source checked: `raw` is the video file, parsed from YAML, without the tool's keys (`use`
    * and the settings), and what it names is found in `library` (none when the project has no

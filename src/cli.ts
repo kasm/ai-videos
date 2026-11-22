@@ -9,7 +9,9 @@ import { compose } from "./compose.ts";
 import { drawnTo, fitClip, requestDocument, requestFileOf, requestText, type Fit, type FitLine } from "./fit.ts";
 import { drawerOf, madeScenes, makerCalls, startPlugin, type Drawer, type PluginHost } from "./make.ts";
 import { MakerCall } from "./maker.ts";
+import { importReply } from "./import.ts";
 import { newVideo } from "./new.ts";
+import { promptFor } from "./prompt.ts";
 import { hyperframes, normalizeLoudness, renderProject } from "./render.ts";
 import { FORMATS, loadVideo, type FormatName, type LoadedVideo } from "./script.ts";
 import { cachePaths, cacheRoot, ready, setup, type Need } from "./setup.ts";
@@ -48,6 +50,11 @@ Commands
   make <file.yaml> A plugin's video: its plan, the voices and the fit, the drawing, check and the
                    video, each stage from the cache when what it is made from is unchanged. Writes
                    the project's .cache/<name>/ and out/<name>.mp4 and .srt
+  prompt <story.md> The prompt for a web chat, on stdout: the tool's instructions, the format from
+                   the plugin, the library and the voices, and the story (AGENTS.md, "prompt")
+  import <reply>   A web chat's reply to the prompt, pasted into a file: each episode the tool and
+                   the plugin take written as videos/<name>.yaml, what it adds to library.yaml,
+                   nothing written over; what was refused as a message for the chat (AGENTS.md, "import")
   build <video>    Narrate, compose, render and post-process a video into out/<name>/
   compose <video>  Narrate and generate the HyperFrames project in build/<name>/ (no render)
   check <video>    Compose, then run HyperFrames' lint and layout checks
@@ -433,6 +440,23 @@ async function main() {
       log(`  ${voice}.wav`);
     }
     return log(`Samples written to ${dir}`);
+  }
+
+  if (command === "prompt") {
+    if (!arg) throw new Error('"prompt" needs a story: its file, e.g. npm run -s video -- prompt stories/the-river-bank.md');
+    // The prompt alone goes to stdout, to be copied or piped; what was read goes to stderr.
+    const prompt = await promptFor(path.resolve(CALLER, arg), (m) => console.error(m));
+    return void process.stdout.write(prompt);
+  }
+
+  if (command === "import") {
+    if (!arg) throw new Error('"import" needs the reply: the file it is pasted into, e.g. npm run -s video -- import stories/the-river-bank.reply.md');
+    const refused = await importReply(path.resolve(CALLER, arg), log);
+    if (refused !== undefined) {
+      log(`\nTo send back to the chat, as it is:\n\n${"-".repeat(72)}\n${refused}\n${"-".repeat(72)}`);
+      process.exitCode = 1;
+    }
+    return;
   }
 
   if (!["new", "make", "build", "compose", "check", "preview", "request"].includes(command)) throw new Error(`Unknown command "${command}"\n\n${HELP}`);

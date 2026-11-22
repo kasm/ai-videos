@@ -23,7 +23,15 @@
   `hello`, `meet` and `sundown` moved to names too, and all four make.
   `cartoons`' `src/repair.test.ts` shows each repair, and a make of a
   file with both mistakes listed them, from the cache too. `npm test` and
-  `npm run typecheck` pass in both repos. **Next: step 4.**
+  `npm run typecheck` pass in both repos.
+- Step 4 done 2026-11-22. Checked: the user's own chapter,
+  `stories/forest1.md`, in a web chat of the user's, gave three episodes
+  that imported (five characters and five backgrounds added to the
+  library) and made with no edit by hand; the user watched `forest1-1`
+  and accepted it. A fresh `claude -p` with no tools, given only the
+  prompt for `stories/the-river-bank.md`, gave eight episodes that
+  imported into a copy of the project and all made. `npm test` and
+  `npm run typecheck` pass in both repos. **Next: step 5.**
 
 
 ## Goal
