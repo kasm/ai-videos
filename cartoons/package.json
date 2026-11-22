@@ -10,12 +10,12 @@
     "fps": 30
   },
   "scripts": {
-    "video": "npm --prefix ../ai_videos run -s video --",
+    "video": "npm --prefix .. run -s video --",
     "test": "node --test src/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "ai-videos": "file:../ai_videos",
+    "ai-videos": "file:..",
     "yaml": "2.9.1",
     "zod": "4.6.7"
   },
