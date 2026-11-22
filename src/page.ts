@@ -1,0 +1,232 @@
+// A video file's web page (AGENTS.md, "make", --as web): one HTML file with everything in it, that
+// plays as the video does. Each frame is the SVG the video's frame was drawn from, drawn by the
+// plugin's own code and the tool's moments, bundled for a browser; the sound is the video's one
+// track; the captions are the clip scene's, in its style. A play button and a seek bar, nothing
+// more, and no URL: it plays offline.
+import { readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { build } from "esbuild";
+import { CAPTION_FADE, clipStyle, sceneCaptions, type Caption } from "./compose.ts";
+import { fontSheet } from "./bundle.ts";
+import type { Library } from "./plugin.ts";
+import type { FormatName } from "./script.ts";
+import type { Timeline } from "./timeline.ts";
+
+/** The tool's moments, which the page's drawing bundles: the same code as the host's. */
+const MOMENTS = path.join(import.meta.dirname, "moments.ts");
+
+/** What the page's drawing is given, as the host's draw call is: the source, its library and the request. And what its player shows. */
+export interface PageVideo {
+  /** The video file and the library, as paths from the project: they name nothing but a mistake. */
+  file: string;
+  source: unknown;
+  library?: Library;
+  /** The request the video was drawn to, as written. */
+  request: unknown;
+  size: { width: number; height: number };
+  format: FormatName;
+  fps: number;
+  /** The video's length in frames. */
+  frames: number;
+  captions: Caption[];
+  /** Seconds a caption takes to fade in. */
+  fade: number;
+}
+
+const posix = (file: string) => file.split(path.sep).join("/");
+
+/**
+ * The page's drawing: the plugin's module and the tool's moments, bundled for a browser into a
+ * script that defines `drawing(video)`. Its `svgAt(frame)` is the SVG of that frame: the source
+ * mended and checked, and each moment drawn, as the host draws them (host.ts, runJob).
+ */
+export async function drawingScript(pluginFile: string): Promise<string> {
+  const entry = `import plugin from ${JSON.stringify(posix(pluginFile))};
+import { moments } from ${JSON.stringify(posix(MOMENTS))};
+globalThis.drawing = (video) => {
+  const repaired = plugin.repair?.(video.source, video.library) ?? { source: video.source };
+  const source = plugin.check(repaired.source, video.file, video.library);
+  const list = moments(video.request);
+  return { svgAt: (frame) => plugin.frame(source, list[Math.min(Math.max(frame, 0), list.length - 1)], video.size) };
+};
+`;
+  const result = await build({
+    stdin: { contents: entry, resolveDir: path.dirname(pluginFile), sourcefile: "drawing.js", loader: "js" },
+    bundle: true,
+    format: "iife",
+    platform: "browser",
+    minify: true,
+    charset: "utf8",
+    legalComments: "none",
+    write: false,
+    logLevel: "silent",
+  }).catch((e: Error) => {
+    throw new Error(`the plugin ${pluginFile} does not bundle for a web page: ${e.message}`);
+  });
+  const code = result.outputFiles[0]!.text;
+  if (/<\/script/i.test(code)) throw new Error(`the plugin ${pluginFile}, bundled, holds "</script": it can't go in a page`);
+  return code;
+}
+
+/** What the page shows of a video file: its drawing's input, the frames and the captions of `timeline`. */
+export function pageVideo(opts: {
+  dir: string;
+  file: string;
+  source: unknown;
+  library: Library | undefined;
+  request: unknown;
+  size: { width: number; height: number };
+  format: FormatName;
+  timeline: Timeline;
+}): PageVideo {
+  const { dir, timeline } = opts;
+  const shown = (file: string) => posix(path.relative(dir, file));
+  return {
+    file: shown(opts.file),
+    source: opts.source,
+    ...(opts.library ? { library: { file: shown(opts.library.file), raw: opts.library.raw } } : {}),
+    request: opts.request,
+    size: opts.size,
+    format: opts.format,
+    fps: timeline.fps,
+    frames: Math.round(timeline.duration * timeline.fps),
+    // Each scene's captions, on the video's clock.
+    captions: timeline.scenes.flatMap((scene) => sceneCaptions(scene).map((c) => ({ ...c, start: Math.round((scene.start + c.start) * 1000) / 1000 }))),
+    fade: CAPTION_FADE,
+  };
+}
+
+const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+/** JSON that can sit in a <script>: no `<` to end it early. */
+const scriptJson = (value: unknown) => JSON.stringify(value).replace(/</g, "\\u003c");
+
+const dataUrl = async (file: string, type: string) => `data:${type};base64,${(await readFile(file)).toString("base64")}`;
+
+/** The player: the sound's clock picks the frame, drawn when it changes, with the captions of its time. */
+const PLAYER = `(function () {
+  var video = JSON.parse(document.getElementById("video").textContent);
+  var picture = drawing(video);
+  var FPS = video.fps, LAST = video.frames - 1, FADE = video.fade, W = video.size.width, H = video.size.height;
+  var frame = document.getElementById("frame"), stage = document.getElementById("stage"), image = document.getElementById("picture");
+  var controls = document.getElementById("controls"), play = document.getElementById("play"), seek = document.getElementById("seek");
+  var sound = document.getElementById("sound");
+  var captions = video.captions.map(function (c) {
+    var box = document.getElementById(c.id);
+    return { box: box, text: box.firstChild, start: c.start, end: c.start + c.duration };
+  });
+  var shown = -1;
+
+  // The stage at its own size, scaled to the window as a whole.
+  function fit() {
+    var scale = Math.min(innerWidth / W, (innerHeight - controls.offsetHeight - 16) / H);
+    frame.style.width = W * scale + "px";
+    frame.style.height = H * scale + "px";
+    controls.style.width = W * scale + "px";
+    stage.style.transform = "scale(" + scale + ")";
+  }
+
+  // A frame as the video shows it: its picture, and each caption in its time, fading in as it begins.
+  function show(n) {
+    n = Math.max(0, Math.min(LAST, n));
+    if (n === shown) return;
+    shown = n;
+    image.innerHTML = picture.svgAt(n);
+    var t = n / FPS;
+    captions.forEach(function (c) {
+      var on = t >= c.start && t < c.end;
+      c.box.style.display = on ? "" : "none";
+      if (on) {
+        var p = Math.min(1, (t - c.start) / FADE);
+        c.text.style.opacity = String(1 - (1 - p) * (1 - p));
+      }
+    });
+    seek.value = String(n);
+  }
+
+  function tick() {
+    show(Math.floor(sound.currentTime * FPS + 1e-3));
+    if (!sound.paused) requestAnimationFrame(tick);
+  }
+
+  play.addEventListener("click", function () {
+    if (!sound.paused) return sound.pause();
+    if (shown >= LAST) sound.currentTime = 0;
+    sound.play();
+  });
+  sound.addEventListener("play", function () {
+    play.textContent = "Pause";
+    requestAnimationFrame(tick);
+  });
+  sound.addEventListener("pause", function () {
+    play.textContent = "Play";
+  });
+  sound.addEventListener("ended", function () {
+    show(LAST);
+  });
+  seek.addEventListener("input", function () {
+    var n = Number(seek.value);
+    sound.currentTime = n / FPS;
+    show(n);
+  });
+  addEventListener("resize", fit);
+  fit();
+  show(0);
+})();`;
+
+/**
+ * Writes the page of `video` to `out`: its drawing (the plugin's file, bundled), the caption font
+ * (Inter 700, each subset), the sound (`sound`, an .m4a) and the player. Returns its size, bytes.
+ */
+export async function writePage(root: string, opts: { title: string; source: string; pluginFile: string; video: PageVideo; sound: string; out: string }): Promise<number> {
+  const { video } = opts;
+  const { width, height } = video.size;
+  const fonts = await fontSheet(root, "@fontsource/inter", 700, (file) => dataUrl(file, "font/woff2"));
+  const captions = video.captions
+    .map((c) => `      <div id="${c.id}" class="cl-cap" style="display: none"><p>${esc(c.text)}</p></div>`)
+    .join("\n");
+  const html = `<!doctype html>
+<!-- Made from ${esc(opts.source)} by the video tool (make --as web). One file: it plays offline. -->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${esc(opts.title)}</title>
+<style>
+${fonts}
+</style>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; background: #000000; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; overflow: hidden; }
+  #frame { position: relative; overflow: hidden; }
+  #stage { position: absolute; left: 0; top: 0; width: ${width}px; height: ${height}px; transform-origin: 0 0; }
+  #picture svg { display: block; }
+  #controls { display: flex; align-items: center; gap: 12px; font: 16px system-ui, sans-serif; }
+  #play { min-width: 5.5em; padding: 0.4em 1em; border: 0; border-radius: 0.4em; background: #f2f2f2; color: #111111; font: inherit; cursor: pointer; }
+  #seek { flex: 1; accent-color: #f2f2f2; }
+</style>
+<style>
+${await clipStyle(root, width, height)}
+</style>
+</head>
+<body>
+  <div id="frame"><div id="stage"><div id="root" data-format="${video.format}">
+      <div class="cl-bg"></div>
+      <div id="picture" class="cl-media"></div>
+${captions}
+  </div></div></div>
+  <div id="controls">
+    <button id="play" type="button">Play</button>
+    <input id="seek" type="range" min="0" max="${video.frames - 1}" step="1" value="0" aria-label="Seek" />
+  </div>
+  <audio id="sound" preload="auto" src="${await dataUrl(opts.sound, "audio/mp4")}"></audio>
+  <script id="video" type="application/json">${scriptJson(video)}</script>
+  <script id="drawing">${await drawingScript(opts.pluginFile)}</script>
+  <script id="player">${PLAYER}</script>
+</body>
+</html>
+`;
+  await writeFile(opts.out, html);
+  return Buffer.byteLength(html);
+}

@@ -12,7 +12,8 @@ import { drawerOf, pluginOf, startPlugin } from "./make.ts";
 import { loadVideo } from "./script.ts";
 
 const scratch = await mkdtemp(path.join(os.tmpdir(), "ai-videos-host-"));
-after(() => rm(scratch, { recursive: true, force: true }));
+// A host that failed may still be ending in its folder: Windows keeps the folder until it has.
+after(() => rm(scratch, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
 const quiet = () => {};
 
 /** A square that waits, then slides: its source names its colour and the two beats' lengths. */
@@ -130,6 +131,9 @@ test("the plugin's host writes the plan as the clip's data, then draws the clip 
     assert.equal(new Set(frames.slice(0, 4)).size, 1);
     assert.equal(new Set(frames.slice(3, 8)).size, 5);
     assert.equal(new Set(frames.slice(7)).size, 1);
+    // Beside them, each frame's SVG, hashed: one line a frame, the same where the picture is.
+    const svgs = (await readFile(`${files.clip}.svgs`, "utf8")).trim().split("\n");
+    assert.deepEqual(svgs.map((s) => svgs.indexOf(s)), frames.map((f) => frames.indexOf(f)));
     // The data again, as the request times it: each event at its span, the texts moved with their beats.
     const drawn = await json(files.data);
     assert.equal(drawn.made.from, "videos/sq.yaml, drawn to sq-landscape.request.json");

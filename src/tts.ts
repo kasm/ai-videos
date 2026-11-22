@@ -134,7 +134,8 @@ function trimSilence({ samples, sampleRate }: TtsAudio): Float32Array {
   return samples.subarray(Math.max(0, first - pad), Math.min(samples.length, last + pad + 1));
 }
 
-function encodeWav(samples: Float32Array, sampleRate: number): Buffer {
+/** 16-bit mono PCM, after a 44-byte header: a sample outside -1 to 1 is cut to it. */
+export function encodeWav(samples: Float32Array, sampleRate: number): Buffer {
   const data = Buffer.alloc(samples.length * 2);
   for (let i = 0; i < samples.length; i++) {
     const s = Math.max(-1, Math.min(1, samples[i]!));

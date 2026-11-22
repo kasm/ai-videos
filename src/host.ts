@@ -3,7 +3,8 @@
 // source. It does for every plugin what a maker did for itself: has the source checked, writes the
 // plan as the clip's data, and draws the clip to the request, a moment at a time, the plugin's SVG
 // turned into pixels by resvg and encoded by frames.ts.
-import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { Resvg } from "@resvg/resvg-js";
@@ -146,17 +147,24 @@ function retime(plan: Plan, request: Request): ClipText[] {
   return plan.texts.map((text) => ({ ...text, from: at(text.from, false), to: Math.min(at(text.to, true), request.duration) }));
 }
 
-/** Draws the source to the request into `call.clip`, a moment at a time. A frame whose SVG is the one before is not drawn again. */
+/**
+ * Draws the source to the request into `call.clip`, a moment at a time. A frame whose SVG is the one
+ * before is not drawn again. Beside the clip's `.frames`, `<clip>.svgs` holds a hash of each frame's
+ * SVG, a line a frame: what a web page of the video draws (page.ts) is compared with it.
+ */
 async function draw(plugin: Plugin, source: unknown, call: Extract<MakerCall, { step: "draw" }>, request: Request) {
   const size = { width: call.width, height: call.height };
   const out = encoder(call.clip, { ...size, fps: request.fps, crf: CRF });
   let drawn = 0;
   let svg = "";
   let picture: Uint8Array | undefined;
+  const svgs: string[] = [];
+  let hash = "";
   for (const moment of moments(request)) {
     const next = plugin.frame(source, moment, size);
     if (next !== svg || !picture) {
       svg = next;
+      hash = svgHash(svg);
       // No fonts: a plugin's picture holds no text (the tool draws the captions).
       const image = new Resvg(svg, { font: { loadSystemFonts: false } }).render();
       if (image.width !== size.width || image.height !== size.height) {
@@ -165,11 +173,17 @@ async function draw(plugin: Plugin, source: unknown, call: Extract<MakerCall, { 
       picture = image.pixels;
       drawn++;
     }
+    svgs.push(hash);
     // The same buffer again is a hold: the encoder hashes it once.
     await out.frame(picture);
   }
-  return { frames: await out.end(), drawn };
+  const frames = await out.end();
+  writeFileSync(`${call.clip}.svgs`, `${svgs.join("\n")}\n`);
+  return { frames, drawn };
 }
+
+/** A frame's SVG as `<clip>.svgs` holds it: the md5 of its text, as UTF-8. */
+export const svgHash = (svg: string) => createHash("md5").update(svg).digest("hex");
 
 /**
  * One of make's calls: step one writes the plan as the clip's data, and says what the plugin

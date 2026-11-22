@@ -29,7 +29,7 @@ export async function folderKey(dir: string, skip: (rel: string) => boolean = ()
 }
 
 /** The tool's own files that a plugin's plan and picture go through. */
-const DRAWING = ["src/host.ts", "src/frames.ts", "src/plugin.ts", "package.json"];
+const DRAWING = ["src/host.ts", "src/frames.ts", "src/moments.ts", "src/plugin.ts", "package.json"];
 
 /**
  * The code a plugin's plan and drawing depend on: every file in the plugin's folder (but

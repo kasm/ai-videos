@@ -74,7 +74,7 @@
       var ID = "{{id}}";
       var DURATION = {{duration}};
       var CAPTIONS = {{captionsJson}}; // [{ id, start }], seconds from the scene's start
-      var FADE = 0.12; // a caption fades in this fast; it leaves on a cut, so the next one can replace it
+      var FADE = {{fade}}; // a caption fades in this fast; it leaves on a cut, so the next one can replace it
 
       window.__timelines = window.__timelines || {};
       var tl = gsap.timeline({ paused: true });

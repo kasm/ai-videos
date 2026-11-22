@@ -17,6 +17,19 @@ export const FONTS = [
   { family: "JetBrains Mono", pkg: "@fontsource/jetbrains-mono", weights: [400, 700] },
 ];
 
+/**
+ * One of the tool's fonts in one weight: the package's own @font-face rules, each subset's woff2
+ * at the url `src` gives for its file (the woff after it, for old browsers, left out).
+ */
+export async function fontSheet(root: string, pkg: string, weight: number, src: (file: string) => Promise<string>): Promise<string> {
+  const dir = path.join(root, "node_modules", pkg);
+  const css = await readFile(path.join(dir, `${weight}.css`), "utf8");
+  const woff2 = /url\(\.\/files\/([\w.-]+\.woff2)\) format\('woff2'\)(?:, url\([^)]*\) format\('woff'\))?/g;
+  const urls = new Map<string, string>();
+  for (const [, file] of css.matchAll(woff2)) urls.set(file!, await src(path.join(dir, "files", file!)));
+  return css.replace(woff2, (_, file: string) => `url(${urls.get(file)}) format('woff2')`);
+}
+
 /** Copies GSAP and the tool's fonts into `project`: each subset's woff2, and a stylesheet of their @font-face rules. */
 export async function bundle(root: string, project: string): Promise<void> {
   const modules = path.join(root, "node_modules");
@@ -25,17 +38,12 @@ export async function bundle(root: string, project: string): Promise<void> {
   const sheets: string[] = [];
   for (const { pkg, weights } of FONTS) {
     for (const weight of weights) {
-      const css = await readFile(path.join(modules, pkg, `${weight}.css`), "utf8");
-      const files: string[] = [];
-      // The package's own rules, each subset's woff2 beside the sheet; the woff after it is for old browsers.
-      const woff2 = /url\(\.\/files\/([\w.-]+\.woff2)\) format\('woff2'\)(?:, url\([^)]*\) format\('woff'\))?/g;
-      sheets.push(
-        css.replace(woff2, (_, file: string) => {
-          files.push(file);
-          return `url(${file}) format('woff2')`;
-        }),
-      );
-      for (const file of files) await copyFile(path.join(modules, pkg, "files", file), path.join(project, VENDOR, file));
+      // Each subset's woff2 beside the sheet.
+      const copied = async (file: string) => {
+        await copyFile(file, path.join(project, VENDOR, path.basename(file)));
+        return path.basename(file);
+      };
+      sheets.push(await fontSheet(root, pkg, weight, copied));
     }
   }
   await writeFile(path.join(project, FONTS_CSS), `/* The tool's fonts, from npm (src/bundle.ts). Generated. */\n${sheets.join("\n")}`);

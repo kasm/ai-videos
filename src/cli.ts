@@ -12,9 +12,11 @@ import { MakerCall } from "./maker.ts";
 import { importReply } from "./import.ts";
 import { newVideo } from "./new.ts";
 import { promptFor } from "./prompt.ts";
-import { hyperframes, normalizeLoudness, renderProject } from "./render.ts";
+import { writePage, pageVideo } from "./page.ts";
+import { hyperframes, muxSound, normalizeLoudness, renderProject } from "./render.ts";
 import { FORMATS, loadVideo, type FormatName, type LoadedVideo } from "./script.ts";
 import { cachePaths, cacheRoot, ready, setup, type Need } from "./setup.ts";
+import { writeSound } from "./sound.ts";
 import { toSrt } from "./srt.ts";
 import { codeKey, folderKey, keyOf, stagesIn } from "./stages.ts";
 import { buildTimeline, narrate, type SpokenLine, type Timeline } from "./timeline.ts";
@@ -47,9 +49,9 @@ Commands
   make <video>     The whole video, inside its folder: the maker's data for each made clip, the
                    fit to the voice, the maker's drawing, check and build. Writes the folder's
                    clips/, build/ and out/ (AGENTS.md, "make")
-  make <file.yaml> A plugin's video: its plan, the voices and the fit, the drawing, check and the
-                   video, each stage from the cache when what it is made from is unchanged. Writes
-                   the project's .cache/<name>/ and out/<name>.mp4 and .srt
+  make <file.yaml> A plugin's video: its plan, the voices and the fit, the sound, then the drawing,
+                   check and the video, each stage from the cache when what it is made from is
+                   unchanged. Writes the project's .cache/<name>/ and out/<name>.mp4 and .srt
   prompt <story.md> The prompt for a web chat, on stdout: the tool's instructions, the format from
                    the plugin, the library and the voices, and the story (AGENTS.md, "prompt")
   import <reply>   A web chat's reply to the prompt, pasted into a file: each episode the tool and
@@ -69,6 +71,8 @@ Options
   --fit                           make only: stop after the fit, to try the lines and the timing
   --profile <${Object.keys(PROFILES).join("|")}>   make of a file only: these settings over the rest;
                                   the finished files are <name>-<profile>.*
+  --as <video|web>                make of a file only: the video (the default), or its web page,
+                                  out/<name>.html, one file that plays offline
   --make <name>                   new only: what the maker draws, when it is not the folder's name
   --out <folder>                  build only: write the finished files here instead of out/<name>/
 `;
@@ -273,27 +277,32 @@ async function makeWith(
   await render(video, timeline, formats, projects, path.join(video.dir, "out"), opts.draft);
 }
 
+/** What `make <file>` makes, after the stages both share: the video (the default), or its web page. */
+const MODES = ["video", "web"] as const;
+type Mode = (typeof MODES)[number];
+
 /**
- * `make <file>`: a plugin's video from its one file (AGENTS.md, "A video file"), in five steps:
- * the plan, the voices and the fit, the drawing, check, and the video. Each stage is taken from the
- * cache when what it is made from is unchanged (stages.ts), but the sound, mixed every time. It
- * writes the project's .cache/<name>/ and out/, and the plugin runs only for a stage it makes.
+ * `make <file>`: a plugin's video from its one file (AGENTS.md, "A video file"). First what both
+ * modes share: the plan, the voices and the fit, and the sound. Then the video (the drawing, check,
+ * and the render with the sound), or with `--as web` its page. Each stage is taken from the cache
+ * when what it is made from is unchanged (stages.ts); the finished files are written every time.
+ * It writes the project's .cache/<name>/ and out/, and the plugin runs only for a stage it makes.
  */
-async function makeFile(file: string, opts: { fit: boolean; profile: string | undefined }) {
+async function makeFile(file: string, opts: { fit: boolean; profile: string | undefined; as: Mode }) {
   const video = await readVideoFile(file, opts.profile);
-  log(`Video: ${video.file}${video.profile ? `, profile ${video.profile}` : ""}`);
+  log(`Video: ${video.file}${video.profile ? `, profile ${video.profile}` : ""}${opts.fit ? "" : `, as ${opts.as === "web" ? "a web page" : "a video"}`}`);
   let started: Promise<PluginHost> | undefined;
   const plugin = () => (started ??= startPlugin(video.plugin, log));
   try {
-    await makeFileWith(video, opts.fit, plugin);
+    await makeFileWith(video, opts, plugin);
   } finally {
     // A plugin that did not start has nothing to close.
     await started?.then((host) => host.close(), () => {});
   }
 }
 
-async function makeFileWith(video: VideoFile, fitOnly: boolean, plugin: () => Promise<PluginHost>) {
-  const steps = fitOnly ? 2 : 5;
+async function makeFileWith(video: VideoFile, opts: { fit: boolean; as: Mode }, plugin: () => Promise<PluginHost>) {
+  const steps = opts.fit ? 2 : opts.as === "web" ? 4 : 6;
   const begin = (n: number, what: string) => log(`\n== ${n}/${steps}: ${what}\n`);
   const shown = (file: string) => path.relative(video.plugin.dir, file);
   const cached = (what: string) => log(`From the cache: ${what}`);
@@ -352,7 +361,7 @@ async function makeFileWith(video: VideoFile, fitOnly: boolean, plugin: () => Pr
   const voiced = spoken.flat().map((l) => [l.text, l.speaker, l.cue, l.pause, path.basename(l.audioFile), l.duration]);
   const fitKey = keyOf("fit", plan, voiced, script.fps, script.timing);
   // With --fit the fit is shown, from the cache or not.
-  if (!fitOnly && stages.cached("fit", fitKey, [files.request])) cached(`the fit, ${shown(files.request)}`);
+  if (!opts.fit && stages.cached("fit", fitKey, [files.request])) cached(`the fit, ${shown(files.request)}`);
   else {
     await stages.forget("fit");
     const own = new Map([[video.name, { byFormat: { [format]: { file: files.clip, dataFile: files.data, data: plan } }, duration: plan.duration, events: plan.events }]]);
@@ -360,22 +369,56 @@ async function makeFileWith(video: VideoFile, fitOnly: boolean, plugin: () => Pr
     await writeRequests(loaded, own, await fitAll(loaded, own, spoken, true));
     await stages.made("fit", fitKey);
   }
-  if (fitOnly) return;
+  if (opts.fit) return;
+  // The timeline of the fit: each event where the request puts it, as the drawn clip's data puts it
+  // (host.ts), so the sound and the page need no drawing.
+  const request = JSON.parse(await readFile(files.request, "utf8")) as ReturnType<typeof requestDocument>;
+  const ms = (t: number) => Math.round(t * 1000) / 1000;
+  const fitted = new Map([[video.name, { byFormat: {}, duration: request.duration, events: request.spans.map((s) => ({ name: s.event, at: ms(s.at), span: s.span, natural: s.natural })) }]]);
+  const timeline = buildTimeline(script, fitted, spoken, log);
+  log(`Timeline: ${timeline.duration.toFixed(2)}s at ${timeline.fps} fps`);
 
-  begin(3, "the drawing");
+  begin(3, "the sound");
+  const { quality, loudness } = video.settings;
+  const sound = path.join(video.cache, "sound.m4a");
+  const lines = timeline.scenes.flatMap((s) => s.lines.map((l) => [path.basename(l.audioFile), l.start]));
+  const soundKey = keyOf("sound", lines, timeline.duration, loudness);
+  if (stages.cached("sound", soundKey, [sound])) cached(`the sound, ${shown(sound)}`);
+  else {
+    await stages.forget("sound");
+    log(`Sound: the voices mixed at ${loudness} LUFS`);
+    await writeSound(timeline, sound, loudness);
+    await stages.made("sound", soundKey);
+    log(`  ${shown(sound)}`);
+  }
+
+  if (opts.as === "web") {
+    begin(4, "the page");
+    const page = `${video.out}.html`;
+    const bytes = await writePage(ROOT, {
+      title: video.name,
+      source: shown(video.file).split(path.sep).join("/"),
+      pluginFile: video.plugin.file,
+      video: pageVideo({ dir: video.plugin.dir, file: video.file, source: video.source, library: video.library, request, size: FORMATS[format], format, timeline }),
+      sound,
+      out: page,
+    });
+    log(`Page: ${shown(page)}, ${(bytes / 1e6).toFixed(1)} MB`);
+    return;
+  }
+
+  begin(4, "the drawing");
   const drawKey = keyOf("drawing", await readFile(files.request, "utf8"), video.use, video.source, video.library?.raw, code);
-  if (stages.cached("drawing", drawKey, [files.clip, files.data, `${files.clip}.frames`])) cached(`the clip, ${shown(files.clip)}`);
+  if (stages.cached("drawing", drawKey, [files.clip, files.data, `${files.clip}.frames`, `${files.clip}.svgs`])) cached(`the clip, ${shown(files.clip)}`);
   else {
     await stages.forget("drawing");
     await call({ step: "draw", name: video.name, format, ...FORMATS[format], request: files.request, clip: files.clip, data: files.data }, "drawing it");
     await stages.made("drawing", drawKey);
   }
 
-  begin(4, "check");
+  begin(5, "check");
   const clips = await loadClips(loaded, [format]);
   const clip = clips.get(video.name)!;
-  const timeline = buildTimeline(script, clips, spoken, log);
-  log(`Timeline: ${timeline.duration.toFixed(2)}s at ${timeline.fps} fps`);
   if (!drawnTo((await fitAll(loaded, clips, spoken)).get(video.name)!, clip.events, clip.duration, script.fps)) {
     throw new Error(`\nStopped: the plugin drew ${shown(files.clip)}, but not to the request.`);
   }
@@ -390,8 +433,7 @@ async function makeFileWith(video: VideoFile, fitOnly: boolean, plugin: () => Pr
     await stages.made("check", buildKey);
   }
 
-  begin(5, "the video");
-  const { quality, loudness } = video.settings;
+  begin(6, "the video");
   const rendered = path.join(video.cache, "render.mp4");
   const renderKey = keyOf("render", buildKey, quality, script.fps);
   if (stages.cached("render", renderKey, [rendered])) cached(`the render, ${shown(rendered)}`);
@@ -401,9 +443,9 @@ async function makeFileWith(video: VideoFile, fitOnly: boolean, plugin: () => Pr
     await renderProject(ROOT, project, rendered, { fps: script.fps, draft: quality === "draft" });
     await stages.made("render", renderKey);
   }
-  log(`Sound: mixed at ${loudness} LUFS`);
-  await normalizeLoudness(rendered, `${video.out}.mp4`, loudness);
-  log(`  ${shown(`${video.out}.mp4`)}`);
+  // The render's picture, with the one sound: the page plays the same.
+  await muxSound(rendered, sound, `${video.out}.mp4`);
+  log(`Video: ${shown(`${video.out}.mp4`)}, the render's picture with the sound`);
   await writeFile(`${video.out}.srt`, toSrt(timeline));
   log(`Subtitles: ${shown(`${video.out}.srt`)}`);
 }
@@ -418,6 +460,7 @@ async function main() {
       make: { type: "string" },
       out: { type: "string" },
       profile: { type: "string" },
+      as: { type: "string" },
       help: { type: "boolean", short: "h", default: false },
     },
   });
@@ -474,14 +517,17 @@ async function main() {
   if (isFile && values.format !== undefined) throw new Error(`--format is for a video folder: a video file's format is its plugin's stage`);
   if (isFile && values.draft) throw new Error("--draft is for a video folder: a video file's draft is --profile draft");
   if (values.profile !== undefined && !isFile) throw new Error("--profile is for make of a video file (<name>.yaml)");
+  if (values.as !== undefined && !(command === "make" && isFile)) throw new Error("--as is for make of a video file (<name>.yaml): a video, or its web page");
+  if (values.as !== undefined && !(MODES as readonly string[]).includes(values.as)) throw new Error(`--as ${values.as}: it is ${MODES.join(" (the default) or ")} (a web page)`);
+  if (values.as !== undefined && values.fit) throw new Error("--fit stops before either mode: leave out --as");
   // Only the maker's data: nothing spoken or drawn, so it needs nothing from setup.
   if (command === "new") return void (await newVideo(videoDir(arg), { make: values.make, format: values.format }, log));
   // Before anything is written: what the command needs is on this disk, or it names what is not.
   // Every command speaks; all but these draw or check with HyperFrames, in its Chrome.
-  const needs: Need[] = command === "compose" || command === "request" || values.fit ? ["voice"] : ["voice", "browser"];
+  const needs: Need[] = command === "compose" || command === "request" || values.fit || values.as === "web" ? ["voice"] : ["voice", "browser"];
   Object.assign(process.env, ready(ROOT, CACHE, needs));
 
-  if (command === "make" && isFile) return makeFile(path.resolve(CALLER, arg), { fit: values.fit, profile: values.profile });
+  if (command === "make" && isFile) return makeFile(path.resolve(CALLER, arg), { fit: values.fit, profile: values.profile, as: (values.as ?? "video") as Mode });
   if (command === "make") return make(videoDir(arg), arg, values.format, { fit: values.fit, draft: values.draft });
 
   if (command === "request") {

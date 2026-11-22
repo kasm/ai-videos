@@ -31,7 +31,18 @@
   and accepted it. A fresh `claude -p` with no tools, given only the
   prompt for `stories/the-river-bank.md`, gave eight episodes that
   imported into a copy of the project and all made. `npm test` and
-  `npm run typecheck` pass in both repos. **Next: step 5.**
+  `npm run typecheck` pass in both repos.
+- Step 5 done 2026-11-22. Checked: `src/page.test.ts` finds the page's
+  SVG the same as the video's `.svgs` in every frame. In HyperFrames'
+  Chrome, offline, `the-shy-visitor`'s page drew all 1277 frames' SVG
+  the same as its video, fetched nothing, and played to its last frame.
+  Its video kept step 3's `.frames`, its check and render from the
+  cache, its sound now the tool's mix at -14.0 LUFS; `--as web` after it
+  took the plan, the voices, the fit and the sound from the cache. The
+  user opened the page beside the mp4 and accepted it. `npm
+  test` and `npm run typecheck` pass in both repos (cartoons' scenario
+  test fixed: it expected the library's three characters of step 3).
+  **Next: step 6.**
 
 
 ## Goal

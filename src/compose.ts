@@ -94,6 +94,37 @@ async function pageScrollScene(video: LoadedVideo, scene: PageScrollSceneScript,
 }
 
 const CAPTION_LINGER = 1.0; // seconds a caption may stay after its words
+/** Seconds a caption takes to fade in, slowing at the end (GSAP's power1.out); it leaves on a cut, so the next one can replace it. */
+export const CAPTION_FADE = 0.12;
+
+/** One caption of a clip scene: its words, and when it shows, seconds from the scene's start. */
+export interface Caption {
+  id: string;
+  text: string;
+  start: number;
+  duration: number;
+}
+
+/**
+ * A clip scene's captions: its lines split and timed as the subtitles are. A caption stays through
+ * the pause after its words, until the next one or CAPTION_LINGER after its words end, so a short
+ * line is up long enough to read. The video's clip scene and the web page (page.ts) show these.
+ */
+export function sceneCaptions(timed: TimedScene): Caption[] {
+  const pieces = timed.lines.flatMap((line) => captionsOf(line.text, line.localStart, line.duration));
+  return pieces.map((c, k) => {
+    const end = Math.min(pieces[k + 1]?.start ?? Infinity, c.end + CAPTION_LINGER, timed.duration);
+    return { id: `${timed.id}-cap-${k + 1}`, text: c.text, start: Math.round(c.start * 1000) / 1000, duration: Math.round((end - c.start) * 1000) / 1000 };
+  });
+}
+
+/** The clip scene's style, filled for a `width` by `height` stage: its captions' look, which the web page takes as it is. */
+export async function clipStyle(root: string, width: number, height: number): Promise<string> {
+  const template = await readFile(path.join(root, "scenes", "clip", "scene.html"), "utf8");
+  const style = template.match(/<style>([\s\S]*?)<\/style>/)?.[1];
+  if (style === undefined) throw new Error("scenes/clip/scene.html has no <style>");
+  return fill(style, { width, height });
+}
 
 /**
  * A clip scene's placeholders: the clip, copied into the project; a still of its last frame when
@@ -118,25 +149,14 @@ async function clipScene(project: string, scene: ClipSceneScript, timed: TimedSc
     hold = `    <img id="${scene.id}-hold" class="clip cl-media" data-start="${clips.duration}" data-duration="${rest}" data-track-index="1" src="assets/clips/${still}" width="${width}" height="${height}" alt="" data-layout-allow-occlusion />`;
   }
 
-  // A caption stays through the pause after its words, until the next one or CAPTION_LINGER after
-  // its words end, so a short line is up long enough to read.
-  const pieces = timed.lines.flatMap((line) => captionsOf(line.text, line.localStart, line.duration));
-  const captions: { id: string; start: number }[] = [];
-  const markup: string[] = [];
-  pieces.forEach((c, k) => {
-    const id = `${scene.id}-cap-${k + 1}`;
-    const end = Math.min(pieces[k + 1]?.start ?? Infinity, c.end + CAPTION_LINGER, timed.duration);
-    const start = Math.round(c.start * 1000) / 1000;
-    const duration = Math.round((end - c.start) * 1000) / 1000;
-    captions.push({ id, start });
-    markup.push(`    <div id="${id}" class="clip cl-cap" data-start="${start}" data-duration="${duration}" data-track-index="2"><p>${esc(c.text)}</p></div>`);
-  });
+  const captions = sceneCaptions(timed);
   return {
     clipSrc: `assets/clips/${name}`,
     clipDuration: clips.duration,
     hold,
-    captions: markup.join("\n"),
-    captionsJson: JSON.stringify(captions),
+    captions: captions.map((c) => `    <div id="${c.id}" class="clip cl-cap" data-start="${c.start}" data-duration="${c.duration}" data-track-index="2"><p>${esc(c.text)}</p></div>`).join("\n"),
+    captionsJson: JSON.stringify(captions.map(({ id, start }) => ({ id, start }))),
+    fade: CAPTION_FADE,
   };
 }
 

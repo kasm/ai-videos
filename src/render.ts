@@ -89,30 +89,61 @@ export async function renderProject(
 }
 
 /**
- * Two-pass loudness normalization to `loudness` LUFS, the script's (-14 by default, the level
- * YouTube and most platforms play at), its peaks kept 1.5 dB below full scale.
- * Video is copied untouched; only the audio is re-encoded.
+ * The loudnorm filter that brings `input`'s sound to `loudness` LUFS, its peaks kept 1.5 dB below
+ * full scale: the first of two passes measures it, so the second applies one gain to the whole.
+ * `before` is a filter the sound goes through first, in both passes.
  */
-export async function normalizeLoudness(input: string, output: string, loudness = -14): Promise<void> {
+async function loudnessFilter(input: string, loudness: number, before = ""): Promise<string> {
   const target = `I=${loudness}:TP=-1.5:LRA=11`;
-  await mkdir(path.dirname(output), { recursive: true });
   const measure = await run("ffmpeg", [
     "-hide_banner", "-nostats", "-i", input,
-    "-af", `loudnorm=${target}:print_format=json`,
+    "-af", `${before}loudnorm=${target}:print_format=json`,
     "-vn", "-f", "null", "-",
   ]);
   const json = measure.stderr.match(/\{[^{}]*"input_i"[^{}]*\}/)?.[0];
   if (measure.code !== 0 || !json) throw new Error(`ffmpeg loudness measurement failed:\n${measure.stderr.slice(-600)}`);
   const m = JSON.parse(json) as Record<string, string>;
-  const filter =
-    `loudnorm=${target}:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}` +
-    `:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true`;
+  return (
+    `${before}loudnorm=${target}:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}` +
+    `:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true`
+  );
+}
+
+/** How a finished file's sound is encoded: AAC at 48 kHz, which every player and browser plays. */
+const AAC = ["-ar", "48000", "-c:a", "aac", "-b:a", "192k"];
+
+/**
+ * Two-pass loudness normalization to `loudness` LUFS, the script's (-14 by default, the level
+ * YouTube and most platforms play at), its peaks kept 1.5 dB below full scale.
+ * Video is copied untouched; only the audio is re-encoded.
+ */
+export async function normalizeLoudness(input: string, output: string, loudness = -14): Promise<void> {
+  await mkdir(path.dirname(output), { recursive: true });
+  const filter = await loudnessFilter(input, loudness);
   const encode = await run("ffmpeg", [
     "-hide_banner", "-nostats", "-y", "-i", input,
     "-c:v", "copy",
-    "-af", filter, "-ar", "48000", "-c:a", "aac", "-b:a", "192k",
+    "-af", filter, ...AAC,
     "-movflags", "+faststart",
     output,
   ]);
   if (encode.code !== 0) throw new Error(`ffmpeg loudness pass failed:\n${encode.stderr.slice(-600)}`);
+}
+
+/**
+ * A mono sound file brought to `loudness` LUFS as `normalizeLoudness` does, into `output`, an .m4a.
+ * It is measured and written as a render's track is: stereo, the sound in both channels whole.
+ */
+export async function levelSound(input: string, output: string, loudness: number): Promise<void> {
+  await mkdir(path.dirname(output), { recursive: true });
+  const filter = await loudnessFilter(input, loudness, "pan=stereo|c0=c0|c1=c0,");
+  const encode = await run("ffmpeg", ["-hide_banner", "-nostats", "-y", "-i", input, "-vn", "-af", filter, ...AAC, "-map_metadata", "-1", "-movflags", "+faststart", output]);
+  if (encode.code !== 0) throw new Error(`ffmpeg loudness pass failed:\n${encode.stderr.slice(-600)}`);
+}
+
+/** The picture of `video` with the sound of `sound`, both copied as they are, into `output`. */
+export async function muxSound(video: string, sound: string, output: string): Promise<void> {
+  await mkdir(path.dirname(output), { recursive: true });
+  const mux = await run("ffmpeg", ["-hide_banner", "-nostats", "-y", "-i", video, "-i", sound, "-map", "0:v:0", "-map", "1:a:0", "-c", "copy", "-movflags", "+faststart", output]);
+  if (mux.code !== 0) throw new Error(`ffmpeg could not put the sound with the picture:\n${mux.stderr.slice(-600)}`);
 }

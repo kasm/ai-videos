@@ -13,6 +13,7 @@ npm run video -- make <video>              the whole video, inside its folder (s
 npm run video -- make <video> --fit        only the made clips' data and the fit, in seconds
 npm run video -- make <dir>/<name>.yaml    a plugin's video, from its one file (see Projects, A video file)
 npm run video -- make <file> --profile quiet  the same, a profile's settings over the rest
+npm run video -- make <file> --as web      its web page: one HTML file that plays offline (see The web page)
 npm run -s video -- prompt <story>.md      the prompt for a web chat, on stdout (see Projects, prompt)
 npm run video -- import <reply file>       the chat's reply: its episodes as video files (see Projects, import)
 npm run video -- build <video>             narrate, render every format, write out/<name>/
@@ -55,7 +56,7 @@ video's folder. The TTS cache always stays here.
 | `videos/project.yaml`, `videos/make-clip.ts` | The folder's videos as a project (see Projects): its project file, and its maker, which draws clip-demo's square. |
 | `videos/clip-demo/` | The `clip` scene's demo: a made clip (`make: square`); `make clip-demo` writes its `clips/`, `build/` and `out/`. |
 | `scenes/<name>/scene.html` | Reusable scene templates (HyperFrames sub-compositions with `{{placeholders}}`): `page-scroll`, `clip`. |
-| `src/` | The pipeline: `script` → `clip` → `tts` → `timeline` (and `fit` with `mouth`, for `request`) → `compose` (with `bundle`) → `render` → `srt`; `setup`, what the commands need on the disk; `new`, a first script; `frames`, what a maker draws with (see The maker's shared code); `plugin` and `host`, a project's plugin and the process it runs in (see Plugins); `video-file` and `stages`, a plugin's video as one file, its settings in layers, and the cache of its stages (see A video file); `prompt` and `import`, a story's prompt for a web chat and its reply taken in (see prompt, import). |
+| `src/` | The pipeline: `script` → `clip` → `tts` → `timeline` (and `fit` with `mouth`, for `request`) → `compose` (with `bundle`) → `render` → `srt`; `setup`, what the commands need on the disk; `new`, a first script; `frames` and `moments`, what a maker draws with (see The maker's shared code); `plugin` and `host`, a project's plugin and the process it runs in (see Plugins); `video-file` and `stages`, a plugin's video as one file, its settings in layers, and the cache of its stages (see A video file); `sound` and `page`, a video file's one sound track and its web page (see How loud, The web page); `prompt` and `import`, a story's prompt for a web chat and its reply taken in (see prompt, import). |
 | `build/` | Generated HyperFrames projects. Never edit; regenerated on every run. |
 | `out/` | Finished videos and subtitles. |
 | `.cache/tts/` | Narration audio, keyed by text, voice and speed. |
@@ -178,14 +179,16 @@ RayCraft keeps its maker.
     whole stage, `width` × `height` pixels.
 
   Each function is pure: no Node APIs, no clock, no unseeded randomness. So a frame is the same in
-  every run, and the same code can draw in a web page.
+  every run, and the same code draws in the video's web page (see The web page), the module and
+  what it imports bundled for a browser.
 - **What the host does** is the rest of both steps, the same for every plugin. Step one: the
   source mended, checked and planned, the plan written as the clip's data, and what was mended
   said (`make` lists it, every time, and the file stays as written). Step two: the
   request's spans checked against the plan's events, each moment's SVG turned into pixels by resvg
   (no fonts: a picture holds no text) and encoded (`encoder`, crf 17), and the data written again:
   each event at its span, the texts moved with their beats. A frame whose SVG is the one before is
-  not drawn again.
+  not drawn again. Beside the clip's `.frames`, `<clip>.svgs` holds a hash of each frame's SVG (its
+  md5), a line a frame: what the web page draws is compared with it.
 - **The process:** `make` starts the host at the first stage it makes (none when each is in the
   cache), in the `package.json`'s folder, and closes it when it is done. Ready, the host says the
   plugin's scene, stage, guide and commands (their descriptions and examples). Each call is a
@@ -215,7 +218,8 @@ scenes: [ … ]
 - **Its format** is the one of its plugin's stage (1920 by 1080: landscape), and it has that
   one alone.
 - **Its name** is the file's: what is made goes into `.cache/<name>/`, and the finished files are
-  `out/<name>.mp4` and `out/<name>.srt`, both in the project's folder, the `package.json`'s.
+  `out/<name>.mp4` and `out/<name>.srt`, or with `--as web` `out/<name>.html`, all in the
+  project's folder, the `package.json`'s.
 
 `src/video-file.test.ts` shows each rule.
 
@@ -253,7 +257,7 @@ file (a table merges, a list is replaced):
 
 The profiles are the tool's (`PROFILES`, `src/video-file.ts`): `youtube` (-14 LUFS), `quiet`
 (-20 LUFS) and `draft` (the fast render). With a profile, the finished files take its name:
-`out/<name>-quiet.mp4`, `.srt`. A mistake is reported against the file that holds it: the
+`out/<name>-quiet.mp4`, `.srt`, `.html`. A mistake is reported against the file that holds it: the
 `package.json` or the video file.
 
 ### The cache
@@ -261,17 +265,20 @@ The profiles are the tool's (`PROFILES`, `src/video-file.ts`): `youtube` (-14 LU
 `make <file>` keeps each stage's key in `.cache/<name>/stages.json`: a hash of what the stage is
 made from (`src/stages.ts`). A stage whose key is the one recorded, its files all there, is taken
 from the cache, and the log says "From the cache". So a setting redoes only the stages it goes
-into, and the ones made from them:
+into, and the ones made from them. The first four are both modes'; the video's then follow, or the
+page:
 
 | Stage | Made from | What it makes, in `.cache/<name>/` |
 | --- | --- | --- |
 | The plan | the source, `use`, the library (but its voices), the plugin's code | `plan.json`, and the format and what was mended, in `stages.json` |
 | The voices | each line's text, voice and `speed` (the tool's voice cache) | |
 | The fit | the plan, the voices, `fps`, `timing` | `clips/<name>-<format>.request.json` |
-| The drawing | the request, the source, the library (but its voices), the plugin's code | `clips/<name>-<format>.mp4`, its `.json` and `.frames` |
+| The sound | each line's voice and when it starts (the fit's timeline), the video's length, `loudness` | `sound.m4a` |
+| The drawing | the request, the source, the library (but its voices), the plugin's code | `clips/<name>-<format>.mp4`, its `.json`, `.frames` and `.svgs` |
 | Check | the build (`build/<format>/`, but HyperFrames' own `.hyperframes/` and `renders/`), HyperFrames' version | |
 | The render | the build, `quality`, `fps` | `render.mp4` |
-| The sound | the render, `loudness` | `out/<name>.mp4`, mixed every time |
+| The video | the render's picture, the sound | `out/<name>.mp4` and `.srt`, written every time |
+| The page | the sound, the source, the library, the request, the plugin's code | `out/<name>.html`, written every time |
 
 - The plugin's code is every file in the plugin's folder (but `node_modules` and dot folders)
   and the tool's files it runs through (`DRAWING`, `src/stages.ts`): keep the plugin in a folder
@@ -319,10 +326,11 @@ one that draws by other means, follows those alone.
 - **From another repository** the tool is a folder package: `"ai-videos": "file:<path to this
   folder>"` in the project's `package.json`, then `import { moments, encoder, writeClipData }
   from "ai-videos/frames"`. It and `ai-videos/plugin` (types alone, see Plugins) are the modules
-  `package.json` exports, and they import nothing but Node's own modules, so the project needs none
-  of the tool's packages. Node 24 runs them as they are written. The tool's own maker imports the
-  file (`../src/frames.ts`).
-- **`moments(request)`** gives one moment for each of the request's `frames`, in order:
+  `package.json` exports, and they import nothing but Node's own modules (and `src/moments.ts`,
+  which imports nothing), so the project needs none of the tool's packages. Node 24 runs them as
+  they are written. The tool's own maker imports the file (`../src/frames.ts`).
+- **`moments(request)`** gives one moment for each of the request's `frames`, in order. It is pure
+  (`src/moments.ts`, which `frames.ts` exports), so the web page draws its frames with it too:
   - `span`: which of the request's spans the frame is in, counted from 0. Each span begins on
     the frame its `at` names; a request whose spans do not follow each other on whole frames is
     refused.
@@ -377,8 +385,9 @@ script: write its lines by hand. `new` speaks and draws nothing, so it needs not
 
 `npm run video -- make <video>` makes the whole video in five steps, in this order, and stops at
 the first that fails (`src/cli.ts`, `make`; the calls are `src/make.ts`). A video file is made in
-the same five steps, by its plugin, each taken from the cache when it is unchanged (`makeFile`;
-see The cache).
+the same steps, by its plugin, each taken from the cache when it is unchanged (`makeFile`; see The
+cache), with the sound mixed by the tool before the drawing (see How loud). `--as web` makes its
+page instead of the drawing, check and video (see The web page).
 
 1. The data: the maker's step one for each made clip, in each format.
 2. The fit: the voice spoken (from the cache when a line has not changed) and measured, and each
@@ -392,6 +401,24 @@ see The cache).
 It writes only inside the video's folder (`clips/`, `build/`, `out/`), but for the voice cache, which
 stays in the tool. A clip scene with `clip:` paths plays as it was drawn: `make` writes it no request.
 `--format` makes one format, and `--draft` renders fast. With no made clip, steps 1 and 3 do nothing.
+
+### The web page
+
+`make <file> --as web` writes `out/<name>.html` (`src/page.ts`): one file that plays as the video
+does, offline. It needs the voices but not HyperFrames' Chrome, and it is made from the stages both
+modes share, so a page made after the video speaks, fits and mixes nothing again.
+
+- **The picture:** the plugin's module and the tool's `moments`, bundled for a browser by esbuild,
+  with the video file's source, the library and the request. The page mends and checks the source
+  as the host does, then draws each frame's SVG with the plugin's `frame`: the SVG the video's
+  frame was drawn from. `src/page.test.ts` runs the page's drawing with no Node and no page, and
+  finds each frame's SVG the same as the video's `.svgs`. A plugin that does not bundle (it
+  imports a Node module) is refused, with esbuild's reason.
+- **The rest:** the sound (`sound.m4a`, the same track the video plays), the captions (the clip
+  scene's, split, timed and styled as the video's: `sceneCaptions`, `clipStyle`) and their font
+  (Inter 700, each subset), all inside the file. It names no URL.
+- **The player:** a play button and a seek bar, nothing more. The sound's clock picks the frame, and
+  the page draws it when it changes; the stage is scaled to the window.
 
 ### `prompt`
 
@@ -449,8 +476,9 @@ Only `setup` uses the network. It fetches once what no other command may fetch:
 - HyperFrames' Chrome (chrome-headless-shell), which HyperFrames keeps in its own cache
   (`~/.cache/hyperframes/`); `setup` records where, and for which HyperFrames, in `.cache/setup.json`.
 
-The rest comes with `npm ci`: the voices (in kokoro-js), and GSAP and the fonts, which each build
-carries in `assets/vendor/` (`src/bundle.ts`), so a build names no URL. Running `setup` again keeps
+The rest comes with `npm ci`: the voices (in kokoro-js), GSAP and the fonts, which each build
+carries in `assets/vendor/` (`src/bundle.ts`), so a build names no URL, and esbuild, which bundles
+a web page's drawing (see The web page). Running `setup` again keeps
 what is there and only checks it.
 
 Every other command first checks that what it needs is on the disk (`src/setup.ts`): the voice
@@ -477,6 +505,11 @@ reply to the prompt is imported (see `prompt`, `import`).
 The build's last step brings the whole soundtrack to the script's `loudness` (LUFS, default -14,
 the level YouTube and most platforms play at; -16 or -20 is quieter), its peaks 1.5 dB below full
 scale. A line's own level doesn't matter: this step sets the whole.
+
+A video file's soundtrack is the tool's own (`src/sound.ts`): each line's voice laid where the
+timeline starts it, on a track as long as the video, and brought to `loudness` once, as a
+render's track is (stereo, the voice in both channels). The video puts it with the render's
+picture, and the web page plays the same file.
 
 ## How timing works
 
