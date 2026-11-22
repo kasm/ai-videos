@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
-import { moments, type Request } from "ai-videos/frames";
+import { moments, type Request } from "ai-videos/plugin";
 import { parse } from "yaml";
 import plugin from "./plugin.ts";
 

@@ -341,9 +341,9 @@ characters on one mark, is refused, with the place and the reason.
 - **The plan draws nothing** and gives the same data for the same
   scenario: the tool asks for it again whenever the file, the library or a
   file in `src/` has changed.
-- **Of the tool's sources, only the modules its `package.json` exports
-  are imported**: `ai-videos/plugin` for the plugin's types, and in the
-  tests `ai-videos/frames`. Both need none of the tool's packages.
+- **Of the tool's sources, only the module its `package.json` exports
+  is imported**: `ai-videos/plugin`, for the plugin's types, and in the
+  tests for `moments`. It needs none of the tool's packages.
 - **The plugin's code is pure**: no Node API (the tool reads the files),
   and a frame's picture is a function of the scenario, the library and the moment alone:
   no clock, no random number, no font of the machine (a picture holds no

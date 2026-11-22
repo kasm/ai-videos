@@ -1,6 +1,6 @@
 // One frame's picture: where everything is at a moment of the scenario, and that as an SVG. A pure
 // function of the scenario and the moment, so the same moment is the same text, and the same pixels.
-// The scenario names moves and poses; how each looks (the numbers below) is the maker's.
+// The scenario names moves and poses; how each looks (the numbers below) is the plugin's.
 import { ARM, STAGE, moveOf, type Pose, type Scenario } from "./scenario.ts";
 import type { Moment } from "./timeline.ts";
 

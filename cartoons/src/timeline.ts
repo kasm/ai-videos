@@ -16,7 +16,7 @@ export interface Timeline {
  * its move (0 to 1), and whose mouth is open, how wide (above 0, to 1). A character it does not
  * name has its mouth closed. `time` is the seconds since the clip began (a wave's swing and the
  * blinks go by it) and `into` the seconds since the beat did (an arm reaching its new pose). It is
- * the tool's moment (its AGENTS.md, "The maker's shared code"), whose span is a beat here.
+ * the tool's moment (its AGENTS.md, "Moments"), whose span is a beat here.
  */
 export interface Moment {
   beat: number;
