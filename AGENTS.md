@@ -68,19 +68,19 @@ video's folder. The TTS cache always stays here.
 
 ## Projects
 
-A project (RayCraft, or this tool's `videos/`) keeps its videos in one folder, a video folder
-each, and beside them one project file with what they share. A project with a plugin (`cartoons`)
-keeps each video as one file instead; its package.json holds the settings they share, and its
+A project with a maker (this tool's `videos/`) keeps its videos in one folder, a video folder
+each, and beside them one project file with what they share. A project with a plugin (`cartoons`,
+RayCraft's `media/`) keeps each video as one file instead; its package.json holds the settings they share, and its
 `library.yaml` what they name (see A video file, The library). This section is the contract
 between the tool and a project.
 
 ### The project file
 
-`project.yaml` in the folder that holds the video folders (`media/videos/project.yaml` for
-`media/videos/intro`). The schema is `ProjectFile` in `src/script.ts`:
+`project.yaml` in the folder that holds the video folders (`videos/project.yaml` for
+`videos/clip-demo`). The schema is `ProjectFile` in `src/script.ts`:
 
 ```yaml
-maker: npm run -s tutorial:video --   # draws a project's clips (below); run in this folder
+maker: node make-clip.ts              # draws a project's clips (below); run in this folder
 voice: af_heart                       # every line that names no speaker
 cast: { pip: am_puck, mo: bf_emma }   # optional: each speaker's voice (The cast, below)
 loudness: -22
@@ -140,21 +140,21 @@ made parts out of git; nothing made is edited by hand.
 | `out/<name>-<format>.mp4`, `out/<name>.srt` | The finished video and its subtitles. | `make`, as `build` does. | no |
 
 A made clip is a clip scene with `make: <name>` in place of `clip:`, the name of what the maker
-draws (in RayCraft, a tutorial); its files are the `clips/` ones above, by the scene's id. A clip
+draws (clip-demo's `square`); its files are the `clips/` ones above, by the scene's id. A clip
 scene with `clip:` paths plays a clip drawn elsewhere, as before.
 
 ### Plugins
 
 A project's plugin draws its videos: a module the tool runs in a child process of its own
-(`src/host.ts`), in place of a maker's command line. `cartoons` has one (its `src/plugin.ts`);
-RayCraft keeps its maker.
+(`src/host.ts`), in place of a maker's command line. `cartoons` has one that draws (its
+`src/plugin.ts`), RayCraft one that records (its `media/plugin/plugin.ts`: a tutorial played by
+the editor in Chrome).
 
 - **Where:** the nearest `package.json` above the video file names it, as a path from that
   folder: `"ai-videos": { "plugin": "./src/plugin.ts" }` (`pluginOf`, `src/make.ts`). The same
   `"ai-videos"` holds the project's settings (see Settings in layers). The project's videos are
   files (see A video file): a video folder there with a made clip is refused, and so is `new`. A
-  `package.json` with no `"ai-videos"` key (the tool's own, RayCraft's) leaves the clips to the
-  maker.
+  `package.json` with no `"ai-videos"` key (the tool's own) leaves the clips to the maker.
 - **What it is:** the module's default export, `Plugin` in `src/plugin.ts`, which a project
   imports for its types alone (`import type { Plugin } from "ai-videos/plugin"`):
   - `scene`: the scene it draws (`cartoon`): a video file's `use:` names it.
@@ -753,7 +753,7 @@ The request also lists the lines, in the script's order, each with its voice as 
   compared with the line's loudest, on the decibel scale, and 30 dB under it is closed. So the
   mouth is closed in the pauses between a line's sentences. `src/mouth.test.ts` shows it.
 - `speaker`, `duration` and `mouth` are optional, and the version stays 1: a maker that draws no
-  mouth (RayCraft's) reads the request as before, and a request written by other means may leave
+  mouth (`videos/make-clip.ts`) reads the request as before, and a request written by other means may leave
   them out.
 
 ## Writing a scene template

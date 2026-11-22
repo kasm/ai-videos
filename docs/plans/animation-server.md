@@ -63,9 +63,21 @@
   apart), sought to frame 100 when paused, fetched nothing.
   `the-shy-visitor`, drawn again through the new host, gave step 5's
   `.frames` and `.svgs`. `npm test` and `npm run typecheck` pass in both
-  repos. **Next: step 7b.** Its baseline is made again with the old
-  maker first: `first-shadow`'s clip in RayCraft's `videos/` is older
-  than its request, and both requests predate steps 3 to 6.
+  repos.
+- Step 7b done 2026-11-22. Decided with the user: a video's file gives
+  any event (an opening leg or a step) a line and limits, a step without
+  one saying its tutorial's words; RayCraft's `media/` is the project;
+  RayCraft's old maker is gone. Checked: the baseline made again with the
+  old maker, then `first-shadow` and `water-switch` made through the
+  plugin had the same requests (spans, lines, fps, duration, frames; only
+  `made.from` and `clip`, file names, differ) and the same `.frames`
+  (1860 and 2704 frames); `two-stars`' request too (its `--fit`). Made
+  again, every stage came from the cache, no plugin started; a comment
+  edited in RayCraft's `src/` redrew `first-shadow`, its `.frames` the
+  same. The prompt offers the seven tutorials. RayCraft's `npm run
+  verify`, `media/`'s typecheck, and this tool's `npm test` and `npm run
+  typecheck` pass. **Next: step 8.** RayCraft's `media/videos/workflow.html`
+  still draws the old way, for both projects: its notes, in step 8.
 
 
 ## Goal
