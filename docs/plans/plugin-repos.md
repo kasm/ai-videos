@@ -6,7 +6,23 @@
   `.review/plugin-repos/`, with the user's changes that day. The repo is
   public from its first push. cartoons moves in before the tool is
   renamed, and two steps were added: the name, and going public. The name
-  is chosen in step 4. **Next: step 1.**
+  is chosen in step 4.
+- Step 1 done 2026-11-22: **cartoons joins**, the user's decision. For:
+  the `file:` link already follows the tool's working tree, so a contract
+  change becomes one commit with both test suites; the 3D plugin will
+  likely change the contract, and goes beside it; the stories are public
+  domain or the user's own, and a clone gets working videos. Against: a
+  session in `cartoons/` loads the tool's notes and plan rules; cartoons
+  can use the tool's packages undeclared; its link loops back to the root.
+  Trial, on a clone in the scratchpad, cartoons in `cartoons/` with
+  `file:..` and `--prefix ..`: `npm install` left the root untouched;
+  cartoons' `npm test` (47) and `npm run typecheck` passed; `make
+  videos/hello.yaml` gave the same `.frames`, `.svgs`, request and
+  `out/hello.mp4` as the real cartoons', and `--as web` its page. The
+  tool's tests (82) and typecheck passed too. With cartoons' `zod` hidden
+  its checks passed on the root's; `git status --ignored` and `git clean
+  -ndx` walk the loop (375 "Filename too long"), and skip it as a
+  repository. **Next: step 2.**
 
 
 ## Goal
