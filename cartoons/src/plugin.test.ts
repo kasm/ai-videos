@@ -73,6 +73,19 @@ test("each command is described, and its example passes its schema", async () =>
   }
 });
 
+test("the guide's example is a cartoon the plugin takes, against the library, with nothing to mend", () => {
+  const examples = [...plugin.guide.matchAll(/```yaml\n([\s\S]*?)```/g)].map((m) => m[1]!);
+  assert.equal(examples.length, 1);
+  const { use, ...source } = parse(examples[0]!);
+  assert.equal(use, plugin.scene);
+  assert.deepEqual(plugin.repair!(source, library).did, []);
+  const scenario = plugin.check(source, "the guide", library);
+  // It shows each move and each pose, and a background that changes.
+  const beats = scenario.scenes.flatMap((s) => s.beats);
+  for (const key of ["walk", "turn", "jump", "background"] as const) assert.ok(beats.some((b) => key in b && b[key] !== undefined), key);
+  assert.deepEqual(new Set(beats.flatMap((b) => Object.values(b.pose))), new Set(["wave", "stand", "point"]));
+});
+
 // The walk in 8 frames with its motion in 6, then 4 frames of the stop.
 const SMALL: Request = {
   fps: 30,

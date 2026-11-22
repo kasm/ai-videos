@@ -19,16 +19,24 @@ a video with a spoken voice, offline and with no AI. The plan is the tool's
 - `.cache/<name>/`: what the tool makes on the way (the plan, the request,
   the clip, the build); `out/<name>.mp4` and `out/<name>.srt`: the
   finished video and its subtitles. Made, not in git, never edited.
-- `stories/<name>.md`: a story in prose, the source of `videos/<name>.yaml`.
-  The `episode` skill (`.claude/skills/episode/`) turns a story into a
-  cartoon and a video; it may add a new character, with its voice, or a
-  new background to `library.yaml` without asking (the user's standing
-  yes), and changes nothing already there.
+- `stories/<name>.md`: a story in prose (a book's chapter), the source of
+  its episodes, `videos/<name>-1.yaml` and on. The tool wraps it in its
+  prompt for a web chat, and imports the chat's reply, pasted into
+  `stories/<name>.reply.md` (Running, below). The `episode` skill
+  (`.claude/skills/episode/`) answers the same prompt itself. Either way a
+  new character, with its voice, or a new background goes into
+  `library.yaml` without asking (the user's standing yes), and nothing
+  already there changes.
 - `src/`: the cartoon plugin, the module the tool runs to get a cartoon's
   clip (the tool's `AGENTS.md`, "Plugins"). Its code is part of what the
   tool's cache keys on: a change to a file here draws the clips again.
   - `plugin.ts`: the plugin itself: the scene `cartoon`, its stage, its
-    commands, and the four functions below.
+    commands, its guide, and the four functions below.
+  - `guide.ts`: the plugin's part of the tool's prompt (`GUIDE`): what a
+    cartoon can show, the format with an example, how to turn a story into
+    beats and lines, and how to draw a new character or background. A web
+    chat reads it with no other file of this project, so it says all it
+    needs; the tool adds the commands, `library.yaml` and the voices.
   - `repair.ts`: what the plugin mends in a scenario before the check
     (Mending, below).
   - `scenario.ts`: the scenario's schema and the library's, their checks,
@@ -49,6 +57,16 @@ a video with a spoken voice, offline and with no AI. The plan is the tool's
 Node 24. From this folder:
 
 - `npm test`: the tests (`node --test`); `npm run typecheck`.
+- `npm run -s video -- prompt stories/<name>.md > <file>`: the prompt for
+  a web chat, the story in it: copy the file's whole text into the chat.
+  Paste its reply into `stories/<name>.reply.md`; told "continue", add the
+  next message after it.
+- `npm run -s video -- import stories/<name>.reply.md`: writes each
+  episode the tool and the plugin take as `videos/<episode>.yaml`, and
+  what the reply adds to `library.yaml`, and writes nothing over. What it
+  refused comes out as a message to paste back into the chat; add the
+  chat's answer to the reply's file, and import again (the tool's
+  `AGENTS.md`, "import").
 - `npm run -s video -- make videos/<name>.yaml --fit`: checks the file
   (the plugin's checks against the library, and a voice for each
   speaker), says what the plugin mended in it (Mending, below), speaks the
