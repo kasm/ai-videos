@@ -46,8 +46,17 @@
   tool and making the repo public get a plan of their own. Until then the
   tool keeps `ai-videos` and its folder `d:\m\web\ai_videos`, so step 5
   is RayCraft's plugin working where it is. It runs with the tool today:
-  `make videos/water-switch.yaml --fit` from `media/` exits 0. **Next:
-  step 5**, the plan's last, from a session in RayCraft.
+  `make videos/water-switch.yaml --fit` from `media/` exits 0.
+- Step 5 done 2026-11-23, from a session here, the user's word: RayCraft's
+  `media/videos/workflow.html` names cartoons' folder,
+  `d:\m\web\ai_videos\cartoons`, its tool at `..` and the `episode` skill
+  in the repo's `.claude/skills/`; RayCraft's plugin and videos stay in
+  `media/`, unchanged. Checked: `make videos/first-shadow.yaml` from
+  `media/`, its clip moved out of the cache, recorded its 1860 frames
+  again, the same `.frames` and `.mp4` byte for byte; RayCraft's `npm run
+  verify` passes, its seven parts, and `media/`'s typecheck; the step's
+  search finds nothing, and each relative link on the page finds its
+  file. **The plan is done.**
 
 
 ## Goal
