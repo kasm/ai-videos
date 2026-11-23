@@ -45,7 +45,7 @@
 - Steps 4 and 6 dropped 2026-11-23, the user's correction: renaming the
   tool and making the repo public get a plan of their own. Until then the
   tool keeps `ai-videos` and its folder `d:\m\web\ai_videos`, so step 5
-  keeps only cartoons' new folder. RayCraft runs with the tool as it is:
+  is RayCraft's plugin working where it is. It runs with the tool today:
   `make videos/water-switch.yaml --fit` from `media/` exits 0. **Next:
   step 5**, the plan's last, from a session in RayCraft.
 
@@ -110,10 +110,14 @@ is, names the new folder;
 finds nothing; the old folder is no longer a repo, and its `out/` files
 are in the new folder's `out/`.
 
-### 5. Point RayCraft's notes at cartoons' new folder
+### 5. RayCraft's plugin stays in `RayCraft/media`, as a working solution
 
-From a session in RayCraft: `media/videos/workflow.html` and any other
-live note that places cartoons beside RayCraft name its new home,
-`d:\m\web\ai_videos\cartoons`. **Done when:** a search of RayCraft for
-`d:\m\web\cartoons` and `../cartoons` finds them only in
+From a session in RayCraft. The folder of RayCraft's plugin for ai-videos
+stays where it is, `d:\m\web\RayCraft\media`, with its videos and
+settings, and makes its videos with the tool in `d:\m\web\ai_videos`. Its
+notes say so, and where they speak of cartoons (`media/videos/workflow.html`)
+they name the folder cartoons has now, `d:\m\web\ai_videos\cartoons`.
+**Done when:** `make videos/first-shadow.yaml` from `media/`, its drawing
+not taken from the cache, gives the same `.frames` as before; a search of
+RayCraft for `d:\m\web\cartoons` and `../cartoons` finds them only in
 `docs/plans/done/`; and RayCraft's `npm run verify` passes.
