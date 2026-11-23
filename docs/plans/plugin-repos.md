@@ -1,4 +1,4 @@
-# Plan: cartoons in the tool's repo, the repo renamed and public
+# Plan: cartoons in the tool's repo
 
 ## Now
 
@@ -41,8 +41,13 @@
   `cartoons/src/plugin.ts`; `prompt cartoons/stories/the-shy-visitor.md`
   and `make cartoons/videos/hello.yaml --fit` run from the root. The
   copied caches make their plan and drawing again: the plugin's code key
-  hashes bytes, and the old checkout's line endings were mixed. **Next:
-  step 4.**
+  hashes bytes, and the old checkout's line endings were mixed.
+- Steps 4 and 6 dropped 2026-11-23, the user's correction: renaming the
+  tool and making the repo public get a plan of their own. Until then the
+  tool keeps `ai-videos` and its folder `d:\m\web\ai_videos`, so step 5
+  keeps only cartoons' new folder. RayCraft runs with the tool as it is:
+  `make videos/water-switch.yaml --fit` from `media/` exits 0. **Next:
+  step 5**, the plan's last, from a session in RayCraft.
 
 
 ## Goal
@@ -54,9 +59,6 @@ the same videos as before, and the notes, skill and sessions that served it
 work from here, with nothing left pointing at the old folder. If not,
 steps 2 and 3 are dropped.
 
-Then the tool takes a new name, everywhere a project or a plugin meets it,
-and goes public: a repo anyone can clone and run.
-
 RayCraft's plugin (`media/plugin/`) stays in RayCraft. It is RayCraft's
 code: it imports RayCraft's tutorials and Chrome script, it takes Vite and
 Playwright from RayCraft's packages, its inputs are RayCraft's `src/` and
@@ -65,8 +67,9 @@ plugin from another repository, the kind other people's plugins will be.
 
 **Out of scope:** the 3D plugin, emotions and poses (a reason in step 1,
 nothing built for them); moving RayCraft's plugin; any change to the plugin
-contract (`Plugin`, how a project names its plugin) but the name: if a move
-needs one, the session stops and asks; publishing to npm.
+contract (`Plugin`, how a project names its plugin): if a move needs one,
+the session stops and asks; renaming the tool and making the repo public
+(a plan of their own); publishing to npm.
 
 
 ## Steps (one session each)
@@ -107,34 +110,10 @@ is, names the new folder;
 finds nothing; the old folder is no longer a repo, and its `out/` files
 are in the new folder's `out/`.
 
-### 4. Rename the tool
+### 5. Point RayCraft's notes at cartoons' new folder
 
-The name is chosen with the user. The tool and cartoons take it in one
-commit: the package and its `/plugin` import, the settings key in a
-project's `package.json`, the clip and request formats, `AI_VIDEOS_CACHE`.
-Then the folder is renamed, and this project's Claude Code memory moved
-with it. **Done when:** from the renamed folder, `npm test` and `npm run
-typecheck` pass, the tool's and cartoons'; `make
-videos/the-shy-visitor.yaml` draws again and gives the same `.frames`
-(1277 frames); `git grep -n -i -E "ai[-_]videos" -- . ":!docs/plans"`
-finds nothing; a fresh session in the renamed folder recalls this
-project's memory.
-
-### 5. Give RayCraft the new name and cartoons' new home
-
-From a session in RayCraft: `media/`'s package, plugin and notes use the
-tool's new name and folder, and `media/videos/workflow.html` and any other
-live note that places cartoons beside RayCraft name its new home.
-**Done when:** `make videos/first-shadow.yaml` from `media/` gives the
-same `.frames` as before; a search of RayCraft for `d:\m\web\cartoons`,
-`../cartoons` and the old name finds them only in `docs/plans/done/`; and
-RayCraft's `npm run verify` passes.
-
-### 6. Make the repo public
-
-With the user: a license, the author name and email the history shows, and
-the remote. The first push waits for the user's word. **Done when:** the
-license is in the repo and in `package.json` (no longer `UNLICENSED` or
-private); `git log --format="%an %ae" | sort -u` shows only what the user
-picked; a fresh clone from the remote passes `npm ci`, `npm test` and
-`npm run typecheck`.
+From a session in RayCraft: `media/videos/workflow.html` and any other
+live note that places cartoons beside RayCraft name its new home,
+`d:\m\web\ai_videos\cartoons`. **Done when:** a search of RayCraft for
+`d:\m\web\cartoons` and `../cartoons` finds them only in
+`docs/plans/done/`; and RayCraft's `npm run verify` passes.
