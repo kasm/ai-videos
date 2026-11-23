@@ -2,9 +2,9 @@
 
 ## The plan
 
-The current plan is `docs/plans/plugin-repos.md`: `cartoons` in this repo.
-Its `## Now` names the next step;
-read the rest only when a task needs it.
+No plan is current; finished ones are in `docs/plans/done/`. A current
+plan is in `docs/plans/`: its `## Now` names the next step; read the rest
+only when a task needs it.
 
 - **One session, one step.** First restate the step and its "Done when"
   to the user. Its design is worked out in chat, not written into the
