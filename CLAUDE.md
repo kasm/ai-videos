@@ -2,9 +2,10 @@
 
 ## The plan
 
-The current plan is `docs/plans/concurrent-actions.md`: voices, moves and
-sounds at once in a cartoon. Its `## Now` names the next step; read the
-rest only when a task needs it. Finished plans are in `docs/plans/done/`.
+The current plan is `docs/plans/compiled-scenario.md`: a cartoon written
+as a scenario, which the tool compiles. Its `## Now` names the next step;
+read the rest only when a task needs it. Finished plans are in
+`docs/plans/done/`.
 
 - **One session, one step.** First restate the step and its "Done when"
   to the user. Its design is worked out in chat, not written into the
