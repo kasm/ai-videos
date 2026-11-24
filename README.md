@@ -114,6 +114,7 @@ browser; a plugin that records has its clip in the page.
 | `<project>/out/` | Finished videos. Made, and not in git. |
 | `.cache/`, `<project>/.cache/` | The voice model, spoken lines and everything in between. Made, and not in git. |
 | `AGENTS.md` | The full reference, for people and AI assistants. |
+| `docs/workflow.html` | How the tool works, on one page with pictures: open it in a browser. |
 | `docs/plans/done/` | How the tool came to be, in finished plans. |
 
 ## Your own project or plugin

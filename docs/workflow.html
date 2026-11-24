@@ -1,0 +1,1037 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How ai-videos works: from a text file to a narrated video</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --card: #ffffff; --fg: #1d1f24; --muted: #5b6270; --line: #d5d8de; --arrow: #7c8494;
+    --code: #f1efe9; --link: #1f5fbf;
+    --you: #ffe1a8; --ai: #e2d6ff; --tool: #cfe3ff; --plugin: #cdeccf; --voice: #ffd3e0; --hf: #c8ecec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15171c; --card: #1d2027; --fg: #e6e8ec; --muted: #a0a7b4; --line: #3a3f4a; --arrow: #8791a3;
+      --code: #262a33; --link: #8ab4ff;
+      --you: #6b4e12; --ai: #46367a; --tool: #1f4577; --plugin: #23552a; --voice: #6e2a44; --hf: #1d5558;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 15px/1.55 system-ui, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 1220px; margin: 0 auto; padding: 28px 20px 60px; }
+  h1 { font-size: 28px; line-height: 1.2; margin: 0 0 6px; }
+  h2 { font-size: 21px; margin: 44px 0 10px; padding-top: 14px; border-top: 1px solid var(--line); }
+  h3 { font-size: 16px; margin: 24px 0 8px; }
+  p { margin: 8px 0; max-width: 86ch; }
+  ol, ul { max-width: 86ch; }
+  .lede { color: var(--muted); font-size: 16px; }
+  a { color: var(--link); }
+  /* no ligatures: a command's "--" and "->" read as typed */
+  code, pre { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 13px; font-variant-ligatures: none; }
+  code { background: var(--code); padding: 1px 4px; border-radius: 3px; }
+  pre {
+    background: var(--code); padding: 12px 14px; border-radius: 6px; overflow-x: auto;
+    line-height: 1.5; margin: 10px 0;
+  }
+  pre .c { color: var(--muted); }
+  nav { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 14px 0 0; font-size: 14px; }
+
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 14px; }
+  th, td { border: 1px solid var(--line); padding: 6px 9px; vertical-align: top; text-align: left; }
+  th { background: var(--code); font-weight: 600; }
+  td.n { white-space: nowrap; color: var(--muted); }
+  td.made { background: var(--tool); white-space: nowrap; }
+  td.f { white-space: nowrap; }
+  td.kept { color: var(--muted); white-space: nowrap; }
+  .scroll { overflow-x: auto; }
+
+  .chip {
+    display: inline-block; padding: 0 7px; border-radius: 10px; font-size: 12.5px; line-height: 1.6;
+    white-space: nowrap;
+  }
+  .chip.you { background: var(--you); } .chip.ai { background: var(--ai); }
+  .chip.tool { background: var(--tool); } .chip.plugin { background: var(--plugin); }
+  .chip.voice { background: var(--voice); } .chip.hf { background: var(--hf); }
+  .tag { font-size: 11.5px; color: var(--muted); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; white-space: nowrap; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; margin: 12px 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; }
+  .card h3 { margin: 0 0 4px; }
+  .card h4 { margin: 12px 0 2px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .card h4 code { text-transform: none; }
+  .card ul { margin: 4px 0; padding-left: 18px; }
+  .card li { margin: 2px 0; }
+  .actors { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 10px; margin: 12px 0; }
+  .actor { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; }
+  .actor p { margin: 4px 0 0; font-size: 14px; }
+
+  figure { margin: 14px 0; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px; overflow-x: auto; }
+  figure svg { display: block; width: 100%; min-width: 900px; height: auto; }
+  figcaption { font-size: 13px; color: var(--muted); padding: 6px 4px 0; }
+  svg text { fill: var(--fg); text-anchor: middle; font-family: system-ui, "Segoe UI", Roboto, sans-serif; }
+  svg .t { font-size: 13px; font-weight: 600; }
+  svg .s { font-size: 11px; opacity: .82; }
+  svg .note { font-size: 11px; font-style: italic; fill: var(--muted); }
+  svg .row { font-size: 12px; text-anchor: end; fill: var(--muted); }
+  svg .file rect { fill: var(--bg); stroke: var(--arrow); stroke-width: 1.2; }
+  svg .act rect { stroke: none; }
+  svg .you rect { fill: var(--you); } svg .ai rect { fill: var(--ai); }
+  svg .tool rect { fill: var(--tool); } svg .plugin rect { fill: var(--plugin); }
+  svg .voice rect { fill: var(--voice); } svg .hf rect { fill: var(--hf); }
+  svg .arr { fill: none; stroke: var(--arrow); stroke-width: 1.5; marker-end: url(#arr); }
+  svg #arr path { fill: var(--arrow); }
+  svg .hold rect { fill: var(--bg); stroke: var(--arrow); stroke-width: 1.2; }
+  svg .move rect { fill: var(--plugin); stroke: var(--arrow); stroke-width: 1.2; }
+  svg .guide { fill: none; stroke: var(--arrow); stroke-width: 1; stroke-dasharray: 3 3; }
+  svg .mouth { fill: none; stroke: var(--arrow); stroke-width: 2.2; }
+  svg .base { fill: none; stroke: var(--line); stroke-width: 1; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 10px; font-size: 13px; margin: 8px 0; align-items: center; }
+  .legend .box { display: inline-block; border: 1.2px solid var(--arrow); background: var(--bg); border-radius: 2px; padding: 0 7px; font-size: 12.5px; }
+  footer { margin-top: 44px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); padding-top: 12px; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z"/>
+    </marker>
+  </defs>
+</svg>
+<main>
+
+<h1>How ai-videos works</h1>
+<p class="lede">One text file in, one narrated video out. You write what happens and what is said in
+<code>videos/&lt;name&gt;.yaml</code>. The tool speaks the lines, has the project's <b>plugin</b> draw
+the picture to fit them, and makes an MP4 with captions, or a web page that plays the same. One
+command, <code>make</code>, does it, offline and with no AI. An AI only writes the text file, when you
+want one to.</p>
+<nav>
+  <a href="#folders">The folders</a>
+  <a href="#actors">Actors</a>
+  <a href="#engine">Inside make</a>
+  <a href="#story">A cartoon from a story</a>
+  <a href="#hand">A cartoon by hand</a>
+  <a href="#project">A project of your own</a>
+  <a href="#compare">Side by side</a>
+  <a href="#data">Data sources and targets</a>
+  <a href="#settings">Settings</a>
+  <a href="#stops">When it stops</a>
+  <a href="#more">Where the details are</a>
+</nav>
+
+<h2 id="folders">The folders</h2>
+<div class="scroll">
+<table>
+  <tr><th>Folder</th><th>What it is</th><th>What it holds</th></tr>
+  <tr>
+    <td><code>ai-videos/</code></td>
+    <td>The tool: this repo's root</td>
+    <td>The <code>video</code> command (<code>setup</code>, <code>make</code>, <code>story</code>,
+      <code>prompt</code>, <code>import</code>, <code>voices</code>) and all it runs: the plugin's host,
+      the voice (Kokoro), HyperFrames. The voice model and every line spoken are in its
+      <code>.cache/</code></td>
+  </tr>
+  <tr>
+    <td class="f"><code>ai-videos/cartoons/</code></td>
+    <td>A project, in the tool's repo</td>
+    <td>The stories (<code>stories/</code>), the cartoons (<code>videos/</code>), what they name
+      (<code>library.yaml</code>), the plugin that draws them (<code>src/plugin.ts</code>) and the settings
+      they share (<code>package.json</code>). The <code>episode</code> skill is the repo's
+      (<code>.claude/skills/episode/</code>)</td>
+  </tr>
+  <tr>
+    <td>Any folder, in any repo</td>
+    <td>A project of your own</td>
+    <td>The same, with a plugin of your own. RayCraft's <code>media/</code>, in a repo of its own, is one:
+      its plugin records a tutorial played in RayCraft's editor</td>
+  </tr>
+</table>
+</div>
+<p>A project keeps each video as one file, <code>videos/&lt;name&gt;.yaml</code>. Its
+<code>package.json</code> names its plugin and holds the settings its videos share. The tool knows
+nothing about cartoons: it runs the plugin in a process of its own, and asks it for a plan and then a
+picture.</p>
+
+<h2 id="actors">Actors</h2>
+<div class="actors">
+  <div class="actor"><span class="chip you">You</span>
+    <p>Write a story or a video's file, run <code>make</code> (or <code>story</code>), watch, commit. The
+    settings in <code>package.json</code>'s <code>"ai-videos"</code> are yours.</p></div>
+  <div class="actor"><span class="chip ai">An AI</span>
+    <p>A web chat given the tool's prompt, or Claude Code in this repo. It writes sources only: episodes
+    from a story, a new character in the library, a video's file when you ask. It never writes a made file
+    and is never a step of <code>make</code>.</p></div>
+  <div class="actor"><span class="chip tool">The tool</span>
+    <p>The <code>video</code> command. Reads the video's file, the library's voices and the settings, runs
+    the plugin, fits the clip to the voice, mixes the sound, encodes the frames, builds the HyperFrames
+    project or the web page, and keeps each stage in a cache. It never looks inside a picture.</p></div>
+  <div class="actor"><span class="chip plugin">The plugin</span>
+    <p>The project's own module, run by the tool in a process of its own. It checks a video's file and
+    plans it, then gives each frame's picture. The cartoons' draws: an SVG a frame, which the tool turns
+    into pixels (resvg). Another may record: a screenshot a frame.</p></div>
+  <div class="actor"><span class="chip voice">Kokoro</span>
+    <p>The voice: a local model inside the tool, in English, on the processor. It says each line once, and
+    the sound is kept in a cache, so a line not changed is not spoken again.</p></div>
+  <div class="actor"><span class="chip hf">HyperFrames and ffmpeg</span>
+    <p>HyperFrames, in its own headless Chrome, checks and renders the clip with its captions. ffmpeg
+    encodes the clip, brings the sound to the video's loudness, and puts it with the picture.</p></div>
+</div>
+<p>Only <code>setup</code> goes online, once per machine. No command calls a model but the voice on this
+machine: <code>story</code> hands its prompt to your own web chat, through the clipboard.</p>
+
+<h2 id="engine">Inside <code>make</code></h2>
+<p><b>The voice sets the clock.</b> The lines are spoken and measured first, then the clip is drawn to
+fit them. So the plugin is asked twice: once for the plan, the clip's events and texts at its own pace
+with nothing drawn, and once for the picture, at the lengths the tool asks for. Nothing is timed by
+hand.</p>
+
+<figure>
+<svg viewBox="0 0 1180 376" role="img" aria-label="The six stages of make, and the web page after the third">
+  <!-- inputs -->
+  <g class="file" transform="translate(12,14)"><rect width="170" height="50" rx="2"/>
+    <text class="t" x="85" y="21">The source</text><text class="s" x="85" y="38">the file, library.yaml</text></g>
+  <g class="file" transform="translate(208,14)"><rect width="170" height="50" rx="2"/>
+    <text class="t" x="85" y="21">The settings</text><text class="s" x="85" y="38">and the library's voices</text></g>
+  <g class="file" transform="translate(600,14)"><rect width="170" height="50" rx="2"/>
+    <text class="t" x="85" y="21">The source again</text><text class="s" x="85" y="38">drawn to the request</text></g>
+  <g class="file" transform="translate(796,14)"><rect width="170" height="50" rx="2"/>
+    <text class="t" x="85" y="21">The lines</text><text class="s" x="85" y="38">the captions</text></g>
+  <path class="arr" d="M97 64 V98"/><path class="arr" d="M293 64 V98"/>
+  <path class="arr" d="M685 64 V98"/><path class="arr" d="M881 64 V98"/>
+  <!-- stages -->
+  <g class="act plugin" transform="translate(12,100)"><rect width="170" height="60" rx="14"/>
+    <text class="t" x="85" y="26">1 · The plan</text><text class="s" x="85" y="44">the plugin, step one</text></g>
+  <g class="act voice" transform="translate(208,100)"><rect width="170" height="60" rx="14"/>
+    <text class="t" x="85" y="26">2 · The fit</text><text class="s" x="85" y="44">Kokoro speaks, the tool fits</text></g>
+  <g class="act tool" transform="translate(404,100)"><rect width="170" height="60" rx="14"/>
+    <text class="t" x="85" y="26">3 · The sound</text><text class="s" x="85" y="44">the tool mixes the voices</text></g>
+  <g class="act plugin" transform="translate(600,100)"><rect width="170" height="60" rx="14"/>
+    <text class="t" x="85" y="26">4 · The drawing</text><text class="s" x="85" y="44">the plugin, step two</text></g>
+  <g class="act hf" transform="translate(796,100)"><rect width="170" height="60" rx="14"/>
+    <text class="t" x="85" y="26">5 · The check</text><text class="s" x="85" y="44">HyperFrames, in its Chrome</text></g>
+  <g class="act hf" transform="translate(992,100)"><rect width="170" height="60" rx="14"/>
+    <text class="t" x="85" y="26">6 · The video</text><text class="s" x="85" y="44">HyperFrames and ffmpeg</text></g>
+  <path class="arr" d="M182 130 H206"/><path class="arr" d="M378 130 H402"/><path class="arr" d="M574 130 H598"/>
+  <path class="arr" d="M770 130 H794"/><path class="arr" d="M966 130 H990"/>
+  <text class="note" x="391" y="186">--fit stops here</text>
+  <!-- outputs -->
+  <g class="file" transform="translate(12,210)"><rect width="170" height="56" rx="2"/>
+    <text class="t" x="85" y="24">plan.json</text><text class="s" x="85" y="42">events, texts, own pace</text></g>
+  <g class="file" transform="translate(208,210)"><rect width="170" height="56" rx="2"/>
+    <text class="t" x="85" y="24">clips/….request.json</text><text class="s" x="85" y="42">each moment's start, length</text></g>
+  <g class="file" transform="translate(404,210)"><rect width="170" height="56" rx="2"/>
+    <text class="t" x="85" y="24">sound.m4a</text><text class="s" x="85" y="42">the lines, placed and mixed</text></g>
+  <g class="file" transform="translate(600,210)"><rect width="170" height="56" rx="2"/>
+    <text class="t" x="85" y="24">clips/….mp4</text><text class="s" x="85" y="42">the clip, no sound</text></g>
+  <g class="file" transform="translate(796,210)"><rect width="170" height="56" rx="2"/>
+    <text class="t" x="85" y="24">build/</text><text class="s" x="85" y="42">the HyperFrames project</text></g>
+  <g class="file" transform="translate(992,210)"><rect width="170" height="56" rx="2"/>
+    <text class="t" x="85" y="24">out/&lt;name&gt;.mp4</text><text class="s" x="85" y="42">the video</text></g>
+  <path class="arr" d="M97 160 V208"/><path class="arr" d="M293 160 V208"/><path class="arr" d="M489 160 V208"/>
+  <path class="arr" d="M685 160 V208"/><path class="arr" d="M881 160 V208"/><path class="arr" d="M1077 160 V208"/>
+  <!-- the page -->
+  <g class="act tool" transform="translate(404,306)"><rect width="170" height="56" rx="14"/>
+    <text class="t" x="85" y="24">The page</text><text class="s" x="85" y="42">the tool</text></g>
+  <g class="file" transform="translate(600,306)"><rect width="170" height="56" rx="2"/>
+    <text class="t" x="85" y="24">out/&lt;name&gt;.html</text><text class="s" x="85" y="42">plays offline</text></g>
+  <path class="arr" d="M293 266 V334 H402"/><path class="arr" d="M489 266 V304"/><path class="arr" d="M574 334 H598"/>
+  <text class="note" x="912" y="338">with --as web, or outputs: { web: true }</text>
+</svg>
+<figcaption>Rounded boxes are stages, coloured by who runs them; square boxes are files. Each stage
+writes the file below it, which the stages after it read. All of them are made in the project's
+<code>.cache/&lt;name&gt;/</code>, out of git, but the finished files, in <code>out/</code>. The page
+draws its frames in the browser; for a plugin that records, the drawing is made first, and the page
+plays its clip.</figcaption>
+</figure>
+
+<div class="scroll">
+<table>
+  <tr><th>#</th><th>Stage</th><th>Actor</th><th>Reads (sources)</th><th>Writes (targets)</th></tr>
+  <tr><td class="n">1</td><td><b>The plan</b>: the source mended where there is one right answer and
+      checked, then the clip's moments (events), each a <code>move</code> or a <code>hold</code>, and its
+      texts, at its own pace. Nothing is drawn.</td>
+    <td><span class="chip plugin">the plugin</span>, step one</td>
+    <td>The video's file; <code>library.yaml</code>; the project's files the plugin names
+      (<code>inputs</code>), if any</td>
+    <td><code>plan.json</code></td></tr>
+  <tr><td class="n">2</td><td><b>The voices and the fit</b>: each line spoken and measured; then holds
+      shrink or last longer, moves play faster or slower, or the voice waits. <code>--fit</code> stops here
+      and prints the table.</td>
+    <td><span class="chip voice">Kokoro</span> <span class="chip tool">the tool</span></td>
+    <td>The plan; <code>voice</code>, the library's voices and <code>cast</code>, <code>speed</code>,
+      <code>fps</code>, <code>timing</code>; the voice cache</td>
+    <td><code>clips/&lt;name&gt;-landscape.request.json</code>; new lines' sound in the tool's
+      <code>.cache/tts/</code></td></tr>
+  <tr><td class="n">3</td><td><b>The sound</b>: each line placed where the fit puts it, the whole brought
+      to the <code>loudness</code>.</td>
+    <td><span class="chip tool">the tool</span> <span class="chip hf">ffmpeg</span></td>
+    <td>The voices, the fit</td>
+    <td><code>sound.m4a</code></td></tr>
+  <tr><td class="n">4</td><td><b>The drawing</b>: the clip at the lengths the request gives, a frame at a
+      time, encoded by the tool. A frame whose SVG is the one before is not drawn again:
+      <code>meet</code> has 329 frames, 202 of them drawn, in 3 s.</td>
+    <td><span class="chip plugin">the plugin</span>, step two, then <span class="chip tool">the
+      tool</span></td>
+    <td>The request, the source, the plugin's code</td>
+    <td><code>clips/&lt;name&gt;-landscape.mp4</code>, <code>.mp4.frames</code> (a hash a frame) and
+      <code>.json</code>; a drawn clip's <code>.mp4.svgs</code></td></tr>
+  <tr><td class="n">5</td><td><b>The check</b>: the clip read back, the HyperFrames project built and
+      checked. A clip not drawn to its request stops the run.</td>
+    <td><span class="chip tool">the tool</span> <span class="chip hf">HyperFrames</span></td>
+    <td>The clip, the lines</td>
+    <td><code>build/landscape/</code></td></tr>
+  <tr><td class="n">6</td><td><b>The video</b>: rendered with the lines as captions, the sound put with
+      it.</td>
+    <td><span class="chip hf">HyperFrames and ffmpeg</span></td>
+    <td>The build, <code>quality</code>, the sound</td>
+    <td><code>render.mp4</code>; <code>out/&lt;name&gt;.mp4</code></td></tr>
+  <tr><td class="n">page</td><td><b>The page</b>, with <code>--as web</code> or <code>outputs: { web: true
+      }</code>: one HTML file that plays offline, with the same sound and captions. Made after the
+      sound, it speaks and fits nothing again.</td>
+    <td><span class="chip tool">the tool</span></td>
+    <td>The sound, the request, the source; a drawing plugin's code (its frames drawn in the browser),
+      or a recording plugin's clip (played)</td>
+    <td><code>out/&lt;name&gt;.html</code></td></tr>
+</table>
+</div>
+
+<h3>The plugin</h3>
+<p>The nearest <code>package.json</code> above a video's file names its plugin, beside the settings
+every video of the project shares. The tool starts it in that folder at the first stage it makes, and
+closes it when it is done.</p>
+<pre><span class="c"># cartoons/package.json</span>
+"ai-videos": { "plugin": "./src/plugin.ts", "voice": "af_heart", "fps": 30 }</pre>
+<p>A plugin gives its <code>scene</code> (what a file's <code>use:</code> names: <code>cartoon</code>),
+its <code>stage</code> (1920 by 1080, so a cartoon is landscape), a <code>check</code> of its source, its
+<code>plan</code>, and its picture: <code>frame</code>, an SVG a moment, when it draws, or
+<code>camera</code>, a PNG a moment, when it records. Its <code>guide</code> and <code>commands</code> are
+its part of the prompt for a web chat. <a href="#project">A project of your own</a> has a whole small
+one.</p>
+
+<h3>How the voice and the picture meet</h3>
+<p>Each text of the plan is a line, and a line starts as the picture reaches its event: for a cartoon,
+its beat. This is <code>meet</code>, three beats and five lines, with the numbers of its last
+<code>make</code>:</p>
+
+<figure>
+<svg viewBox="0 0 1180 336" role="img" aria-label="The plan of meet at its own pace, the request it is drawn to, the voice and the mouths, on one time axis">
+  <!-- the plan -->
+  <text class="row" x="98" y="45">the plan,</text><text class="row" x="98" y="60">own pace</text>
+  <g class="hold" transform="translate(110,32)"><rect width="172.8" height="34"/><text class="t" x="86" y="15">waits</text><text class="s" x="86" y="29">hold 1.80 s</text></g>
+  <g class="move" transform="translate(282.8,32)"><rect width="219" height="34"/><text class="t" x="109" y="15">mo-walks-in</text><text class="s" x="109" y="29">move 2.28 s</text></g>
+  <g class="hold" transform="translate(501.8,32)"><rect width="489.6" height="34"/><text class="t" x="245" y="15">meets</text><text class="s" x="245" y="29">hold 5.10 s</text></g>
+  <!-- from the plan to the request -->
+  <path class="guide" d="M110 66 V104"/><path class="guide" d="M282.8 66 L343.6 104"/>
+  <path class="guide" d="M501.8 66 L567.6 104"/><path class="guide" d="M991.4 66 L1162.8 104"/>
+  <!-- the request -->
+  <text class="row" x="98" y="117">the request,</text><text class="row" x="98" y="132">fitted</text>
+  <g class="hold" transform="translate(110,104)"><rect width="233.6" height="34"/><text class="t" x="117" y="15">waits</text><text class="s" x="117" y="29">2.43 s</text></g>
+  <g class="move" transform="translate(343.6,104)"><rect width="224" height="34"/><text class="t" x="112" y="15">mo-walks-in</text><text class="s" x="112" y="29">2.33 s</text></g>
+  <g class="hold" transform="translate(567.6,104)"><rect width="595.2" height="34"/><text class="t" x="297" y="15">meets</text><text class="s" x="297" y="29">6.20 s</text></g>
+  <!-- from the request to the lines -->
+  <path class="guide" d="M343.6 138 V168"/><path class="guide" d="M567.6 138 V168"/>
+  <!-- the voice -->
+  <text class="row" x="98" y="189">the voice</text>
+  <g class="act voice" transform="translate(167.6,168)"><rect width="136.1" height="34" rx="6"/><text class="t" x="68" y="15">narrator</text><text class="s" x="68" y="29">1.42 s</text></g>
+  <g class="act voice" transform="translate(343.6,168)"><rect width="183.6" height="34" rx="6"/><text class="t" x="92" y="15">pip</text><text class="s" x="92" y="29">1.91 s</text></g>
+  <g class="act voice" transform="translate(567.6,168)"><rect width="190.8" height="34" rx="6"/><text class="t" x="95" y="15">mo</text><text class="s" x="95" y="29">1.99 s</text></g>
+  <g class="act voice" transform="translate(796.8,168)"><rect width="115.9" height="34" rx="6"/><text class="t" x="58" y="15">pip</text><text class="s" x="58" y="29">1.21 s</text></g>
+  <g class="act voice" transform="translate(951.1,168)"><rect width="114.8" height="34" rx="6"/><text class="t" x="57" y="15">mo</text><text class="s" x="57" y="29">1.20 s</text></g>
+  <text class="note" x="139" y="182">lead</text><text class="note" x="139" y="196">0.6</text>
+  <text class="note" x="324" y="182">gap</text><text class="note" x="324" y="196">0.4</text>
+  <text class="note" x="547" y="182">0.4</text><text class="note" x="778" y="182">0.4</text><text class="note" x="932" y="182">0.4</text>
+  <text class="note" x="1114" y="182">tail</text><text class="note" x="1114" y="196">1.0</text>
+  <!-- the mouths -->
+  <text class="row" x="98" y="249">pip's mouth</text>
+  <path class="base" d="M110 256 H1162"/>
+  <path class="mouth" d="M348.4 256v-19M351.6 256v-24.7M354.8 256v-24.4M358 256v-20.3M361.2 256v-19.8M364.4 256v-21.3M367.6 256v-23.7M370.8 256v-23.9M374 256v-24.2M377.2 256v-25.5M380.4 256v-23.9M383.6 256v-25M386.8 256v-19.8M390 256v-19.2M396.4 256v-13.3M399.6 256v-16.4M402.8 256v-26M406 256v-25.2M409.2 256v-23.7M412.4 256v-23.9M415.6 256v-22.1M418.8 256v-20.5M422 256v-18.7M425.2 256v-17.2M428.4 256v-14.8M431.6 256v-17.2M434.8 256v-22.9M438 256v-21.3M441.2 256v-22.6M444.4 256v-24.7M447.6 256v-24.4M450.8 256v-23.1M454 256v-22.4M457.2 256v-17.4M460.4 256v-11.7M463.6 256v-7.8M466.8 256v-4.7M470 256v-21.1M473.2 256v-22.1M476.4 256v-22.4M479.6 256v-22.1M482.8 256v-21.6M486 256v-19M489.2 256v-16.9M492.4 256v-16.1M495.6 256v-15.1M498.8 256v-15.3M502 256v-12M505.2 256v-12.2M508.4 256v-10.1M511.6 256v-8.1M799.6 256v-7.5M802.8 256v-16.9M806 256v-19.5M809.2 256v-21.8M812.4 256v-21.6M815.6 256v-21.8M818.8 256v-21.3M822 256v-7M825.2 256v-13.5M828.4 256v-21.3M831.6 256v-26M834.8 256v-25.7M838 256v-14.8M841.2 256v-1M844.4 256v-11.7M847.6 256v-15.9M850.8 256v-15.1M854 256v-21.6M857.2 256v-20.3M860.4 256v-19M863.6 256v-20.5M866.8 256v-17.4M870 256v-4.4M873.2 256v-6M876.4 256v-5.5M879.6 256v-19.8M882.8 256v-21.1M886 256v-19.5M889.2 256v-17.2M892.4 256v-14.8M895.6 256v-13.5M898.8 256v-12.2M902 256v-7.3M905.2 256v-7.3"/>
+  <text class="row" x="98" y="289">mo's mouth</text>
+  <path class="base" d="M110 296 H1162"/>
+  <path class="mouth" d="M572.4 296v-17.7M575.6 296v-22.1M578.8 296v-24.2M582 296v-25M585.2 296v-25M588.4 296v-24.2M591.6 296v-24.2M594.8 296v-23.9M598 296v-24.4M601.2 296v-25M604.4 296v-25.2M607.6 296v-25.7M610.8 296v-25.2M614 296v-26M617.2 296v-25.5M620.4 296v-24.7M623.6 296v-23.4M626.8 296v-22.6M630 296v-19.8M633.2 296v-15.6M636.4 296v-9.6M642.8 296v-14M646 296v-20.5M649.2 296v-21.6M652.4 296v-23.1M655.6 296v-21.8M658.8 296v-21.8M662 296v-22.6M665.2 296v-25.5M668.4 296v-25M671.6 296v-15.1M674.8 296v-13M684.4 296v-24.2M687.6 296v-17.9M690.8 296v-15.6M694 296v-14.6M697.2 296v-19.8M700.4 296v-22.9M703.6 296v-20.5M706.8 296v-20.3M710 296v-13.3M713.2 296v-11.2M716.4 296v-18.2M719.6 296v-11.7M722.8 296v-10.9M726 296v-18.2M729.2 296v-23.1M732.4 296v-23.4M735.6 296v-21.3M738.8 296v-19.2M742 296v-18.2M745.2 296v-15.1M748.4 296v-8.6M751.6 296v-2.3M956.4 296v-19.2M959.6 296v-19.2M962.8 296v-26M966 296v-25M969.2 296v-25M972.4 296v-21.6M975.6 296v-16.4M978.8 296v-16.1M982 296v-17.9M985.2 296v-14.6M988.4 296v-19M991.6 296v-22.6M994.8 296v-24.2M998 296v-22.6M1001.2 296v-15.9M1007.6 296v-17.9M1010.8 296v-17.9M1020.4 296v-13M1023.6 296v-21.3M1026.8 296v-23.1M1030 296v-22.1M1033.2 296v-22.1M1036.4 296v-21.1M1039.6 296v-20.3M1042.8 296v-20M1046 296v-17.9M1049.2 296v-15.9M1052.4 296v-12.5M1055.6 296v-4.4"/>
+  <!-- the axis -->
+  <text class="note" x="110" y="324">0 s</text><text class="note" x="302" y="324">2</text><text class="note" x="494" y="324">4</text>
+  <text class="note" x="686" y="324">6</text><text class="note" x="878" y="324">8</text><text class="note" x="1070" y="324">10</text>
+  <text class="note" x="1158" y="324">10.97</text>
+</svg>
+<figcaption>Plain boxes are holds, where nothing moves; the green one is a move. The walk is drawn to
+begin with Pip's line, and the last beat to last until the voice is done and a second more. The bars
+are the mouth tracks: how open each mouth is, frame by frame.</figcaption>
+</figure>
+
+<p>The narrator begins 0.6 s in (<code>timing.lead</code>) and speaks for 1.418 s. After a pause of
+0.4 s (<code>timing.gap</code>) the voice gets to Pip's line, at 2.418 s, so the walk begins on the next
+whole frame, at 2.433 s. The video ends 1 s (<code>timing.tail</code>) after the last line. When the
+picture at its own pace is longer than the voice between two such lines:</p>
+<ol>
+  <li>holds (still pictures) shrink, down to a single frame, or the <code>least</code> the plan gives
+    one;</li>
+  <li>then moves play faster, up to twice their speed (<code>timing.moves.fastest</code>);</li>
+  <li>and if that is still too long, the voice waits, and <code>--fit</code> says so: <code>line 2 waits
+    2.31s for "gone": moves at their fastest, holds at their least</code>.</li>
+</ol>
+<p>When it is shorter, holds last longer and moves keep their speed. With no hold to take the time, a
+move slows down, to half its speed (<code>timing.moves.slowest</code>), and then its last frame holds.
+<code>make --fit</code> prints the result before anything is drawn:</p>
+<pre>Request for meet: 10.967s, 329 frames (the clip's own pace: 9.181s)
+  waits          hold  1.80s -> 2.43s at 0.00s
+  mo-walks-in    move  2.28s -> 2.33s at 2.43s
+  meets          hold  5.10s -> 6.20s at 4.77s</pre>
+<p>A span of the request and a line look like this. The line carries its speaker and its <b>mouth
+track</b>, taken from the voice's loudness, so only that character's mouth moves. The narrator's line
+names nobody, and moves no mouth.</p>
+<pre>{ "event": "mo-walks-in", "span": "move", "natural": 2.281, "at": 2.433, "duration": 2.333, "move": 2.333 }
+{ "text": "Oh, someone is coming! Hello! Who are you?", "speaker": "pip", "cue": "mo-walks-in", "at": 2.433,
+  "waits": 0, "duration": 1.913, "mouth": { "frame": 73, "open": [0, 0.73, 0.95, 0.94, 0.78, 0.76, 0.82, …] } }</pre>
+
+<h3>The cache</h3>
+<p>Each stage's key, a hash of what it is made from, is kept in
+<code>.cache/&lt;name&gt;/stages.json</code>. A stage whose key is unchanged, its files all there, is
+taken from the cache ("From the cache" in the log). So a change redoes only the stages it goes into and
+those made from them, and a make with every stage in the cache starts no plugin. Tried on
+<code>meet</code>, an 11-second video that takes about 30 s to make from nothing, its five new
+lines spoken in 3 s of it:</p>
+<div class="scroll">
+<table>
+  <tr><th>You change</th><th>1 Plan</th><th>2 Fit</th><th>3 Sound</th><th>4 Drawing</th><th>5 Check</th><th>6 Video</th><th>It took, about</th></tr>
+  <tr><td>Nothing, or a comment in the file</td>
+    <td class="kept">cache</td><td class="kept">cache</td><td class="kept">cache</td><td class="kept">cache</td><td class="kept">cache</td><td class="kept">cache</td><td class="n">0.3 s</td></tr>
+  <tr><td><code>loudness</code> (<code>--profile quiet</code>)</td>
+    <td class="kept">cache</td><td class="kept">cache</td><td class="made">made</td><td class="kept">cache</td><td class="kept">cache</td><td class="kept">cache, new sound</td><td class="n">0.8 s</td></tr>
+  <tr><td><code>quality</code> (<code>--profile draft</code>)</td>
+    <td class="kept">cache</td><td class="kept">cache</td><td class="kept">cache</td><td class="kept">cache</td><td class="kept">cache</td><td class="made">made</td><td class="n">18 s</td></tr>
+  <tr><td><code>timing.gap</code></td>
+    <td class="kept">cache</td><td class="made">made</td><td class="made">made</td><td class="made">made</td><td class="made">made</td><td class="made">made</td><td class="n">30 s</td></tr>
+  <tr><td>A character's voice</td>
+    <td class="kept">cache</td><td class="made">made, its lines spoken</td><td class="made">made</td><td class="made">made</td><td class="made">made</td><td class="made">made</td><td class="n">35 s</td></tr>
+  <tr><td>A line</td>
+    <td class="made">made</td><td class="made">made, that line spoken</td><td class="made">made</td><td class="made">made</td><td class="made">made</td><td class="made">made</td><td class="n">34 s</td></tr>
+  <tr><td>A character's colour in the library</td>
+    <td class="made">made</td><td class="kept">cache</td><td class="kept">cache</td><td class="made">made</td><td class="made">made</td><td class="made">made</td><td class="n">26 s</td></tr>
+  <tr><td>The plugin's code, and it draws the same (tried on a smaller video)</td>
+    <td class="made">made</td><td class="kept">cache</td><td class="kept">cache</td><td class="made">made</td><td class="kept">cache</td><td class="kept">cache</td><td class="n">2 s</td></tr>
+  <tr><td>Nothing, and the page asked for (<code>--as web</code>)</td>
+    <td class="kept">cache</td><td class="kept">cache</td><td class="kept">cache</td><td class="kept" colspan="3">not needed: the page is written, 0.8 MB</td><td class="n">0.2 s</td></tr>
+</table>
+</div>
+<p>A make holds <code>.cache/&lt;name&gt;/make.lock</code>, so a second make of the same video, while
+one runs, is refused. Two different videos make at once.</p>
+
+<h2 id="story">A cartoon from a story</h2>
+<p>From a story in prose to 2D cartoons whose characters talk in their own voices. The real example is
+<code>forest1</code>: story <code>cartoons/stories/forest1.md</code>, three episodes,
+<code>cartoons/videos/forest1-1.yaml</code> to <code>-3</code>, written by a web chat, whose reply is kept
+as <code>forest1-reply.md</code>.</p>
+
+<div class="legend">
+  <span class="chip you">you</span><span class="chip ai">an AI</span>
+  <span class="chip tool">the tool</span><span class="chip plugin">the plugin</span>
+  <span class="chip voice">Kokoro</span><span class="chip hf">HyperFrames, ffmpeg</span>
+  <span class="box">a file</span>
+</div>
+<figure>
+<svg viewBox="0 0 1180 262" role="img" aria-label="The workflow of a cartoon from a story">
+  <!-- back to the chat -->
+  <path class="arr" d="M758 48 V24 H422 V46"/>
+  <text class="note" x="590" y="16">refused: the message for the chat</text>
+  <!-- row 1 -->
+  <g class="file" transform="translate(12,48)"><rect width="148" height="56" rx="2"/>
+    <text class="t" x="74" y="24">1 · The story</text><text class="s" x="74" y="42">stories/&lt;name&gt;.md</text></g>
+  <g class="act tool" transform="translate(180,48)"><rect width="148" height="56" rx="14"/>
+    <text class="t" x="74" y="24">2 · The prompt</text><text class="s" x="74" y="42">story, or prompt</text></g>
+  <g class="act ai" transform="translate(348,48)"><rect width="148" height="56" rx="14"/>
+    <text class="t" x="74" y="24">3 · The episodes</text><text class="s" x="74" y="42">a web chat, or the skill</text></g>
+  <g class="file" transform="translate(516,48)"><rect width="148" height="56" rx="2"/>
+    <text class="t" x="74" y="24">The reply</text><text class="s" x="74" y="42">a YAML block an episode</text></g>
+  <g class="act tool" transform="translate(684,48)"><rect width="148" height="56" rx="14"/>
+    <text class="t" x="74" y="24">4 · Import</text><text class="s" x="74" y="42">checked as make checks</text></g>
+  <g class="file" transform="translate(852,48)"><rect width="148" height="56" rx="2"/>
+    <text class="t" x="74" y="24">&lt;episode&gt;.yaml</text><text class="s" x="74" y="42">videos/, in names</text></g>
+  <g class="act tool" transform="translate(1020,48)"><rect width="148" height="56" rx="14"/>
+    <text class="t" x="74" y="24">5 · make</text><text class="s" x="74" y="42">six stages, a minute or two</text></g>
+  <path class="arr" d="M160 76 H178"/><path class="arr" d="M328 76 H346"/><path class="arr" d="M496 76 H514"/>
+  <path class="arr" d="M664 76 H682"/><path class="arr" d="M832 76 H850"/><path class="arr" d="M1000 76 H1018"/>
+  <text class="note" x="422" y="122">in and out by the clipboard</text>
+  <!-- row 2 -->
+  <g class="file" transform="translate(516,190)"><rect width="148" height="56" rx="2"/>
+    <text class="t" x="74" y="24">library.yaml</text><text class="s" x="74" y="42">read by every make</text></g>
+  <path class="arr" d="M720 104 L640 188"/>
+  <text class="note" x="750" y="144">adds a new character,</text>
+  <text class="note" x="750" y="158">its voice, a background</text>
+  <path class="arr" d="M516 218 H254 V106"/>
+  <text class="note" x="385" y="210">read whole, into the prompt</text>
+  <g class="file" transform="translate(1020,190)"><rect width="148" height="56" rx="2"/>
+    <text class="t" x="74" y="24">The cartoon</text><text class="s" x="74" y="42">out/&lt;episode&gt;.mp4</text></g>
+  <g class="act you" transform="translate(852,190)"><rect width="148" height="56" rx="14"/>
+    <text class="t" x="74" y="24">6 · Watch</text><text class="s" x="74" y="42">every episode</text></g>
+  <g class="act you" transform="translate(684,190)"><rect width="148" height="56" rx="14"/>
+    <text class="t" x="74" y="24">8 · Keep</text><text class="s" x="74" y="42">commit the sources</text></g>
+  <path class="arr" d="M1094 104 V188"/>
+  <path class="arr" d="M1020 218 H1002"/><path class="arr" d="M852 218 H834"/>
+  <path class="arr" d="M926 190 V106"/>
+  <text class="note" x="968" y="152">7 · changes</text>
+</svg>
+<figcaption><code>story</code> runs 2, 4 and 5 itself, and waits while you take 3 through your web chat.
+With the <code>episode</code> skill, Claude Code answers the same prompt, imports, makes, and looks at
+frames before you do. The same commands can be typed one by one.</figcaption>
+</figure>
+
+<div class="scroll">
+<table>
+  <tr><th>#</th><th>Step</th><th>Actor</th><th>Reads (sources)</th><th>Writes (targets)</th></tr>
+  <tr><td class="n">0</td><td><b>Once per machine</b>: Node 24 or newer, ffmpeg on the PATH, <code>npm ci</code> in
+      the tool, then <code>setup</code>.</td>
+    <td><span class="chip you">you</span></td>
+    <td>The internet, this once only</td>
+    <td>The voice model in the tool's <code>.cache/models/</code> (about 325 MB); HyperFrames' Chrome in
+      <code>~/.cache/hyperframes/</code></td></tr>
+  <tr><td class="n">1</td><td><b>The story</b>, in prose: a book's chapter, or your own. Its name is in
+      lowercase letters, digits and dashes: it names the episodes.</td>
+    <td><span class="chip you">you</span></td><td>—</td>
+    <td><code>stories/&lt;name&gt;.md</code> <span class="tag">git</span></td></tr>
+  <tr><td class="n">2</td><td><b>The prompt</b>: the task, the plugin's guide and commands, the library as
+      written, the voices and the story; for <code>the-shy-visitor</code>, about 23,000 characters.
+      <code>story</code> puts it on the clipboard; <code>prompt</code> prints it.</td>
+    <td><span class="chip tool">the tool</span> <span class="chip plugin">the plugin</span></td>
+    <td>The story, <code>library.yaml</code></td>
+    <td>The clipboard</td></tr>
+  <tr><td class="n">3</td><td><b>The episodes</b>: you paste the prompt into a new chat, copy its whole
+      answer, and press Enter. It is a YAML block an episode: its name, what the library lacks (a new
+      character with its voice, a background), and its video file in names.</td>
+    <td><span class="chip you">you</span> <span class="chip ai">a web chat</span>; or <span class="chip
+      ai">Claude Code</span>, with the <code>episode</code> skill</td>
+    <td>The prompt alone</td>
+    <td>The clipboard (the skill: <code>stories/&lt;name&gt;.reply.md</code>)</td></tr>
+  <tr><td class="n">4</td><td><b>Import, which is also the check</b>: the answer added to the reply's file,
+      and each episode checked as <code>make</code> checks it (the plugin mends, checks and plans it
+      against the library; each line has a voice). Nothing already there is written over.</td>
+    <td><span class="chip tool">the tool</span> <span class="chip plugin">the plugin</span></td>
+    <td>The clipboard, <code>library.yaml</code></td>
+    <td><code>stories/&lt;name&gt;.reply.md</code>; <code>videos/&lt;episode&gt;.yaml</code>
+      <span class="tag">git</span>; what the reply adds, at the end of its section in
+      <code>library.yaml</code> <span class="tag">git</span></td></tr>
+  <tr><td class="n">4a</td><td><b>Cut off</b> (no "All episodes written."): type <code>continue</code> in
+      the chat. <b>Refused</b>: paste the tool's message into the chat. Then copy its answer, press
+      Enter: 4 again. <code>done</code> typed in place of Enter goes on with what there is.</td>
+    <td><span class="chip you">you</span> <span class="chip ai">a web chat</span></td>
+    <td>The message, on the clipboard</td><td>The clipboard</td></tr>
+  <tr><td class="n">5</td><td><b>Make</b> each episode taken: the pages first, if the settings ask for
+      them, each opened in the browser, then the videos. <code>forest1-1</code>, 54 s long, took 1 min
+      22 s to make, its lines spoken before.</td>
+    <td><span class="chip tool">the tool</span> <span class="chip plugin">the plugin</span>
+      <span class="chip voice">Kokoro</span> <span class="chip hf">HyperFrames, ffmpeg</span></td>
+    <td><code>videos/&lt;episode&gt;.yaml</code>, <code>library.yaml</code>, <code>package.json</code></td>
+    <td><code>.cache/&lt;episode&gt;/</code>, <code>out/&lt;episode&gt;.mp4</code>
+      <span class="tag">made</span></td></tr>
+  <tr><td class="n">6</td><td><b>Watch.</b> Is everyone seen, apart from the others, above the caption? Do
+      talkers face each other? With the skill, Claude Code has looked at a frame of each beat that changes
+      the picture.</td>
+    <td><span class="chip you">you</span></td><td>The mp4</td><td>—</td></tr>
+  <tr><td class="n">7</td><td><b>Change and go round again</b>: places, moves, poses, lines in the
+      episode's file; a look or a voice in the library. Then <code>make</code>: it redoes only the stages
+      the change goes into.</td>
+    <td><span class="chip you">you</span>, or <span class="chip ai">an AI session</span> when you ask</td>
+    <td>—</td><td><code>videos/&lt;episode&gt;.yaml</code>, <code>library.yaml</code></td></tr>
+  <tr><td class="n">8</td><td><b>Keep</b>: commit the story, the episodes and the library. Copy the mp4 out
+      of <code>out/</code>: it is not in git, and <code>make</code> writes over it.</td>
+    <td><span class="chip you">you</span></td><td>—</td><td>git</td></tr>
+</table>
+</div>
+
+<h3>Three ways through it</h3>
+<div class="scroll">
+<table>
+  <tr><th></th><th><code>story</code></th><th><code>prompt</code>, <code>import</code>, <code>make</code></th><th>The <code>episode</code> skill</th></tr>
+  <tr><td>Who writes the episodes</td><td>Your web chat</td><td>Your web chat</td><td>Claude Code, in this repo</td></tr>
+  <tr><td>How the text travels</td><td>The clipboard; you press Enter</td><td>Files you paste from and into</td><td>Files it writes itself</td></tr>
+  <tr><td>Where it runs</td><td>Windows only</td><td>Anywhere</td><td>Anywhere</td></tr>
+  <tr><td>What it leaves</td><td colspan="3"><code>stories/&lt;name&gt;.reply.md</code>, the episodes, the
+    library's new entries, the videos: the same in all three</td></tr>
+  <tr><td>Stopped half-way</td><td>Type it again: it goes on from the reply's file. To begin anew, delete
+    that file</td><td>Type the command again: what is written is kept</td><td>Ask it to go on</td></tr>
+</table>
+</div>
+
+<h3>Commands</h3>
+<p>From <code>cartoons/</code>. Its <code>npm run -s video --</code> is the tool's command line, found at
+<code>..</code>, the repo's root. Cartoons needs no install of its own to make videos.</p>
+<pre><span class="c"># 0. once per machine, in the repo's root</span>
+npm ci
+npm run -s video -- setup
+cd cartoons
+
+<span class="c"># 2 to 5 in one command, on Windows</span>
+npm run -s video -- story stories/my-story.md
+
+<span class="c"># the same by hand. On Windows type the first in Git Bash: PowerShell's &gt; can change quotes and accents</span>
+npm run -s video -- prompt stories/my-story.md &gt; prompt.md     <span class="c"># paste it into the chat</span>
+npm run -s video -- import stories/my-story.reply.md           <span class="c"># the chat's reply, pasted into this file</span>
+npm run -s video -- make videos/my-story-1.yaml
+
+<span class="c"># or ask Claude Code, opened in the repo's root: "write an episode from stories/my-story.md"</span></pre>
+
+<h3>What the reply looks like</h3>
+<pre><span class="c"># stories/forest1-reply.md: one block of three (shortened). After the last one: All episodes written.</span>
+episode: forest1-1           <span class="c"># its name: videos/forest1-1.yaml</span>
+library:                     <span class="c"># only what library.yaml lacks</span>
+  characters:
+    mole:
+      voice: am_liam         <span class="c"># a voice nobody has yet, from the prompt's list</span>
+      shoulder: [95, -160]
+      parts: …
+use: cartoon                 <span class="c"># from here on, the video file as import writes it</span>
+scenes: …</pre>
+
+<h2 id="hand">A cartoon by hand</h2>
+<p>The same file, written by you. The real example is <code>meet</code>:
+<code>cartoons/videos/meet.yaml</code>, with two characters and the narrator, three voices.</p>
+
+<figure>
+<svg viewBox="0 0 1180 240" role="img" aria-label="The workflow of a cartoon written by hand">
+  <!-- row 1 -->
+  <g class="act you" transform="translate(12,30)"><rect width="148" height="56" rx="14"/>
+    <text class="t" x="74" y="24">1 · Write the file</text><text class="s" x="74" y="42">scenes, beats, lines</text></g>
+  <g class="file" transform="translate(180,30)"><rect width="148" height="56" rx="2"/>
+    <text class="t" x="74" y="24">&lt;name&gt;.yaml</text><text class="s" x="74" y="42">videos/, in git</text></g>
+  <g class="act tool" transform="translate(348,30)"><rect width="148" height="56" rx="14"/>
+    <text class="t" x="74" y="24">2 · make --fit</text><text class="s" x="74" y="42">plan, voices, fit: seconds</text></g>
+  <g class="act tool" transform="translate(516,30)"><rect width="148" height="56" rx="14"/>
+    <text class="t" x="74" y="24">3 · make</text><text class="s" x="74" y="42">six stages: meet, 30 s</text></g>
+  <g class="file" transform="translate(684,30)"><rect width="148" height="56" rx="2"/>
+    <text class="t" x="74" y="24">The video</text><text class="s" x="74" y="42">out/&lt;name&gt;.mp4</text></g>
+  <g class="act you" transform="translate(852,30)"><rect width="148" height="56" rx="14"/>
+    <text class="t" x="74" y="24">4 · Watch</text><text class="s" x="74" y="42">changes: back to 1</text></g>
+  <g class="act you" transform="translate(1020,30)"><rect width="148" height="56" rx="14"/>
+    <text class="t" x="74" y="24">5 · Keep</text><text class="s" x="74" y="42">commit &lt;name&gt;.yaml</text></g>
+  <path class="arr" d="M160 58 H178"/><path class="arr" d="M328 58 H346"/><path class="arr" d="M496 58 H514"/>
+  <path class="arr" d="M664 58 H682"/><path class="arr" d="M832 58 H850"/><path class="arr" d="M1000 58 H1018"/>
+  <!-- row 2 -->
+  <g class="file" transform="translate(180,160)"><rect width="148" height="56" rx="2"/>
+    <text class="t" x="74" y="24">library.yaml</text><text class="s" x="74" y="42">who, where, whose voice</text></g>
+  <g class="file" transform="translate(348,160)"><rect width="148" height="56" rx="2"/>
+    <text class="t" x="74" y="24">package.json</text><text class="s" x="74" y="42">plugin, voice, fps</text></g>
+  <g class="file" transform="translate(516,160)"><rect width="148" height="56" rx="2"/>
+    <text class="t" x="74" y="24">Voice cache</text><text class="s" x="74" y="42">the tool's .cache/tts/</text></g>
+  <g class="file" transform="translate(684,160)"><rect width="148" height="56" rx="2"/>
+    <text class="t" x="74" y="24">.cache/&lt;name&gt;/</text><text class="s" x="74" y="42">the stages, out of git</text></g>
+  <path class="arr" d="M290 160 L380 88"/>
+  <path class="arr" d="M422 160 V88"/>
+  <path class="arr" d="M460 86 L555 158"/>
+  <path class="arr" d="M590 86 V158"/>
+  <path class="arr" d="M630 86 L725 158"/>
+  <text class="note" x="338" y="234">read by every make</text>
+</svg>
+<figcaption>A character or a background is drawn once, in the library; the video's file only names
+it.</figcaption>
+</figure>
+
+<div class="scroll">
+<table>
+  <tr><th>#</th><th>Step</th><th>Actor</th><th>Reads (sources)</th><th>Writes (targets)</th></tr>
+  <tr><td class="n">1</td><td><b>Write the file</b>: <code>use: cartoon</code>, then its scenes. Each has a
+      background, the marks its characters stand on, and its beats: a move or a pose, and the lines said
+      meanwhile.</td>
+    <td><span class="chip you">you</span></td>
+    <td>The names in <code>library.yaml</code></td>
+    <td><code>videos/&lt;name&gt;.yaml</code> <span class="tag">git</span></td></tr>
+  <tr><td class="n">2</td><td><b>Try the timing</b>: <code>make --fit</code>, a few seconds. It checks the
+      file, says what the plugin mended, speaks the lines, and prints each beat's length at its own pace
+      and in the video. A move much shorter in the video is rushed.</td>
+    <td><span class="chip tool">the tool</span> <span class="chip plugin">the plugin</span>
+      <span class="chip voice">Kokoro</span></td>
+    <td>The file, <code>library.yaml</code>, <code>package.json</code></td>
+    <td><code>.cache/&lt;name&gt;/plan.json</code>, <code>clips/…request.json</code>
+      <span class="tag">made</span>; the voice cache</td></tr>
+  <tr><td class="n">3</td><td><b>Make</b>: the six stages above. The drawing is the cartoons' plugin: for
+      each frame its moment (which beat, how far through its move, whose mouth is open and how wide), that
+      moment's picture as an SVG.</td>
+    <td><span class="chip tool">the tool</span> <span class="chip plugin">the plugin</span>
+      <span class="chip voice">Kokoro</span> <span class="chip hf">HyperFrames, ffmpeg</span></td>
+    <td>As 2, and the plugin's code</td>
+    <td><code>.cache/&lt;name&gt;/</code>; <code>out/&lt;name&gt;.mp4</code>, or <code>.html</code> with
+      <code>--as web</code> <span class="tag">made</span></td></tr>
+  <tr><td class="n">4</td><td><b>Watch.</b> Words, moves or timing: back to 1. A look or a voice: the
+      library. How a walk or a wave is drawn: the plugin's code.</td>
+    <td><span class="chip you">you</span></td><td>The mp4</td><td>—</td></tr>
+  <tr><td class="n">5</td><td><b>Keep</b>: commit the file, and <code>library.yaml</code> if it changed.
+      Copy the mp4 out of <code>out/</code>.</td>
+    <td><span class="chip you">you</span></td><td>—</td><td>git</td></tr>
+</table>
+</div>
+
+<h3>Commands</h3>
+<pre><span class="c"># in cartoons/</span>
+npm run -s video -- make videos/meet.yaml --fit              <span class="c"># 2. the timing, in seconds</span>
+npm run -s video -- make videos/meet.yaml                    <span class="c"># 3. out/meet.mp4</span>
+npm run -s video -- make videos/meet.yaml --as web           <span class="c"># its page instead, out/meet.html</span>
+npm run -s video -- make videos/meet.yaml --profile quiet    <span class="c"># at -20 LUFS, out/meet-quiet.mp4</span>
+npm run -s video -- make videos/meet.yaml --profile draft    <span class="c"># a faster render, out/meet-draft.mp4</span>
+
+<span class="c"># the same from the repo's root</span>
+npm run -s video -- make cartoons/videos/meet.yaml
+
+<span class="c"># hear the voices, and list every name: samples in the tool's out/voice-samples/</span>
+npm run -s video -- voices "Any sentence."
+
+<span class="c"># one frame of a beat, at a time the fit printed</span>
+ffmpeg -v error -y -ss 6 -i out/meet.mp4 -frames:v 1 meets.png</pre>
+
+<h3>What the files look like</h3>
+<pre><span class="c"># videos/meet.yaml, the whole scenario, in names</span>
+use: cartoon
+scenes:
+  - background: meadow
+    places: { pip: middle, mo: off-right }   <span class="c"># marks: off-left, left, middle, right, off-right</span>
+    faces: { mo: left }                      <span class="c"># the others face right</span>
+    beats:
+      - name: waits
+        says:
+          - { who: narrator, text: "Pip is waiting in the meadow." }
+      - name: mo-walks-in
+        walk: { who: mo, to: right }         <span class="c"># or turn, jump; pose, background, takes</span>
+        says:
+          - { who: pip, text: "Oh, someone is coming! Hello! Who are you?" }
+      - name: meets
+        says:
+          - { who: mo, text: "I am Mo. I live behind the hill." }
+          - { who: pip, text: "I am Pip. Shall we play?" }
+          - { who: mo, text: "Yes, let's play!" }</pre>
+<pre><span class="c"># library.yaml: what the cartoons name, each drawn once (shortened)</span>
+characters:
+  pip:
+    voice: am_puck               <span class="c"># Pip's voice, the tool's; the rest is the plugin's</span>
+    shoulder: [100, -203]
+    parts:
+      body:
+        - { shape: rect, at: [0, -170], size: [220, 340], round: 110, fill: "#f2a33a" }
+      mouth:
+        - { shape: ellipse, at: [0, -170], size: [70, 18], fill: "#5b2333" }
+backgrounds:
+  meadow: { fill: "#bfe3ff" }</pre>
+<p><b>Names only link the stages</b>: <code>use: cartoon</code> names the plugin's scene;
+<code>background: meadow</code> and <code>pip</code> are the library's. A beat's <code>who: pip</code> is
+the plan's speaker <code>pip</code>, the library gives pip's voice, and the request names pip with the
+line's mouth track, so only pip's mouth moves. A cartoon's events are its beats' names. What a beat may
+have is in <a href="../cartoons/README.md">cartoons/README.md</a>, "By hand".</p>
+
+<h2 id="project">A project of your own</h2>
+<p>A folder anywhere on the disk, with a plugin that draws something else. This one is whole: a dot that
+slides along a line. It needs no install to make videos; <code>npm install</code> with the tool as a
+<code>"file:"</code> package is only for a type check or tests.</p>
+<div class="scroll">
+<table>
+  <tr><th>#</th><th>Step</th><th>Actor</th><th>Writes</th></tr>
+  <tr><td class="n">1</td><td><b>The settings</b>: where the plugin is, and what every video shares. The
+      script is how you reach the tool from here.</td>
+    <td><span class="chip you">you</span></td><td><code>package.json</code></td></tr>
+  <tr><td class="n">2</td><td><b>The plugin</b>: one TypeScript module, in a folder of its own (its files are
+      in the cache's keys). Node runs it as it is written. A plugin that draws is pure: no Node APIs, no
+      clock, no randomness, so the same code draws the web page.</td>
+    <td><span class="chip you">you</span>, or <span class="chip ai">an AI session</span></td>
+    <td><code>plugin/plugin.ts</code></td></tr>
+  <tr><td class="n">3</td><td><b>A video</b>: <code>use:</code> is the plugin's scene, the settings are the
+      tool's, and every other key is the plugin's own.</td>
+    <td><span class="chip you">you</span></td><td><code>videos/&lt;name&gt;.yaml</code></td></tr>
+  <tr><td class="n">4</td><td><b>Make</b>, as above: the voices, the fit, the sound, the captions, the check
+      and the page come with the tool.</td>
+    <td><span class="chip tool">the tool</span> <span class="chip plugin">the plugin</span>
+      <span class="chip voice">Kokoro</span> <span class="chip hf">HyperFrames, ffmpeg</span></td>
+    <td><code>.cache/&lt;name&gt;/</code>, <code>out/&lt;name&gt;.mp4</code></td></tr>
+</table>
+</div>
+<pre><span class="c"># package.json</span>
+{
+  "name": "dots",
+  "private": true,
+  "type": "module",
+  "ai-videos": { "plugin": "./plugin/plugin.ts", "voice": "af_heart" },
+  "scripts": { "video": "npm --prefix &lt;path to ai-videos&gt; run -s video --" }
+}</pre>
+<pre><span class="c">// plugin/plugin.ts</span>
+import type { Plugin } from "ai-videos/plugin";
+
+interface Dot { steps: { name: string; to: number; say: string }[] }
+
+export default {
+  scene: "dot",
+  stage: { width: 1920, height: 1080 },
+  commands: {},
+  guide: "A dot slides along a line. steps: is a list, each with name, to (0 left, 1 right) and say.",
+  check: (raw) =&gt; raw as Dot, <span class="c">// a real one refuses what is wrong, with every reason</span>
+  plan: ({ steps }) =&gt; ({
+    duration: steps.length, <span class="c">// a second a step, at its own pace</span>
+    events: steps.map(({ name }, i) =&gt; ({ name, at: i, span: "move" })),
+    texts: steps.map(({ say }, i) =&gt; ({ text: say, from: i, to: i + 1 })),
+  }),
+  frame({ steps }, { span, progress }, { width, height }) {
+    const from = span === 0 ? 0 : steps[span - 1]!.to;
+    const x = 200 + 1520 * (from + (steps[span]!.to - from) * progress);
+    return `&lt;svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 1920 1080"&gt;
+      &lt;rect width="1920" height="1080" fill="#bfe3ff"/&gt;&lt;circle cx="${x}" cy="440" r="90" fill="#f2a33a"/&gt;&lt;/svg&gt;`;
+  },
+} satisfies Plugin&lt;Dot&gt;;</pre>
+<pre><span class="c"># videos/there-and-back.yaml</span>
+use: dot
+steps:
+  - { name: there, to: 1, say: "The dot goes to the right." }
+  - { name: back, to: 0.5, say: "And it comes back to the middle, a little slower." }
+
+<span class="c"># npm run -s video -- make videos/there-and-back.yaml --fit</span>
+Request for there-and-back: 5.667s, 170 frames (the clip's own pace: 2s)
+  there          move  1.00s -> 2.40s at 0.00s, moving 2.00s then holding
+  back           move  1.00s -> 3.27s at 2.40s, moving 2.00s then holding</pre>
+<p>Both steps are moves, with no hold to take the time: each slows down to half its speed, 2 s, then
+waits for the voice. The whole video took 23 s to make.</p>
+
+<h3>What a plugin gives</h3>
+<div class="scroll">
+<table>
+  <tr><th>Name</th><th>What it is</th><th>When it is asked</th></tr>
+  <tr><td><code>scene</code>, <code>stage</code></td><td>The name a file's <code>use:</code> gives, and the
+    picture's size: the video is landscape or portrait by its shape</td><td>When it starts</td></tr>
+  <tr><td><code>guide</code>, <code>commands</code></td><td>Its part of the prompt: the format, and what a
+    beat may do, each described once, with an example and a schema</td><td><code>prompt</code>,
+    <code>story</code></td></tr>
+  <tr><td><code>check</code></td><td>The source made into the plugin's own type, or refused with every
+    reason and the file that holds it</td><td>Stages 1 and 4, <code>import</code>, the page</td></tr>
+  <tr><td><code>repair</code> <span class="tag">optional</span></td><td>What it mends first, only where there
+    is one right answer. The file stays as written</td><td>Before every <code>check</code></td></tr>
+  <tr><td><code>plan</code></td><td>The events and texts at its own pace; optional limits for single events
+    (<code>slowest</code>, <code>fastest</code>, <code>least</code>)</td><td>Stages 1 and 4,
+    <code>import</code></td></tr>
+  <tr><td><code>inputs</code> <span class="tag">optional</span></td><td>The project's other files it is made
+    from: a change to one makes the plan and the drawing again</td><td>Stage 1</td></tr>
+  <tr><td><code>frame</code> or <code>camera</code></td><td>A moment's picture: an SVG it draws, or a PNG it
+    records. One of the two</td><td>Stage 4, a frame at a time; <code>frame</code> in the page too</td></tr>
+</table>
+</div>
+
+<h2 id="compare">Side by side</h2>
+<h3>A plugin that draws, a plugin that records</h3>
+<div class="scroll">
+<table>
+  <tr><th></th><th>Draws (<code>frame</code>)</th><th>Records (<code>camera</code>)</th></tr>
+  <tr><td>For example</td><td>cartoons: <code>cartoons/src/plugin.ts</code></td>
+    <td>RayCraft's <code>media/plugin/plugin.ts</code>: a tutorial played by its editor in headless
+      Chrome</td></tr>
+  <tr><td>A frame</td><td>An SVG, turned into pixels by resvg. It has no fonts: a picture holds no text</td>
+    <td>A PNG, encoded as it comes</td></tr>
+  <tr><td>What its code may do</td><td>Nothing but compute: no Node APIs, no clock, no randomness</td>
+    <td>Anything Node can; it must still give the same pictures in every run</td></tr>
+  <tr><td>Its files, beyond its own folder</td><td>The video's file and the library, usually</td>
+    <td>Whatever it records: <code>inputs</code> names them</td></tr>
+  <tr><td>The web page</td><td>Draws each frame in the browser, with the plugin's code</td>
+    <td>Plays the recorded clip, which is drawn first</td></tr>
+  <tr><td>Two runs compared</td><td><code>.mp4.frames</code>, a hash of each frame's pixels, and
+    <code>.mp4.svgs</code>, of each SVG</td><td><code>.mp4.frames</code>, a hash of each PNG</td></tr>
+</table>
+</div>
+<h3>The video, the web page</h3>
+<div class="scroll">
+<table>
+  <tr><th></th><th>The video</th><th>The web page</th></tr>
+  <tr><td>Asked for by</td><td><code>make</code>, unless <code>outputs: { video: false }</code>;
+    <code>--as video</code></td><td><code>outputs: { web: true }</code>; <code>--as web</code></td></tr>
+  <tr><td>The file</td><td><code>out/&lt;name&gt;.mp4</code></td><td><code>out/&lt;name&gt;.html</code>,
+    everything inside it, no URL</td></tr>
+  <tr><td>The picture</td><td>The clip, rendered by HyperFrames</td><td>The same frames, drawn as they
+    play</td></tr>
+  <tr><td>The sound and the captions</td><td colspan="2">The same: one track, <code>sound.m4a</code>, and one
+    style</td></tr>
+  <tr><td>Stages after the sound</td><td>The drawing, the check, the video</td><td>The page (a recording's
+    drawing before it)</td></tr>
+  <tr><td>Needs HyperFrames' Chrome</td><td>Yes</td><td>No</td></tr>
+  <tr><td><code>meet</code>, 11 s, its sound made</td><td>About half a minute, 0.6 MB</td>
+    <td>0.2 s, 0.8 MB</td></tr>
+</table>
+</div>
+
+<h2 id="data">Data sources and targets</h2>
+<p>Sources are in git and edited. Targets are made, kept out of git and never edited by hand:
+<code>make</code> writes them again.</p>
+<div class="cards">
+  <div class="card">
+    <h3>A project (<code>cartoons/</code>)</h3>
+    <h4>Sources, in git</h4>
+    <ul>
+      <li><code>stories/&lt;name&gt;.md</code>: the story</li>
+      <li><code>videos/&lt;name&gt;.yaml</code>: the video, its scenario in names</li>
+      <li><code>library.yaml</code>: the characters, each with its voice, and the backgrounds</li>
+      <li><code>package.json</code>: the plugin, the narrator's voice, the fps</li>
+      <li><code>src/</code>: the plugin (<code>plugin.ts</code>, <code>guide.ts</code>,
+        <code>repair.ts</code>, <code>scenario.ts</code>, <code>timeline.ts</code>,
+        <code>picture.ts</code>)</li>
+    </ul>
+    <h4>Targets, made in the project</h4>
+    <ul>
+      <li><code>.cache/&lt;name&gt;/</code>: <code>plan.json</code>,
+        <code>clips/&lt;name&gt;-landscape.request.json</code>, <code>.mp4</code>,
+        <code>.mp4.frames</code>, <code>.mp4.svgs</code>, <code>.json</code>, <code>sound.m4a</code>,
+        <code>build/</code>, <code>render.mp4</code>, <code>stages.json</code></li>
+      <li><code>out/&lt;name&gt;.mp4</code>, the page <code>out/&lt;name&gt;.html</code></li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>The tool</h3>
+    <h4>Sources, in git</h4>
+    <ul>
+      <li><code>src/</code>: the pipeline (<code>cli.ts</code> runs the stages); the plugin's host
+        (<code>host.ts</code>); what every plugin shares (<code>moments.ts</code>,
+        <code>frames.ts</code>); the plugin's types (<code>plugin.ts</code>)</li>
+      <li><code>scenes/clip/</code>: the scene that plays a clip with captions</li>
+      <li><code>.claude/skills/episode/</code>: the skill</li>
+      <li><code>AGENTS.md</code>: the full reference</li>
+    </ul>
+    <h4>Comes with <code>npm ci</code></h4>
+    <ul>
+      <li>The voices (kokoro-js), HyperFrames, resvg, esbuild, GSAP, the captions' font</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>Kept on the machine</h3>
+    <h4>In the tool, for every project</h4>
+    <ul>
+      <li><code>.cache/models/</code>: the voice model, about 325 MB, fetched by <code>setup</code></li>
+      <li><code>.cache/tts/</code>: each line's sound, keyed by its text, voice and speed</li>
+      <li><code>.cache/setup.json</code>: where HyperFrames' Chrome is</li>
+      <li><code>out/voice-samples/</code>: what <code>voices</code> writes</li>
+    </ul>
+    <h4>Outside it</h4>
+    <ul>
+      <li><code>~/.cache/hyperframes/</code>: HyperFrames' Chrome</li>
+      <li>Node 24 or newer, ffmpeg and ffprobe: yours</li>
+    </ul>
+  </div>
+</div>
+<p><code>make</code> writes only in the project's <code>.cache/&lt;name&gt;/</code> and
+<code>out/</code>, but for the voice cache, which stays in the tool.</p>
+
+<h2 id="settings">Settings in short</h2>
+<p>A setting in the video's file wins over the project's (<code>package.json</code>'s
+<code>"ai-videos"</code>), which wins over the tool's default; a profile, picked when making, goes over
+them all. A table such as <code>timing</code> merges key by key; a list is replaced whole.</p>
+<div class="scroll">
+<table>
+  <tr><th>Where</th><th>Setting</th><th>What it does</th></tr>
+  <tr><td>A line</td>
+    <td>A beat's <code>says</code>, each <code>{ who, text }</code></td>
+    <td>Said in the beat's time, in the order written, and the caption. <code>who</code> is a character,
+      whose voice it is and whose mouth moves, or <code>narrator</code>, the video's voice.</td></tr>
+  <tr><td>A cartoon's beat</td>
+    <td><code>takes</code></td><td>Its length in seconds at its own pace; the tool stretches it when its
+      lines take longer to say.</td></tr>
+  <tr><td>A character, in <code>library.yaml</code></td>
+    <td><code>voice</code></td><td>Its voice, in every video: every character has one.</td></tr>
+  <tr><td rowspan="9">The whole video, or every video in <code>package.json</code>'s
+      <code>"ai-videos"</code></td>
+    <td><code>voice</code></td><td>The video's voice, the narrator's (<code>af_heart</code>).</td></tr>
+  <tr><td><code>cast</code></td><td>A speaker's voice over the library's, in a video's file only: a
+      voice has one home, the library.</td></tr>
+  <tr><td><code>speed</code></td><td>How fast the voice speaks, 0.5 to 2 (1).</td></tr>
+  <tr><td><code>loudness</code></td><td>In LUFS, -30 to -9 (-14, the level most platforms play at; lower
+      is quieter).</td></tr>
+  <tr><td><code>fps</code></td><td>24, 25, 30 or 60 (30).</td></tr>
+  <tr><td><code>timing.lead</code>, <code>gap</code>, <code>tail</code></td><td>Silence before the first
+      line (0.6 s), between lines (0.4 s), and time after the last (1.0 s).</td></tr>
+  <tr><td><code>timing.moves.fastest</code>, <code>slowest</code></td><td>How far a move may be sped up and
+      slowed down to fit (2 and 0.5 times its own speed).</td></tr>
+  <tr><td><code>quality</code></td><td><code>high</code> (the default) or <code>draft</code>, the
+      render.</td></tr>
+  <tr><td><code>outputs</code></td><td><code>{ video: true, web: false }</code> (the default): what
+      <code>make</code> writes, the video and its web page.</td></tr>
+  <tr><td><code>package.json</code> only</td>
+    <td><code>plugin</code></td><td>The plugin's module, as a path from that folder.</td></tr>
+  <tr><td rowspan="3">When making</td>
+    <td><code>--profile</code></td><td><code>youtube</code> (-14 LUFS), <code>quiet</code> (-20) or
+      <code>draft</code> (the fast render) over the rest; the files take its name,
+      <code>out/&lt;name&gt;-quiet.mp4</code>.</td></tr>
+  <tr><td><code>--as</code></td><td><code>video</code> or <code>web</code>: that one, whatever
+      <code>outputs</code> says.</td></tr>
+  <tr><td><code>--fit</code></td><td>Stops after the fit, and prints it.</td></tr>
+</table>
+</div>
+
+<h3>Good to know</h3>
+<ul>
+  <li>A new word moves everything after it, so the clip is drawn again to fit; a line not changed is not
+    spoken again.</li>
+  <li>The library is every video's: a character's new look or voice reaches each video at its next
+    <code>make</code>, not before.</li>
+  <li>The plugin's folder is in the keys: a change to its code draws every video again at its next
+    <code>make</code>, with no video's file changed.</li>
+  <li>Two runs draw the same frames: compare their
+    <code>.cache/&lt;name&gt;/clips/&lt;name&gt;-landscape.mp4.frames</code> files to find where two runs
+    part. Line by line, it is frame by frame.</li>
+  <li>HyperFrames' "sparse keyframes" and <code>timeline_track_too_dense</code> warnings are normal: a
+    clip with long holds has few keyframes, and each caption is a timed element.</li>
+  <li><code>AI_VIDEOS_CACHE</code>, an environment variable, moves the tool's <code>.cache/</code> to
+    another folder, with the voice model and the voices in it.</li>
+</ul>
+
+<h2 id="stops">When it stops</h2>
+<p>An error names the file that holds the mistake and the place in it; nothing is fetched and nothing is
+guessed. The paths are left out here.</p>
+<div class="scroll">
+<table>
+  <tr><th>It says</th><th>What to do</th></tr>
+  <tr><td><code>Missing, and not fetched: the voice model … HyperFrames' Chrome …</code></td>
+    <td>Run <code>npm run -s video -- setup</code> once, with the network on.</td></tr>
+  <tr><td><code>no background is named "meadw": the library has backgrounds: meadow, morning, …</code></td>
+    <td>Correct the name, or draw a new one in <code>library.yaml</code>.</td></tr>
+  <tr><td><code>"pip" and "mo" both stand at middle: give each a mark of its own</code></td>
+    <td>Change <code>places</code>, or a walk's <code>to</code>.</td></tr>
+  <tr><td><code>characters are drawn in library.yaml, once for every video: a video names them</code></td>
+    <td>Move the drawing to <code>library.yaml</code>.</td></tr>
+  <tr><td><code>a setting is not valid: Too big: expected number to be &lt;=-9 → at loudness</code></td>
+    <td>Give the setting a value it takes (<a href="#settings">Settings</a>).</td></tr>
+  <tr><td><code>says use: cartoons, and the plugin … draws cartoon</code></td>
+    <td>Write the plugin's scene after <code>use:</code>.</td></tr>
+  <tr><td><code>has no line to say: its plan gives no text</code></td>
+    <td>Give the video at least one line.</td></tr>
+  <tr><td><code>meet is being made by process …: wait for it to end, or stop it</code></td>
+    <td>Wait. If no make is running, delete the <code>make.lock</code> it names.</td></tr>
+  <tr><td><code>check found errors (above)</code></td>
+    <td>Read HyperFrames' errors above it. Warnings do not stop a make.</td></tr>
+</table>
+</div>
+<p>Two messages are not stops. <code>line 2 waits 2.31s for "gone"</code>: the picture is too long for the
+words, so shorten the move or say more. <code>Mended by the plugin</code>: the video has the mended form
+("beat goes-back-turn turns it round first") and your file stays as written.</p>
+<p>In <code>story</code>, Enter pressed too soon, or an answer copied without its blocks, is said, and it
+waits again. An episode whose file is there already, with other text, is kept: delete the file to take the
+new one.</p>
+
+<h2 id="more">Where the details are</h2>
+<div class="scroll">
+<table>
+  <tr><th>File</th><th>What it says</th></tr>
+  <tr><td><a href="../README.md">README.md</a></td>
+    <td>Setting up, the first video, every command</td></tr>
+  <tr><td><a href="../cartoons/README.md">cartoons/README.md</a></td>
+    <td>Making a cartoon, from a story or by hand: what a beat may have, what to edit to change
+      something</td></tr>
+  <tr><td><a href="../cartoons/CLAUDE.md">cartoons/CLAUDE.md</a></td>
+    <td>The scenario's format, the library, how a cartoon is drawn, the voices, what the plugin
+      mends</td></tr>
+  <tr><td><a href="../AGENTS.md">AGENTS.md</a></td>
+    <td>The full reference: the contract with a project (plugins, a video file, settings in layers, the
+      cache), <code>make</code>, the fit, the request, the web page, <code>prompt</code>,
+      <code>import</code> and <code>story</code></td></tr>
+  <tr><td><a href="../src/plugin.ts">src/plugin.ts</a></td>
+    <td>A plugin's types, each with what it is for</td></tr>
+  <tr><td><a href="../.claude/skills/episode/SKILL.md">.claude/skills/episode/SKILL.md</a></td>
+    <td>How an AI session turns a story into episodes</td></tr>
+  <tr><td><a href="plans/done/">docs/plans/done/</a></td>
+    <td>How the tool came to be, in finished plans</td></tr>
+</table>
+</div>
+
+<footer>Opened from the disk, in a browser; paths are from the repo's root, or from the project's folder.
+The times and numbers are from makes on 2026-11-24, on the desktop PC the tool is developed on.</footer>
+</main>
+</body>
+</html>
