@@ -20,7 +20,15 @@
   errors after the voices are not taken.
 - The old step 1's draft (commit e955433, branch `concurrent-actions`)
   is not built on: today's plan format stays as on `main`.
-- **Next: step 1, compile the smallest script.**
+- **Step 1 done 2026-11-24.** Checked:
+  `npm test` and `npm run typecheck` here and in `cartoons/`; RayCraft's
+  media typecheck and `test:libs`, no file of RayCraft changed;
+  `make --fit` of the ten gives requests equal to the baseline, byte for
+  byte; `make cartoons/videos/hello-script.yaml --fit` writes
+  `.cache/hello-script/compiled.json`; `check`, on a broken copy of it
+  with an empty `AI_VIDEOS_CACHE`, refuses an unknown action, a wrong
+  value and an unknown name, each with its line and a hint.
+- **Next: step 2, play it.**
 
 
 ## Goal

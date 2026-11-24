@@ -17,7 +17,7 @@ export const MARKS = { "off-left": -250, left: 480, middle: 960, right: 1440, "o
 export type Mark = keyof typeof MARKS;
 
 /** The marks on the stage: one character each. Off it, any number wait out of sight. */
-const onStage = (it: Mark) => it !== "off-left" && it !== "off-right";
+export const onStage = (it: Mark) => it !== "off-left" && it !== "off-right";
 
 /** The ground's y, px: every mark is on it, above the caption. */
 export const GROUND = 880;
@@ -29,7 +29,7 @@ export const GROUND = 880;
  */
 export const PACE = { walk: 320, turn: 0.5, hop: 0.6, word: 0.3, hold: 1 } as const;
 
-const name = z.string().regex(/^[a-z][a-z0-9-]*$/, "use lowercase letters, digits and dashes, a letter first");
+export const name = z.string().regex(/^[a-z][a-z0-9-]*$/, "use lowercase letters, digits and dashes, a letter first");
 const point = z.tuple([z.number(), z.number()]);
 const size = z.tuple([z.number().positive(), z.number().positive()]);
 const colour = z.string().regex(/^#[0-9a-f]{6}$/i, "a colour is #rrggbb");
@@ -72,7 +72,14 @@ const Library = z
       }
     }
   });
-type Library = z.infer<typeof Library>;
+export type Library = z.infer<typeof Library>;
+
+/** The library as the plugin reads it: an error names its file, with every reason. */
+export function readLibrary(library: LibraryFile | undefined): Library {
+  const read = Library.safeParse(library?.raw ?? {});
+  if (!read.success) throw new Error(`${library?.file} is not a library:\n${z.prettifyError(read.error)}`);
+  return read.data;
+}
 
 const Line = z.strictObject({ who: name, text: z.string().trim().min(1) });
 
@@ -253,9 +260,7 @@ const scenarioIn = (library: Library) =>
  * (`file`), with every reason.
  */
 export function checkScenario(raw: unknown, file: string, library: LibraryFile | undefined): Scenario {
-  const read = Library.safeParse(library?.raw ?? {});
-  if (!read.success) throw new Error(`${library?.file} is not a library:\n${z.prettifyError(read.error)}`);
-  const result = scenarioIn(read.data).safeParse(raw);
+  const result = scenarioIn(readLibrary(library)).safeParse(raw);
   if (!result.success) throw new Error(`${file} is not a scenario:\n${z.prettifyError(result.error)}`);
   return result.data;
 }

@@ -99,3 +99,50 @@ A character the library lacks is drawn under library: characters:, in the librar
 
 A background the library lacks is drawn under library: backgrounds:, when no background of the library is the story's place. Its fill is the sky's colour; its shapes are drawn over it in the order written, in the stage's points: x from 0 at the left to 1920, y from 0 at the top to 1080. Keep the ground from y 820 down to the bottom, as in the library's: the characters stand at y 880. Draw it plainly, in big shapes that stay clear of the characters: the sun, hills, a house, a river along the ground.
 `;
+
+/**
+ * The plugin's part of the guide to a cartoon written as a script (the tool's AGENTS.md, "A
+ * script"): what such a cartoon can show, a whole file as an example, and a scene's own keys. The
+ * tool adds how a script's lines are written, and the actions (script.ts, ACTIONS). The example
+ * compiles against library.yaml (script.test.ts). It teaches what a script has so far, and grows
+ * with it.
+ */
+export const SCRIPT_GUIDE = `
+A cartoon is drawn on one stage, 1920 by 1080 pixels, with characters made of flat rectangles and ellipses. They stand on the ground in front of a background; they walk, blink and talk. A cartoon written as a script shows no more than that yet: what the story has besides, the narrator says in a few words, or it is left out. Never invent a key, a mark or an action: the tool refuses it.
+
+### An episode
+
+\`\`\`yaml
+use: cartoon
+scenes:
+  - background: morning                    # a background of the library
+    places: { pip: off-left, mo: right }   # the mark each character of the scene stands on as it begins
+    faces: { mo: left }                    # who faces left as the scene begins; the others face right
+    script: |
+      narrator say: It is morning in the meadow.
+      pip walk to=middle
+      pip say: Hello, Mo!
+      mo say: Hello, Pip. You are early today.
+  - background: night                      # a new scene: everyone placed anew
+    places: { pip: middle }
+    script: |
+      narrator say: By night, Pip is alone.
+      pip say: Good night, meadow.
+      pip walk to=off-right
+\`\`\`
+
+### Scenes and marks
+
+- A scene is one stretch of the story in one place. It names the background it begins with, the mark each of its characters stands on as it begins (places), who faces left (faces), and its script. A new scene begins anew: everyone on its own mark, facing as the scene says.
+- The marks are where characters stand: left, middle and right on the stage, one character each, and off-left and off-right out of sight, where any number wait. Two characters never stand on one mark of the stage, as a scene begins or after a walk.
+- Everyone faces right, as drawn, unless the scene's faces says left. A walk turns nobody: a character walks the way it faces, so who walks left begins the scene facing left. Two who talk face each other.
+- A character the scene does not place may speak too: it is a voice off stage.
+
+### Lines
+
+- A line is a sentence or two, said by one character or by the narrator. A longer speech is several lines, one under another.
+- Keep a line to about 45 characters: a longer one is a caption of two rows, and its upper row covers the characters' feet.
+- What a character says in the story, it says: write reported speech as the words themselves.
+- The narrator says what nobody says and the picture cannot show: where we are, who somebody is, what somebody feels, time passing.
+- Write for the ear: plain words, no brackets, no stage directions. The line is also the caption.
+`;

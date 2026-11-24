@@ -8,6 +8,7 @@ import path from "node:path";
 import { z } from "zod";
 import type { Described, Job, Reply } from "./host.ts";
 import type { EventLimits, Library, Plan } from "./plugin.ts";
+import type { Checked, WrittenScript } from "./scenario.ts";
 import { FORMATS, slug, type FormatName } from "./script.ts";
 
 /** The host runs in the project's folder, not the tool's, so every file is named in full. */
@@ -133,6 +134,12 @@ export interface PluginHost extends Described {
   run(job: Job & { call: Call }, log: (msg: string) => void): Promise<{ repaired: string[]; limits: Record<string, EventLimits>; inputs: string[] }>;
   /** Mends, checks and plans a video's source, writing nothing: what was mended, and the plan. Throws why it was refused. */
   check(file: string, source: unknown, library: Library | undefined): Promise<{ repaired: string[]; plan: Plan }>;
+  /**
+   * Checks a video written as a script (scenario.ts), writing nothing: the scenario worked out, or
+   * every mistake in it. `speakers` are the names with a voice. Throws when the plugin takes no
+   * script, or its library does not read.
+   */
+  checkScript(file: string, script: WrittenScript, library: Library | undefined, speakers: string[]): Promise<Checked>;
   /** Ends its process. */
   close(): void;
 }
@@ -145,8 +152,9 @@ export async function startPlugin(plugin: PluginFile, log: (msg: string) => void
     host.close();
     throw new Error(`the plugin did not start: ${"failed" in ready ? ready.failed : "error" in ready ? ready.error : "it said something else"}`);
   }
-  const { scene, commands } = ready.ready;
-  log(`Plugin: ${scene}, ${plugin.file} (its commands: ${Object.keys(commands).join(", ") || "none"})`);
+  const { scene, commands, script } = ready.ready;
+  const actions = script ? `; a script's actions: ${Object.keys(script.actions).join(", ") || "none"}` : "";
+  log(`Plugin: ${scene}, ${plugin.file} (its commands: ${Object.keys(commands).join(", ") || "none"}${actions})`);
   const shown = (file: string) => path.relative(plugin.dir, file);
   return {
     ...ready.ready,
@@ -154,6 +162,11 @@ export async function startPlugin(plugin: PluginFile, log: (msg: string) => void
       const reply = await host.send({ call: { step: "check" }, file, source, ...(library ? { library } : {}) });
       if (!("done" in reply)) throw new Error("error" in reply ? reply.error : "it did not answer");
       return { repaired: reply.done.repaired ?? [], plan: reply.done.plan! };
+    },
+    async checkScript(file, script, library, speakers) {
+      const reply = await host.send({ call: { step: "script", script, speakers }, file, source: undefined, ...(library ? { library } : {}) });
+      if (!("done" in reply)) throw new Error("error" in reply ? reply.error : "it did not answer");
+      return reply.done.script!;
     },
     async run(job, log) {
       const { call } = job;

@@ -13,15 +13,24 @@ import type { requestDocument } from "./fit.ts";
 import { encoder, moments, writeClipData, type ClipText } from "./frames.ts";
 import type { Call } from "./make.ts";
 import type { DrawingPlugin, EventLimits as Limits, Library, Plan, Plugin, RecordingPlugin, Schema } from "./plugin.ts";
+import { SAY, checkScenario, readScript, type Checked, type WrittenScript } from "./scenario.ts";
 import { EventLimits, FORMATS, slug } from "./script.ts";
+
+/** The check of a video written as a script (scenario.ts): its scenes as written, and the names with a voice. */
+export interface ScriptCall {
+  step: "script";
+  script: WrittenScript;
+  speakers: string[];
+}
 
 /**
  * A call for the plugin, with the video file and its source (the file, parsed, without the tool's
- * keys), and the project's library, when it has one: one of make's (make.ts), or import's check,
- * which mends, checks and plans the source and writes nothing.
+ * keys), and the project's library, when it has one: one of make's (make.ts), import's check,
+ * which mends, checks and plans the source and writes nothing, or a script's check, which writes
+ * nothing either.
  */
 export interface Job {
-  call: Call | { step: "check" };
+  call: Call | { step: "check" } | ScriptCall;
   file: string;
   source: unknown;
   library?: Library;
@@ -36,6 +45,8 @@ export interface Described {
   guide: string;
   /** Each command's description and example (its schema stays in the plugin's process). */
   commands: Record<string, { description: string; example: unknown }>;
+  /** Its part of a script, when its videos may be written as one: its guide, and each action's description and example. */
+  script?: { guide: string; actions: Record<string, { description: string; example: string }> };
 }
 
 /** What a job did: the drawing's frames, what was mended, and for the plan its limits and the files it is made from. */
@@ -47,6 +58,8 @@ export interface Done {
   plan?: Plan;
   limits?: Record<string, Limits>;
   inputs?: string[];
+  /** A script's check: the scenario worked out, or every mistake in it. */
+  script?: Checked;
 }
 
 /** What the host says: once that it is ready (or why not), then once for each job. */
@@ -84,6 +97,20 @@ const PluginShape = z
     inputs: fn.optional(),
     frame: fn.optional(),
     camera: fn.optional(),
+    script: z
+      .object({
+        actions: z.record(
+          slug,
+          z.object({
+            description: z.string().min(1),
+            example: z.string().min(1),
+            values: z.custom<Schema>(isSchema, "give a schema with ~standard.validate and ~standard.jsonSchema (as zod 4's have)"),
+          }),
+        ),
+        guide: z.string().trim().min(1, "give the plugin's part of the guide to a script (plugin.ts, script)"),
+        check: fn,
+      })
+      .optional(),
   })
   .refine((p) => (p.frame === undefined) !== (p.camera === undefined), {
     message: "give frame (a moment drawn as an SVG) or camera (a moment recorded as a PNG), one of the two",
@@ -145,6 +172,16 @@ export async function loadPlugin(file: string): Promise<Plugin> {
     } catch (e) {
       throw new Error(`${file}: the command "${name}" has a schema that does not write itself as JSON Schema: ${message(e)}`);
     }
+  }
+  // An action's example is one line of a script that names it, its values what the action takes.
+  for (const [name, { example, values }] of Object.entries(plugin.script?.actions ?? {})) {
+    if (name === SAY) throw new Error(`${file}: "${SAY}" is the tool's own action: give the plugin's another name`);
+    const read = readScript(example);
+    const [line] = read.lines;
+    let why = read.issues[0] && `  ${read.issues[0].message}`;
+    if (!why && (read.lines.length !== 1 || line!.action !== name || line!.text !== undefined)) why = `  it is one line of a script that names ${name}, with no words after a colon`;
+    why ??= issuesText((await values["~standard"].validate(line!.values)).issues ?? []);
+    if (why) throw new Error(`${file}: the action "${name}" fails its own example, ${example}:\n${why}`);
   }
   return plugin;
 }
@@ -267,6 +304,10 @@ export const svgHash = (svg: string) => createHash("md5").update(svg).digest("he
  */
 export async function runJob(plugin: Plugin, pluginFile: string, job: Job): Promise<Done> {
   const { call, file } = job;
+  if (call.step === "script") {
+    if (!plugin.script) throw new Error(`${file} is written as a script, and the ${plugin.scene} plugin takes none: it has no script (AGENTS.md, "A script")`);
+    return { script: await checkScenario(plugin.script, call.script, job.library, call.speakers) };
+  }
   if (call.step !== "check") fills(plugin, call.format, call.step === "draw" ? call : FORMATS[call.format]);
   const repaired = plugin.repair?.(job.source, job.library) ?? { source: job.source, did: [] };
   const source = plugin.check(repaired.source, file, job.library);
@@ -316,7 +357,11 @@ if (import.meta.main) {
       );
     });
     const commands = Object.fromEntries(Object.entries(plugin.commands).map(([name, { description, example }]) => [name, { description, example }]));
-    await send({ ready: { scene: plugin.scene, stage: plugin.stage, picture: plugin.camera ? "recorded" : "drawn", guide: plugin.guide, commands } });
+    const script = plugin.script && {
+      guide: plugin.script.guide,
+      actions: Object.fromEntries(Object.entries(plugin.script.actions).map(([name, { description, example }]) => [name, { description, example }])),
+    };
+    await send({ ready: { scene: plugin.scene, stage: plugin.stage, picture: plugin.camera ? "recorded" : "drawn", guide: plugin.guide, commands, ...(script ? { script } : {}) } });
   } catch (e) {
     await send({ failed: message(e) });
     process.exit(1);

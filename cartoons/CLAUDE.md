@@ -15,7 +15,8 @@ the tool's projects, and a session for it is opened in the repo's root.
 - `videos/<name>.yaml`: one cartoon, written by hand or by an AI session:
   `use: cartoon` on top, then its scenario, in names: the library's
   characters and backgrounds, places as marks, each line written once, in
-  its beat (the tool's `AGENTS.md`, "A video file").
+  its beat (the tool's `AGENTS.md`, "A video file"). `hello-script.yaml`
+  is written as a script instead (The script, below).
 - `.cache/<name>/`: what the tool makes on the way (the plan, the request,
   the clip, the build); `out/<name>.mp4`: the finished video,
   and `out/<name>.html`, its web page.
@@ -45,6 +46,9 @@ the tool's projects, and a session for it is opened in the repo's root.
     a beat may do (`COMMANDS`), each with a description and an example.
     Checked, a scenario is read as the picture reads it: the library's
     drawings, each mark a point, each beat's length known.
+  - `script.ts`: a cartoon written as a script (The script, below): the
+    actions a line may name (`ACTIONS`), and the script's check, which
+    works each scene and action out in plain numbers.
   - `timeline.ts`: beats and lines as the clip's events and texts, at the
     scenario's own pace (the plan).
   - `picture.ts`: one moment's picture, as an SVG: who stands where, facing
@@ -75,6 +79,10 @@ give the tool the paths from there: `make cartoons/videos/<name>.yaml`):
   refused comes out as a message to paste back into the chat; add the
   chat's answer to the reply's file, and import again (the tool's
   `AGENTS.md`, "import").
+- `npm run -s video -- check videos/<name>.yaml`: checks the file, with
+  nothing spoken or written, and no voice model needed: a script's
+  mistakes each with its line and a hint (The script, below), a cartoon
+  in beats as the plugin checks it.
 - `npm run -s video -- make videos/<name>.yaml --fit`: checks the file
   (the plugin's checks against the library, and a voice for each
   speaker), says what the plugin mended in it (Mending, below), speaks the
@@ -264,6 +272,50 @@ scenes:
     character's line is said in its voice and moves its mouth (Voices,
     above).
 
+## The script
+
+A cartoon may be written as a script: each scene has a `script:`, a
+block of lines, in place of `beats:`. `videos/hello-script.yaml` is
+`hello` written so. The plan `docs/plans/compiled-scenario.md` builds
+this step by step, and the seven cartoons stay in beats until its end.
+So far a script is checked and compiled (`make <file> --fit` writes
+`.cache/<name>/compiled.json`): no video is made from it yet. The tool's
+`AGENTS.md`, "A script", has the line's form, the check and the
+compiled scenario.
+
+```yaml
+use: cartoon
+
+scenes:
+  - background: meadow
+    places: { pip: off-left }
+    script: |
+      pip walk to=middle
+      narrator say: This is Pip. Pip walks into the meadow.
+      narrator say: And here, Pip stops.
+```
+
+- **A scene** has its `background`, `places` and `faces`, as in beats,
+  and its `script`. Every other key is refused.
+- **A line** is the tool's: who, the action, its values, and after a
+  colon the words. `say` is the tool's action; `narrator` is nobody on
+  the stage. The lines happen in the order written: a walk above a line
+  is over before the line is said.
+- **`walk to=<mark>`** is the plugin's only action so far (`ACTIONS`,
+  `script.ts`): the character goes from where the lines above left it to
+  the mark, at `PACE.walk`. It is refused for a character the scene does
+  not place, to the mark it stands on, or to a mark of the stage where
+  another stands. A walk turns nobody, and nothing turns a character yet.
+- **The check** (`checkScript`) gives each scene as it begins, every
+  character it places at its mark's point, facing 1 (right, as drawn) or
+  -1, and each walk as its two points with its own length. A mistake
+  comes with its line and a hint: the library's names, and the nearest.
+  Nothing is mended in a script.
+- **The guide** to a cartoon as a script is `SCRIPT_GUIDE` in `guide.ts`,
+  the plugin's part; the tool adds how a line is written, and the
+  actions. It teaches what a script has so far. `GUIDE`, the prompt's,
+  still teaches beats.
+
 ## The library
 
 `library.yaml`, beside `package.json`, draws what the cartoons name, each
@@ -342,8 +394,10 @@ characters on one mark, is refused, with the place and the reason.
   scenario: the tool asks for it again whenever the file, the library or a
   file in `src/` has changed.
 - **Of the tool's sources, only the module its `package.json` exports
-  is imported**: `ai-videos/plugin`, for the plugin's types, and in the
-  tests for `moments`. It needs none of the tool's packages.
+  is imported**: `ai-videos/plugin`, for the plugin's types, for a
+  script's words and hints (`NARRATOR`, `nearest`), and in the tests for
+  `moments` and for a script's reading, check and compiling. It needs
+  none of the tool's packages.
 - **The plugin's code is pure**: no Node API (the tool reads the files),
   and a frame's picture is a function of the scenario, the library and the moment alone:
   no clock, no random number, no font of the machine (a picture holds no

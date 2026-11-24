@@ -14,6 +14,7 @@ import { loadPlugin, runJob } from "./host.ts";
 import { pluginOf, startPlugin } from "./make.ts";
 import type { RecordingPlugin } from "./plugin.ts";
 import { run } from "./render.ts";
+import type { ScriptLine } from "./scenario.ts";
 
 const scratch = await mkdtemp(path.join(os.tmpdir(), "ai-videos-host-"));
 // A host that failed may still be ending in its folder: Windows keeps the folder until it has.
@@ -338,6 +339,88 @@ test("a recording plugin's camera is closed when a shot fails; its limits and in
   await assert.rejects(planOf({ inputs: [path.join(root, "colours.txt")] }), /the plugin's inputs\) are not valid:[\s\S]*not an absolute one/);
   // Import's check is refused by the same limits.
   await assert.rejects(runJob(plugin, file, { call: { step: "check" }, file: video, source: { ...SOURCE, limits: { slid: {} } } }), /no event of the plan has that name/);
+});
+
+/**
+ * The square with a script (plugin.ts, script): one action, `slide`, to a side; its check finds a
+ * scene's colour in the library and works the slide out in pixels.
+ */
+const SCRIPTED = PLUGIN.replace(
+  "export default {",
+  `const side = {
+  "~standard": {
+    version: 1,
+    vendor: "test",
+    validate: (v) => (v.to === "left" || v.to === "right" ? { value: v } : { issues: [{ message: "it is left or right", path: ["to"] }] }),
+    jsonSchema: { input: () => ({}), output: () => ({}) },
+  },
+};
+export default {
+  script: {
+    actions: { slide: { description: "The square slides to a side.", example: "sq slide to=right", values: side } },
+    guide: "A square slides to a side, and speaks.",
+    check(scenes, library) {
+      const colour = (scene) => library?.raw?.colours?.[scene.setting.colour];
+      const issues = scenes.filter((scene) => !colour(scene)).map((scene) => ({ line: scene.line, message: "no colour is named " + scene.setting.colour, hint: "name a colour of the library" }));
+      if (issues.length) return { issues };
+      return { scenes: scenes.map((scene) => ({ setting: { colour: colour(scene) }, actions: scene.actions.map((a) => ({ values: { x: a.values.to === "right" ? 120 : 20 }, length: 1.5 })) })) };
+    },
+  },`,
+);
+
+test("a plugin with a script: its guide and actions come with it, and a script's check runs in its host", async () => {
+  const root = await project("scripted", () => SCRIPTED);
+  const video = path.join(root, "videos", "sq.yaml");
+  const said: string[] = [];
+  const host = await startPlugin((await pluginOf(video))!, (m) => said.push(m));
+  try {
+    assert.match(said[0]!, /^Plugin: square, .*plugin\.mjs \(its commands: colour; a script's actions: slide\)$/);
+    assert.deepEqual(host.script, { guide: "A square slides to a side, and speaks.", actions: { slide: { description: "The square slides to a side.", example: "sq slide to=right" } } });
+    const library = { file: path.join(root, "library.yaml"), raw: { colours: { red: "#d04040" } } };
+    const lines: ScriptLine[] = [
+      { line: 5, who: "sq", action: "slide", values: { to: "right" } },
+      { line: 6, who: "sq", action: "say", values: {}, text: "Here I am." },
+    ];
+    const script = { scenes: [{ line: 3, setting: { colour: "red" }, lines }], issues: [] };
+    assert.deepEqual(await host.checkScript(video, script, library, ["sq"]), {
+      scenes: [
+        {
+          line: 3,
+          setting: { colour: "#d04040" },
+          lines: [
+            { line: 5, who: "sq", action: "slide", values: { x: 120 }, length: 1.5 },
+            { line: 6, who: "sq", action: "say", text: "Here I am." },
+          ],
+        },
+      ],
+    });
+    // A mistake of the tool's finding (the action's values) and one of the plugin's (a name), each with its line.
+    const wrong = { scenes: [{ line: 3, setting: { colour: "red" }, lines: [{ ...lines[0]!, values: { to: "up" } }] }], issues: [] };
+    assert.deepEqual(await host.checkScript(video, wrong, library, ["sq"]), { issues: [{ line: 5, message: "slide, to=up: it is left or right", hint: "as in: sq slide to=right" }] });
+    const blue = { scenes: [{ line: 3, setting: { colour: "blue" }, lines }], issues: [] };
+    assert.deepEqual(await host.checkScript(video, blue, library, ["sq"]), { issues: [{ line: 3, message: "no colour is named blue", hint: "name a colour of the library" }] });
+    // Nothing is written by it.
+    assert.equal(existsSync(path.join(root, ".cache")), false);
+  } finally {
+    host.close();
+  }
+});
+
+test("a plugin with no script takes none; an action's example is a line that names it and passes its schema", async () => {
+  const plain = await project("unscripted");
+  const video = path.join(plain, "videos", "sq.yaml");
+  const host = await startPlugin((await pluginOf(video))!, quiet);
+  try {
+    assert.equal(host.script, undefined);
+    await assert.rejects(host.checkScript(video, { scenes: [], issues: [] }, undefined, []), /sq\.yaml is written as a script, and the square plugin takes none: it has no script/);
+  } finally {
+    host.close();
+  }
+  const broken = async (name: string, edit: (text: string) => string) => loadPlugin(path.join(await project(name, () => edit(SCRIPTED)), "src", "plugin.mjs"));
+  await assert.rejects(broken("example-value", (t) => t.replace("sq slide to=right", "sq slide to=up")), /the action "slide" fails its own example, sq slide to=up:\n {2}to: it is left or right/);
+  await assert.rejects(broken("example-action", (t) => t.replace("sq slide to=right", "sq say: Hello!")), /the action "slide" fails its own example, sq say: Hello!:\n {2}it is one line of a script that names slide/);
+  await assert.rejects(broken("example-line", (t) => t.replace("sq slide to=right", "sq slide right")), /fails its own example, sq slide right:\n {2}"right" is not a value/);
+  await assert.rejects(broken("say", (t) => t.replace("actions: { slide:", "actions: { say:")), /plugin\.mjs: "say" is the tool's own action: give the plugin's another name/);
 });
 
 test("a plugin draws or records, one of the two", async () => {

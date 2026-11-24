@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile, copyFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { loadClip, madeFiles, readClipData, type SceneClip } from "./clip.ts";
+import { compile, compiledText, type Voiced } from "./compile.ts";
 import { compose } from "./compose.ts";
 import { drawnTo, fitClip, requestDocument, requestText, type Fit } from "./fit.ts";
 import { Call, pluginOf, startPlugin, type PluginHost } from "./make.ts";
@@ -12,14 +13,15 @@ import { lock } from "./lock.ts";
 import { promptFor } from "./prompt.ts";
 import { writePage, pageVideo } from "./page.ts";
 import { hyperframes, muxSound, renderProject } from "./render.ts";
-import { FORMATS, type EventLimitsScript, type FormatName, type LoadedVideo } from "./script.ts";
+import { NARRATOR, issuesText, type CheckedScene, type Issue } from "./scenario.ts";
+import { FORMATS, voiceOf, type EventLimitsScript, type FormatName, type LoadedVideo } from "./script.ts";
 import { cachePaths, cacheRoot, ready, setup } from "./setup.ts";
 import { writeSound } from "./sound.ts";
 import { codeKey, folderKey, inputsKey, keyOf, stagesIn } from "./stages.ts";
 import { runStory, windowsIO } from "./story.ts";
 import { buildTimeline, narrate } from "./timeline.ts";
-import { KokoroProvider, readWav, speak } from "./tts.ts";
-import { PROFILES, formatOf, readProject, readVideoFile, scriptOf, type VideoFile } from "./video-file.ts";
+import { KokoroProvider, kokoroVoices, readWav, speak } from "./tts.ts";
+import { LIBRARY_FILE, PROFILES, formatOf, readProject, readVideoFile, scriptOf, type VideoFile } from "./video-file.ts";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 // npm runs scripts in the package folder; paths on the command line are relative to where it was typed.
@@ -45,7 +47,11 @@ Commands
                     turn on: its page (off by default), and the drawing, check and the video, each
                     stage from the cache when what it is made from is unchanged. Writes the
                     project's .cache/<name>/ and out/<name>.mp4 (and .html). A second make
-                    of the video, while one runs, is refused (AGENTS.md, "The cache")
+                    of the video, while one runs, is refused (AGENTS.md, "The cache"). A video
+                    written as a script is compiled, with --fit: .cache/<name>/compiled.json
+  check <file.yaml> A video file checked, with nothing spoken or written: a script's mistakes each
+                    with its line and a hint; any other file as its plugin checks it. Needs
+                    nothing from setup (AGENTS.md, "A script")
   story <story.md>  A story to its videos, by a web chat and the clipboard: the prompt copied, each
                     answer copied back into <name>.reply.md and imported, what was refused copied
                     for the chat, then each episode made. Goes on from the reply's file when it is
@@ -87,6 +93,122 @@ async function writeRequest(video: LoadedVideo, files: { request: string; data: 
 const MODES = ["video", "web"] as const;
 type Mode = (typeof MODES)[number];
 
+const count = (n: number, what: string) => `${n} ${what}${n === 1 ? "" : "s"}`;
+
+/** The scene a video file says its plugin draws is the one the plugin draws. */
+function sameScene(video: VideoFile, host: PluginHost): void {
+  if (host.scene !== video.use) throw new Error(`${video.file} says use: ${video.use}, and the plugin ${video.plugin.file} draws ${host.scene}`);
+}
+
+/**
+ * The check of a video written as a script (AGENTS.md, "A script"), the only pass that refuses:
+ * the tool's and the plugin's (scenario.ts), then each speaker's voice one the tool speaks in, known
+ * with no model on the disk. It gives the scenario worked out, or throws every mistake with its
+ * line and a hint.
+ */
+async function checkScript(video: VideoFile, host: PluginHost): Promise<CheckedScene[]> {
+  sameScene(video, host);
+  const refused = (issues: Issue[]) => new Error(issuesText(path.relative(CALLER, video.file), video.text, issues));
+  const checked = await host.checkScript(video.file, video.script!, video.library, Object.keys(video.settings.cast));
+  if ("issues" in checked) throw refused(checked.issues);
+  const voices = new Set((await kokoroVoices()).map((voice) => voice.name));
+  const unspoken = checked.scenes.flatMap((scene) => scene.lines).flatMap((line): Issue[] => {
+    if (!("text" in line)) return [];
+    const voice = voiceOf(video.settings, line.who === NARRATOR ? {} : { speaker: line.who });
+    if (voices.has(voice)) return [];
+    const home = line.who === NARRATOR ? `the ${NARRATOR}'s voice is the video's, voice:` : `${line.who}'s voice is in ${LIBRARY_FILE}, or the file's cast:`;
+    return [{ line: line.line, message: `${line.who} speaks in ${voice}, which is not one of the tool's voices`, hint: `${home} give one that npm run -s video -- voices lists` }];
+  });
+  if (unspoken.length > 0) throw refused(unspoken);
+  return checked.scenes;
+}
+
+/**
+ * `check <file>`: a video file checked, with nothing spoken and nothing written. A script by the
+ * check above; any other file as import checks an episode: mended, checked and planned by its
+ * plugin, every speaker with a voice the tool speaks in.
+ */
+async function checkFile(file: string): Promise<void> {
+  const video = await readVideoFile(file);
+  const shown = path.relative(CALLER, video.file);
+  const host = await startPlugin(video.plugin, () => {});
+  try {
+    if (video.script) {
+      const lines = (await checkScript(video, host)).flatMap((scene) => scene.lines);
+      const said = lines.filter((line) => "text" in line).length;
+      return log(`Checked: ${shown}, a script of ${count(video.script.scenes.length, "scene")} and ${count(lines.length, "line")}, ${said} of them said.`);
+    }
+    sameScene(video, host);
+    const { repaired, plan } = await host.check(video.file, video.source, video.library);
+    const script = scriptOf(video, plan, plan.limits);
+    const voices = new Set((await kokoroVoices()).map((voice) => voice.name));
+    const said = script.scenes.flatMap((scene) => scene.narration);
+    const unspoken = said.find((line) => !voices.has(voiceOf(script, line)));
+    if (unspoken) throw new Error(`${video.file}: "${unspoken.text}" is said in ${voiceOf(script, unspoken)}, which is not one of the tool's voices`);
+    log(`Checked: ${shown}, ${count(plan.events.length, "event")} and ${count(said.length, "line")}.`);
+    if (repaired.length > 0) log(`Mended by the plugin, in what it draws (the file is as written):\n${repaired.map((r) => `  - ${r}`).join("\n")}`);
+  } finally {
+    host.close();
+  }
+}
+
+/**
+ * `make <file> --fit` of a video written as a script (AGENTS.md, "A script"): the check, the voices
+ * measured, and the compiled scenario, .cache/<name>/compiled.json, its timing shown. Nothing is
+ * made from it yet, so it is refused without --fit.
+ */
+async function makeScript(video: VideoFile, opts: { fit: boolean }): Promise<string[]> {
+  if (!opts.fit) throw new Error(`${video.file} is written as a script, which is compiled and not played yet: make it with --fit`);
+  Object.assign(process.env, ready(ROOT, CACHE, ["voice"]));
+  const release = await lock(video.cache, video.name, process.argv.slice(2).join(" "));
+  log(`Video: ${video.file}${video.profile ? `, profile ${video.profile}` : ""}, a script`);
+  const begin = (step: number, what: string) => log(`\n== ${step}/2: ${what}\n`);
+  const shown = (file: string) => path.relative(video.plugin.dir, file);
+  try {
+    begin(1, "the check");
+    const host = await startPlugin(video.plugin, log);
+    let scenes: CheckedScene[];
+    try {
+      scenes = await checkScript(video, host);
+    } finally {
+      host.close();
+    }
+    const lines = scenes.flatMap((scene) => scene.lines);
+    log(`${count(scenes.length, "scene")}, ${count(lines.length, "line")}`);
+
+    begin(2, "the voices and the compiled scenario");
+    const { voice, speed, fps, timing } = video.settings;
+    log(`Narration (${voice})`);
+    const provider = new KokoroProvider(MODELS);
+    const voices: Voiced[] = [];
+    for (const line of lines) {
+      if (!("text" in line)) continue;
+      const own = voiceOf(video.settings, line.who === NARRATOR ? {} : { speaker: line.who });
+      const spoken = await speak(provider, TTS_CACHE, { text: line.text, voice: own, speed });
+      log(`  line ${line.line} (${line.who}, ${own}): ${spoken.duration.toFixed(2)}s ${spoken.cached ? "(cached)" : "(generated)"}`);
+      voices.push({ file: path.basename(spoken.file), duration: spoken.duration });
+    }
+    const file = path.join(video.cache, "compiled.json");
+    const compiled = compile(scenes, voices, { fps, ...timing }, path.relative(video.cache, video.file).split(path.sep).join("/"));
+    await mkdir(video.cache, { recursive: true });
+    await writeFile(file, compiledText(compiled));
+    const seconds = (frames: number) => `${(frames / fps).toFixed(2)}s`;
+    log(`\nCompiled ${video.name}: ${seconds(compiled.frames)}, ${compiled.frames} frames at ${fps} a second`);
+    compiled.scenes.forEach((scene, i) => {
+      log(`  scene ${i + 1}, at ${seconds(scene.from)} for ${seconds(scene.frames)}`);
+      for (const line of scene.lines) {
+        const written = `${line.who} ${line.action}${"text" in line ? `: ${line.text}` : ""}`;
+        const what = written.length > 40 ? `${written.slice(0, 37)}...` : written.padEnd(40);
+        log(`    line ${String(line.line).padEnd(3)} ${what}  at ${seconds(line.from).padStart(7)} for ${seconds(line.frames).padStart(6)}, frames ${line.from} to ${line.from + line.frames - 1}`);
+      }
+    });
+    log(`  ${shown(file)}`);
+    return [];
+  } finally {
+    await release();
+  }
+}
+
 /**
  * `make <file>`: a plugin's video from its one file (AGENTS.md, "A video file"). First what both
  * modes share: the plan, the voices and the fit, and the sound. Then what its outputs turn on, or
@@ -98,6 +220,7 @@ type Mode = (typeof MODES)[number];
  */
 async function makeFile(file: string, opts: { fit: boolean; profile: string | undefined; as: Mode | undefined }): Promise<string[]> {
   const video = await readVideoFile(file, opts.profile);
+  if (video.script) return makeScript(video, opts);
   const outputs = opts.fit ? [] : opts.as ? [opts.as] : MODES.filter((mode) => video.settings.outputs[mode]);
   if (!opts.fit && outputs.length === 0) throw new Error(`${video.file}: its outputs turn off both the video and the web page, so there is nothing to make: turn one on, or give --as`);
   // Before anything is written: what the command needs is on this disk, or it names what is not.
@@ -357,6 +480,11 @@ async function main() {
     Object.assign(process.env, ready(ROOT, CACHE, outputs.video ? ["voice", "browser"] : ["voice"]));
     await runStory(story, windowsIO(), async (video, as) => (await makeFile(video, { fit: false, profile: undefined, as }))[0]!, log);
     return;
+  }
+
+  if (command === "check") {
+    if (!arg?.endsWith(".yaml")) throw new Error(`"check" needs a video: its file, <name>.yaml, e.g. npm run -s video -- check videos/hello.yaml`);
+    return checkFile(path.resolve(CALLER, arg));
   }
 
   if (command !== "make") throw new Error(`Unknown command "${command}"\n\n${HELP}`);

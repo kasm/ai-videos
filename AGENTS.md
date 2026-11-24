@@ -16,6 +16,7 @@ npm run video -- make <file> --as web         its web page: one HTML file that p
 npm run video -- story <story>.md             a story to its videos, by a web chat and the clipboard (see Projects, story)
 npm run -s video -- prompt <story>.md         the prompt for a web chat, on stdout (see Projects, prompt)
 npm run video -- import <reply file>          the chat's reply: its episodes as video files (see Projects, import)
+npm run -s video -- check <dir>/<name>.yaml   a video file checked, with nothing spoken or written (see A script)
 npm run video -- voices ["text"]              voice samples in out/voice-samples/
 npm test                                      the tool's tests (src/*.test.ts)
 npm run typecheck
@@ -41,7 +42,7 @@ the voice model always stay in this tool.
 | Path | What it is |
 | --- | --- |
 | `scenes/clip/scene.html` | The scene template (a HyperFrames sub-composition with `{{placeholders}}`): the plugin's clip, muted, with the captions over it. |
-| `src/` | The pipeline: `video-file` (the file, its settings in layers, and the `script` the pipeline reads) → the plugin in its process (`plugin`, `make`, `host`): its plan → `tts` → `timeline` (and `fit` with `mouth`) → `sound` → the drawing (`moments`, `frames`, `clip`) → `compose` (with `bundle` and `captions`) → `render`; `page`, the web page; `stages` and `lock`, a make's cache and its lock (see The cache); `setup`, what the commands need on the disk; `prompt` and `import`, a story's prompt for a web chat and its reply taken in, and `story`, the two by the clipboard and the episodes made (see prompt, import, story). |
+| `src/` | The pipeline: `video-file` (the file, its settings in layers, and the `script` the pipeline reads) → the plugin in its process (`plugin`, `make`, `host`): its plan → `tts` → `timeline` (and `fit` with `mouth`) → `sound` → the drawing (`moments`, `frames`, `clip`) → `compose` (with `bundle` and `captions`) → `render`; `page`, the web page; `stages` and `lock`, a make's cache and its lock (see The cache); `setup`, what the commands need on the disk; `prompt` and `import`, a story's prompt for a web chat and its reply taken in, and `story`, the two by the clipboard and the episodes made (see prompt, import, story); `scenario`, `compile` and `guide`, a video written as a script: its lines read and checked, compiled, and taught (see A script). |
 | `cartoons/` | A project of the tool's, in this repo: the cartoon plugin (`cartoons/src/plugin.ts`), its library, videos and stories, and its notes, `cartoons/CLAUDE.md`. Its `episode` skill is the repo's, `.claude/skills/episode/`. |
 | `out/voice-samples/` | What `voices` writes. |
 | `.cache/tts/` | Narration audio, keyed by text, voice and speed. |
@@ -70,8 +71,9 @@ A project's plugin draws its videos: a module the tool runs in a child process o
 - **From another repository** the tool is a folder package: `"ai-videos": "file:<path to this
   folder>"` in the project's `package.json` (`cartoons/`, in this repo, the same: `"file:.."`). It
   exports one module, `ai-videos/plugin`, which a plugin imports for its types (`import type {
-  Plugin } from "ai-videos/plugin"`) and its tests for `moments` (see Moments). It runs nothing
-  else, so the project needs none of the tool's packages, and Node 24 runs it as it is written.
+  Plugin } from "ai-videos/plugin"`), its tests for `moments` (see Moments), and both for a
+  script's reading, check and compiling (see A script). It runs nothing else, so the project needs
+  none of the tool's packages, and Node 24 runs it as it is written.
 - **What it is:** the module's default export, `Plugin` in `src/plugin.ts`:
   - `scene`: the scene it draws (`cartoon`): a video file's `use:` names it.
   - `stage`: the size its picture is drawn at. The video's format is the one of its shape; a stage
@@ -106,6 +108,20 @@ A project's plugin draws its videos: a module the tool runs in a child process o
       gives each moment's picture, in order, as a PNG of `width` × `height` pixels, sRGB and
       opaque, the same buffer again for a picture held; `close` is called when the clip is drawn,
       or failed.
+  - `script`, optional: its part of a video written as a script (see A script). A plugin without
+    it has no such videos; for a video that is one, none of the functions above is called.
+    - `actions`: what a line may do besides the tool's `say`, by name, each described once: a
+      `description`, an `example` (one line of a script that names it: `pip walk to=middle`) and
+      `values`, a schema of the values a line gives it. An example that is no such line, or fails
+      its schema, is refused when the plugin loads.
+    - `guide`: its part of the guide to writing a script, in Markdown: what its videos can show, a
+      scene's own keys, and a whole video file as an example.
+    - `check(scenes, library)`: the script checked against the library, and worked out. It gets
+      each scene's line in the file, its own keys as written, and its lines that name one of the
+      plugin's actions, in order, each with its line and its values as the action's schema gave
+      them. It gives each scene's `setting` (how it begins) and each action's `values` and own
+      `length`, seconds, all in plain numbers: numbers and names, in lists and tables. Or it gives
+      `issues`, each `{ line, message, hint }`.
 
   A drawing plugin's functions are pure: no Node APIs, no clock, no unseeded randomness. So a frame
   is the same in every run, and the same code draws in the video's web page (see The web page), the
@@ -126,10 +142,11 @@ A project's plugin draws its videos: a module the tool runs in a child process o
 - **The process:** `make` starts the host at the first stage it makes (none when each is in the
   cache), in the `package.json`'s folder, and closes it when it is done. Ready, the host says the
   plugin's scene, stage, picture (`drawn` or `recorded`), guide and commands (their descriptions
-  and examples). Each call is a message (`Call`, `src/make.ts`), with the video file's source and
-  the library, answered before the next; one that fails says why, and `make` stops there.
-  `import`'s call mends, checks and plans a source and writes nothing. `src/host.test.ts` shows
-  each case.
+  and examples), and its script's guide and actions. Each call is a message (`Call`,
+  `src/make.ts`), with the video file's source and the library, answered before the next; one that
+  fails says why, and `make` stops there. `import`'s call mends, checks and plans a source and
+  writes nothing; a script's check is a call too, and writes nothing either. `src/host.test.ts`
+  shows each case.
 
 ### A video file
 
@@ -162,6 +179,87 @@ scenes: [ … ]
   `package.json`'s.
 
 `src/video-file.test.ts` shows each rule.
+
+### A script
+
+A video may be written as a script: each of its scenes has a `script:`, a block of lines, and the
+tool reads and compiles them. `docs/plans/compiled-scenario.md` builds this step by step. So far a
+script is checked and compiled: no picture and no sound is made from it yet. The beats of a
+cartoon and RayCraft's events go the way the rest of this file describes, as before.
+
+```yaml
+use: cartoon
+scenes:
+  - background: meadow            # a scene's own keys are the plugin's
+    places: { pip: off-left }
+    script: |                     # the tool's: a line for each thing that happens
+      pip walk to=middle
+      narrator say: This is Pip. Pip walks into the meadow.
+```
+
+- **A file is a script** when `scenes:` is a list and one of its scenes has a `script:`. Then every
+  scene has one, written as a block (`script: |`), so that a line of the script is a line of the
+  file (`writtenScript`, `src/video-file.ts`).
+- **A line** is `who action name=value ...: text` (`readScript`, `src/scenario.ts`): who does it,
+  the action, its values, each a number or a name, and after the first colon its text, as written
+  to the end of the line. Names are lowercase letters, digits and dashes. An empty line, or one
+  that begins with `#`, is passed over; a line is not indented.
+- **`say`** is the tool's own action: the line's text, said in its speaker's voice (see The cast).
+  `narrator` is the speaker nobody draws, and its lines are said in the video's `voice`. Every
+  other action is the plugin's (see Plugins, `script`).
+- **The check** (`checkScenario`) is the pass before the voices, and the only one that refuses:
+  1. a line that is not one, an action nobody names, values the action's schema refuses, a `say`
+     with no words or by someone with no voice;
+  2. what the plugin's `script.check` refuses (a name the library lacks), run only on a script
+     with no mistake so far, as it follows the lines in order;
+  3. a speaker's voice that is not one of the tool's.
+
+  Every mistake of a pass is shown, each with the file and its line, the line as written, what is
+  wrong, and a hint: the names there are, the nearest one, the action's example.
+- **`check <file>`** runs the check alone: it speaks and writes nothing, needs nothing from
+  `setup`, and exits with 1 when it refuses. A video file that is not a script it takes as
+  `import` takes an episode: mended, checked and planned by its plugin, every speaker with a voice
+  the tool speaks in.
+- **`make <file> --fit`** runs the check, speaks and measures each said line (the voice cache),
+  and writes the compiled scenario, `.cache/<name>/compiled.json`, with its timing shown. It holds
+  the video's lock. Without `--fit` a script is refused: nothing is made from it yet.
+- **The compiled scenario** (`compile`, `src/compile.ts`) has every line on whole frames of the
+  video's `fps`: `from`, the frame of the video it begins on, and `frames`, how many it lasts.
+  For now the lines happen in the order written: a scene's first begins `timing.lead` after the
+  scene does, each next one `timing.gap` after the one before has ended, and the scene ends
+  `timing.tail` after its last; the scenes follow each other. A voice lasts the frames it sounds
+  in, and an action its own length (the plugin's), to the nearest frame.
+- **It holds plain values:** numbers, the lines' texts, file names (a voice's, in the tool's voice
+  cache), and the names of the library and of actions. A mark is compiled to its point.
+
+```json
+{
+  "format": "ai-videos-compiled",
+  "version": 1,
+  "made": { "by": "ai-videos compile", "from": "../../videos/hello-script.yaml" },
+  "fps": 30,
+  "frames": 289,
+  "scenes": [
+    {
+      "from": 0,
+      "frames": 289,
+      "setting": { "background": "meadow", "characters": { "pip": { "at": [-250, 880], "facing": 1 } } },
+      "lines": [
+        { "line": 10, "who": "pip", "action": "walk", "from": 18, "frames": 113, "values": { "from": [-250, 880], "to": [960, 880] } },
+        { "line": 11, "who": "narrator", "action": "say", "from": 143, "frames": 67, "text": "This is Pip. Pip walks into the meadow.", "file": "88d4ac005a4a53dca76a.wav" }
+      ]
+    }
+  ]
+}
+```
+
+- **The guide** to writing a script (`guideOf`, `src/guide.ts`) is the tool's part (a line's form,
+  `say`, the order of lines), the plugin's `script.guide`, and the actions, each with its
+  description and example. Each part's example is compiled by a test. The prompt for a web chat
+  does not teach scripts yet.
+
+`src/scenario.test.ts`, `src/compile.test.ts`, `src/guide.test.ts` and `src/check.test.ts` show
+each rule.
 
 ### The cast
 
@@ -266,7 +364,8 @@ shows each case.
 `npm run video -- make <file>` makes a video in these stages, in this order, each taken from the
 cache when what it is made from is unchanged (see The cache), and stops at the first that fails
 (`makeFile`, `src/cli.ts`). It holds the video's lock (see The cache) and writes only in the
-project's `.cache/<name>/` and `out/`, but for the voice cache, which stays in the tool.
+project's `.cache/<name>/` and `out/`, but for the voice cache, which stays in the tool. A video
+written as a script is compiled instead, with `--fit` (see A script).
 
 1. The plan: the plugin's step one (see Plugins), and what it mended, said.
 2. The voices and the fit: each line spoken (from the voice cache when it has not changed) and

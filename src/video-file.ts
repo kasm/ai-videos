@@ -7,11 +7,12 @@
 // script the pipeline reads.
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { parse } from "yaml";
+import { LineCounter, isMap, isScalar, isSeq, parse, parseDocument } from "yaml";
 import { z } from "zod";
 import type { ClipJson } from "./clip.ts";
 import { pluginOf, type PluginFile } from "./make.ts";
 import type { Library } from "./plugin.ts";
+import { readScript, type Issue, type WrittenScene, type WrittenScript } from "./scenario.ts";
 import { FORMATS, overlay, settings, slug, Speaker, type EventLimitsScript, type FormatName, type VideoScript } from "./script.ts";
 
 /** The project's library, beside its package.json. */
@@ -136,6 +137,10 @@ export interface VideoFile {
   use: string;
   /** The file, parsed, without the tool's keys: what the plugin checks. */
   source: Record<string, unknown>;
+  /** The file as written, when it was read from the disk: a mistake is shown with its line. */
+  text?: string;
+  /** Its scenes and their lines, when it is written as a script (AGENTS.md, "A script") and was read from the disk. */
+  script?: WrittenScript;
   /** The project's library, without its voices: what the plugin finds the names in. None without a library.yaml. */
   library: Library | undefined;
   /** The server's settings, the project's over them, the file's, then the profile's. */
@@ -184,7 +189,47 @@ export async function readVideoFile(file: string, profile?: string): Promise<Vid
   if (!isRecord(raw)) throw new Error(`${file}: a video file is a mapping: use:, its settings, and its plugin's source`);
   const plugin = await pluginOf(file);
   if (!plugin) throw new Error(`${file}: no package.json above it names a plugin ("ai-videos": { "plugin" }), and a video file is a plugin's`);
-  return videoFileOf(await readProject(plugin), file, raw, profile);
+  const script = writtenScript(text);
+  return { ...videoFileOf(await readProject(plugin), file, raw, profile), text, ...(script ? { script } : {}) };
+}
+
+/**
+ * A video file's scenes and their lines, when it is written as a script (AGENTS.md, "A script"):
+ * `scenes:` is a list, and one of them has a `script:`. Each scene is its own keys but `script`,
+ * and its script's lines, each with its line in the file. A script is a block of lines
+ * (`script: |`), so that a line of it is a line of the file. Undefined for any other file.
+ */
+export function writtenScript(text: string): WrittenScript | undefined {
+  const lineCounter = new LineCounter();
+  const document = parseDocument(text, { lineCounter });
+  const list = document.get("scenes", true);
+  if (!isSeq(list) || !list.items.some((item) => isMap(item) && item.has("script"))) return undefined;
+  const lineOf = (node: unknown) => lineCounter.linePos((node as { range: [number, number, number] }).range[0]).line;
+  const scenes: WrittenScene[] = [];
+  const issues: Issue[] = [];
+  for (const item of list.items) {
+    const line = lineOf(item);
+    const block = "write its lines under script: |, one under another";
+    if (!isMap(item)) {
+      issues.push({ line, message: "this scene is not a mapping", hint: `a scene has its own keys and its script: ${block}` });
+      continue;
+    }
+    const { script: _script, ...setting } = item.toJS(document) as Record<string, unknown>;
+    const script = item.get("script", true);
+    let lines: WrittenScene["lines"] = [];
+    if (script === undefined) issues.push({ line, message: "this scene has no script", hint: block });
+    else if (!isScalar(script) || script.type !== "BLOCK_LITERAL" || typeof script.value !== "string") {
+      issues.push({ line: lineOf(script), message: "this script is not a block of lines", hint: block });
+    } else {
+      // The block's first line is the one under its `|`.
+      const read = readScript(script.value, lineOf(script) + 1);
+      lines = read.lines;
+      issues.push(...read.issues);
+      if (read.lines.length === 0 && read.issues.length === 0) issues.push({ line: lineOf(script), message: "this script has no line", hint: block });
+    }
+    scenes.push({ line, setting, lines });
+  }
+  return { scenes, issues };
 }
 
 /**

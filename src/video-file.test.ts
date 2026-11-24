@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
 import type { ClipJson } from "./clip.ts";
-import { formatOf, linesOf, readVideoFile, scriptOf } from "./video-file.ts";
+import { formatOf, linesOf, readVideoFile, scriptOf, writtenScript } from "./video-file.ts";
 
 const scratch = await mkdtemp(path.join(os.tmpdir(), "ai-videos-file-"));
 after(() => rm(scratch, { recursive: true, force: true }));
@@ -182,6 +182,60 @@ test("the script: one scene by the file's name, its lines the plan's, every spea
     /alone\.yaml: mo says "Rounded apart from its event\.", and the cast \(it is empty\) gives mo no voice: give mo a voice: under the character in .*library\.yaml, or under cast: in the file/,
   );
   assert.throws(() => scriptOf(alone, { ...PLAN, texts: [] }), /alone\.yaml has no line to say/);
+});
+
+test("a file written as a script: each scene's own keys, and its script's lines with their lines in the file", async () => {
+  const text = [
+    "use: cartoon", // line 1
+    "",
+    "scenes:",
+    "  - background: meadow", // 4: the scene
+    "    places: { pip: off-left }",
+    "    script: |", // 6
+    "      pip walk to=middle", // 7
+    "",
+    "      # a note",
+    "      narrator say: This is Pip.", // 10
+    "  - script: |",
+    "      pip wave hello", // 12
+    "    background: night", // a scene's keys in any order
+    "",
+  ].join("\r\n");
+  const root = await project("as-script", {}, { "hello.yaml": text, "beats.yaml": "use: cartoon\nscenes:\n  - beats: []\n" });
+  const video = await readVideoFile(path.join(root, "videos", "hello.yaml"));
+  assert.equal(video.text, text);
+  assert.deepEqual(video.script, {
+    scenes: [
+      {
+        line: 4,
+        setting: { background: "meadow", places: { pip: "off-left" } },
+        lines: [
+          { line: 7, who: "pip", action: "walk", values: { to: "middle" } },
+          { line: 10, who: "narrator", action: "say", values: {}, text: "This is Pip." },
+        ],
+      },
+      { line: 11, setting: { background: "night" }, lines: [] },
+    ],
+    issues: [{ line: 12, message: '"hello" is not a value', hint: "write a value as name=value, before the colon, and what is said after it: pip say: Hello!" }],
+  });
+  // The plugin's source is the file as before: the script path reads its own.
+  assert.deepEqual(Object.keys(video.source), ["scenes"]);
+  // A file with no script in its scenes is not one.
+  assert.equal((await readVideoFile(path.join(root, "videos", "beats.yaml"))).script, undefined);
+  assert.equal(writtenScript("use: cartoon\nscenes: 3\n"), undefined);
+});
+
+test("a script is a block of lines, one in every scene", () => {
+  const block = "write its lines under script: |, one under another";
+  const script = writtenScript('scenes:\n  - script: "pip say: Hi."\n  - background: night\n  - script: |\n      # nothing yet\n  - night\n  - script: >\n      pip say: Hi.\n');
+  assert.deepEqual(script?.issues, [
+    { line: 2, message: "this script is not a block of lines", hint: block },
+    { line: 3, message: "this scene has no script", hint: block },
+    { line: 4, message: "this script has no line", hint: block },
+    { line: 6, message: "this scene is not a mapping", hint: `a scene has its own keys and its script: ${block}` },
+    { line: 7, message: "this script is not a block of lines", hint: block },
+  ]);
+  assert.equal(script?.scenes.length, 4);
 });
 
 test("the format is the one of the stage's shape", () => {

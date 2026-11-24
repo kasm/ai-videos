@@ -3,15 +3,21 @@
 // check, its commands and its guide, the plan of its beats and the picture of a moment, drawn as
 // an SVG or recorded by its camera. The tool does the rest.
 //
-// A project imports this file for its types (package.json, "exports"), and its tests for `moments`,
-// which imports nothing: nothing else here runs, so a plugin needs none of the tool's packages. A
-// schema is any library's that follows the Standard Schema and Standard JSON Schema interfaces
-// (standardschema.dev), as zod 4's do.
+// A project imports this file for its types (package.json, "exports"), and its tests for `moments`
+// and for a script's reading, check and compiling, which import nothing: nothing else here runs, so
+// a plugin needs none of the tool's packages. A schema is any library's that follows the Standard
+// Schema and Standard JSON Schema interfaces (standardschema.dev), as zod 4's do.
 import type { ClipEvent, ClipText, Moment, Request } from "./frames.ts";
+import type { ScriptPlugin } from "./scenario.ts";
 
 export type { ClipEvent, ClipText, Moment, Request };
 /** The moment each frame of a request shows, as the host gives them to the plugin: for a plugin's tests. */
 export { moments } from "./moments.ts";
+/** A script read, checked and compiled as the tool does it (AGENTS.md, "A script"): for a plugin's tests, and its hints. */
+export { NARRATOR, SAY, checkScenario, listed, nearest, readScript } from "./scenario.ts";
+export type { Action, ActionLine, Checked, CheckedLine, CheckedScene, Issue, Plain, SceneActions, SceneChecked, ScriptLine, ScriptPlugin, WrittenScene, WrittenScript } from "./scenario.ts";
+export { compile } from "./compile.ts";
+export type { Compiled, CompiledLine, CompiledScene, CompileTiming, Voiced } from "./compile.ts";
 
 /** One problem a schema finds: its message, and where in the value. */
 export interface SchemaIssue {
@@ -136,6 +142,13 @@ interface PluginBase<Source> {
    * them into the plan's and the drawing's keys, so a change to one makes them again.
    */
   inputs?(source: Source): string[];
+  /**
+   * Optional: its part of a video written as a script (AGENTS.md, "A script"): the actions a line
+   * may name, its part of the guide, and its check of a script. A video file whose scenes have a
+   * `script:` goes this way, and none of the functions above is called for it. Without it, the
+   * plugin's videos are not written as scripts.
+   */
+  script?: ScriptPlugin;
 }
 
 /**
