@@ -138,3 +138,12 @@ npm run typecheck
 
 [AGENTS.md](AGENTS.md) says how each part works, and its "Known quirks" list what to expect from
 HyperFrames.
+
+## License
+
+[MIT](LICENSE), the characters and backgrounds in `cartoons/library.yaml` included.
+
+One story is not under it: `cartoons/stories/forest1.md`, its `forest1-reply.md`, and its episodes,
+`cartoons/videos/forest1-1.yaml` to `forest1-3.yaml`. They adapt the first chapter of *The Wind in
+the Willows* (Kenneth Grahame, 1908, public domain). The adaptation is © 2026 Dmytro.R, all rights
+reserved.

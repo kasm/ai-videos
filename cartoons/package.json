@@ -2,7 +2,7 @@
   "name": "cartoons",
   "version": "1.0.0",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
   "type": "module",
   "ai-videos": {
     "plugin": "./src/plugin.ts",
