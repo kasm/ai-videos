@@ -12,7 +12,13 @@
 - Step 1 done 2026-11-24: MIT, and the README keeps the rights to
   `forest1`. Checked: `LICENSE` is the MIT text (compared with zod's); no
   file says `UNLICENSED`; the tool's tests (82) and cartoons' (47) and
-  both typechecks pass. **Next: step 2.**
+  both typechecks pass.
+- Step 2 done 2026-11-24: `main` is on GitHub, private,
+  https://github.com/kasm/ai-videos. Checked: the scan finds its 47
+  planted examples, and in `main`'s history only the user's picks; a
+  clone from GitHub passes `npm ci`, the tests (82, cartoons' 47) and
+  both typechecks. **Next: the user looks at it there and makes it
+  public.**
 
 
 ## Goal
