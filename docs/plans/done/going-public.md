@@ -17,8 +17,10 @@
   https://github.com/kasm/ai-videos. Checked: the scan finds its 47
   planted examples, and in `main`'s history only the user's picks; a
   clone from GitHub passes `npm ci`, the tests (82, cartoons' 47) and
-  both typechecks. **Next: the user looks at it there and makes it
-  public.**
+  both typechecks.
+- Made public 2026-11-24 by the user, after a look at it there. Checked
+  without a login: the page opens, `git ls-remote` gives `main`, and
+  GitHub reads the license as MIT. **The plan is done.**
 
 
 ## Goal
