@@ -5,6 +5,7 @@
 // This file imports nothing that runs, so plugin.ts gives it to the plugins' tests, which have none
 // of the tool's packages.
 import type { Library, Schema } from "./plugin.ts";
+import type { Shown } from "./shown.ts";
 
 /** The tool's own action: a character says the line's text, in its voice. */
 export const SAY = "say";
@@ -84,7 +85,7 @@ export interface SceneChecked {
   actions: { values: Plain; length: number }[];
 }
 
-/** A plugin's part of a script (plugin.ts, `script`): its actions, its guide and its check. */
+/** A plugin's part of a script (plugin.ts, `script`): its actions, its guide, its check and its picture. */
 export interface ScriptPlugin {
   /** The actions a line may name, besides the tool's `say`. */
   actions: Record<string, Action>;
@@ -99,6 +100,13 @@ export interface ScriptPlugin {
    * with its line and a hint. A library that cannot be read is thrown, naming its file.
    */
   check(scenes: SceneActions[], library: Library | undefined): { scenes: SceneChecked[] } | { issues: Issue[] };
+  /**
+   * Its picture: from the library, the function that draws what a frame shows (shown.ts) as an SVG
+   * of the whole stage, `width` by `height` pixels. What a frame shows is plain: the scene's setting
+   * and the actions' values as `check` gave them. Pure, as a drawing plugin's `frame` is: the video
+   * and the web page draw with it.
+   */
+  draw(library: Library | undefined): (shown: Shown, size: { width: number; height: number }) => string;
 }
 
 /** A line checked: what is said, or one of the plugin's actions in plain numbers with its own length, seconds. */

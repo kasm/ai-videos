@@ -1,14 +1,16 @@
-// A cartoon written as a script (script.ts), read, checked and compiled as the video tool does it:
-// hello-script on its frames, in plain numbers; what the check refuses, each with its line and a
-// hint; and the guide's example. The voices are given here as lengths: speaking is the tool's.
+// A cartoon written as a script (script.ts), read, checked, compiled and drawn as the video tool does
+// it: hello-script on its frames, in plain numbers, and each frame's picture from those and the
+// library alone; what the check refuses, each with its line and a hint; and the guide's example. The
+// voices are given here as lengths: speaking is the tool's.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
-import { NARRATOR, SAY, checkScenario, compile, readScript, type Issue, type Voiced, type WrittenScript } from "ai-videos/plugin";
+import { NARRATOR, SAY, checkScenario, compile, pictureOf, readScript, shownAt, type Compiled, type Issue, type Voiced, type WrittenScript } from "ai-videos/plugin";
 import { parse } from "yaml";
+import { scriptStaging } from "./picture.ts";
 import plugin from "./plugin.ts";
-import { MARKS, PACE } from "./scenario.ts";
+import { MARKS, PACE, readLibrary } from "./scenario.ts";
 
 const root = path.join(import.meta.dirname, "..");
 /** The project's library as the tool gives it to the plugin, without each character's voice; and who has one. */
@@ -47,20 +49,25 @@ const issuesOf = async (lines: string[], scene = SCENE) => {
   return checked.issues;
 };
 
-/** The tool's timing, and cartoons' 30 frames a second. */
-const TIMING = { fps: 30, lead: 0.6, gap: 0.4, tail: 1 };
+/** The tool's timing and loudness, and cartoons' 30 frames a second. */
+const SETTINGS = { fps: 30, loudness: -14, lead: 0.6, gap: 0.4, tail: 1 };
 const HELLO = readFileSync(path.join(root, "videos", "hello-script.yaml"), "utf8");
+
+/** A voice `duration` seconds long: its mouth opens wide, half and not at all, over and over. */
+const voiced = (file: string, duration: number): Voiced => ({ file, duration, mouth: Array.from({ length: Math.ceil(duration * 30 - 1e-6) }, (_, k) => [1, 0.5, 0][k % 3]!) });
+/** hello-script's two lines, spoken. */
+const VOICES = [voiced("1f0e3dad99908345f743.wav", 2.2), voiced("b7a56873cd771f2c446d.wav", 1.22)];
 
 test("hello-script compiles: each line and action on its frames, in the order written", async () => {
   const checked = await check(HELLO);
   assert.ok("scenes" in checked, JSON.stringify(checked));
-  const voices = [{ file: "1f0e3dad99908345f743.wav", duration: 2.2 }, { file: "b7a56873cd771f2c446d.wav", duration: 1.22 }];
-  assert.deepEqual(compile(checked.scenes, voices, TIMING, "../../videos/hello-script.yaml"), {
+  assert.deepEqual(compile(checked.scenes, VOICES, SETTINGS, "../../videos/hello-script.yaml"), {
     format: "ai-videos-compiled",
     version: 1,
     made: { by: "ai-videos compile", from: "../../videos/hello-script.yaml" },
     fps: 30,
     frames: 288,
+    loudness: -14,
     scenes: [
       {
         from: 0,
@@ -69,10 +76,31 @@ test("hello-script compiles: each line and action on its frames, in the order wr
         setting: { background: "meadow", characters: { pip: { at: [-250, 880], facing: 1 } } },
         lines: [
           // After the lead, 18 frames: 1210 px at 320 px a second, 3.781 s.
-          { line: 10, who: "pip", action: "walk", from: 18, frames: 113, values: { from: [-250, 880], to: [960, 880] } },
-          // Each line a gap, 12 frames, after the one before it: the walk is over before the narrator begins.
-          { line: 11, who: "narrator", action: "say", from: 143, frames: 66, text: "This is Pip. Pip walks into the meadow.", file: "1f0e3dad99908345f743.wav" },
-          { line: 12, who: "narrator", action: "say", from: 221, frames: 37, text: "And here, Pip stops.", file: "b7a56873cd771f2c446d.wav" },
+          { line: 11, who: "pip", action: "walk", from: 18, frames: 113, values: { from: [-250, 880], to: [960, 880] } },
+          // Each line a gap, 12 frames, after the one before it: the walk is over before the narrator
+          // begins. A caption is up until the next one, or the scene's end.
+          {
+            line: 12,
+            who: "narrator",
+            action: "say",
+            from: 143,
+            frames: 66,
+            text: "This is Pip. Pip walks into the meadow.",
+            file: "1f0e3dad99908345f743.wav",
+            mouth: VOICES[0]!.mouth,
+            captions: [{ text: "This is Pip. Pip walks into the meadow.", from: 143, frames: 78 }],
+          },
+          {
+            line: 13,
+            who: "narrator",
+            action: "say",
+            from: 221,
+            frames: 37,
+            text: "And here, Pip stops.",
+            file: "b7a56873cd771f2c446d.wav",
+            mouth: VOICES[1]!.mouth,
+            captions: [{ text: "And here, Pip stops.", from: 221, frames: 67 }],
+          },
         ],
       },
     ],
@@ -92,8 +120,8 @@ test("a compiled scenario holds nothing but numbers, texts and file names, and t
     const checked = await checkScenario(plugin.script, script, library, speakers);
     assert.ok("scenes" in checked);
     const said = script.scenes.flatMap((scene) => scene.lines).filter((line) => line.action === SAY);
-    const voices = said.map((_, n): Voiced => ({ file: `${String(n).padStart(20, "0")}.wav`, duration: 1 + n / 7 }));
-    const compiled = compile(checked.scenes, voices, TIMING, "../../videos/a-cartoon.yaml");
+    const voices = said.map((_, n) => voiced(`${String(n).padStart(20, "0")}.wav`, 1 + n / 7));
+    const compiled = compile(checked.scenes, voices, SETTINGS, "../../videos/a-cartoon.yaml");
     const names = new Set([NARRATOR, SAY, ...Object.keys(plugin.script.actions), ...Object.keys(library.raw.characters), ...Object.keys(library.raw.backgrounds)]);
     const texts = new Set(said.map((line) => line.text));
     const files = new Set(["../../videos/a-cartoon.yaml", ...voices.map((voice) => voice.file)]);
@@ -116,6 +144,93 @@ test("a compiled scenario holds nothing but numbers, texts and file names, and t
       scene.lines.forEach((line, i) => assert.ok(line.from >= (i === 0 ? scene.from : scene.lines[i - 1]!.from + scene.lines[i - 1]!.frames), `line ${line.line} begins after the one before`));
     }
   }
+});
+
+/** A script compiled, as the tool keeps it: read back from its JSON. */
+async function compiledOf(text: string, voices: Voiced[]): Promise<Compiled> {
+  const checked = await check(text);
+  assert.ok("scenes" in checked, JSON.stringify(checked));
+  return JSON.parse(JSON.stringify(compile(checked.scenes, voices, SETTINGS, "x.yaml")));
+}
+const size = { width: 1920, height: 1080 };
+/** Every frame's SVG, drawn as the tool does it: from the compiled scenario and the library, and nothing else. */
+function pictures(compiled: Compiled): string[] {
+  const picture = pictureOf(compiled);
+  const draw = plugin.script.draw(library);
+  return Array.from({ length: picture.frames }, (_, frame) => draw(shownAt(picture, frame), size));
+}
+/** Who stands where, and how, in a frame of a compiled scenario. */
+const stagingOf = (compiled: Compiled, frame: number) => scriptStaging(readLibrary(library), shownAt(pictureOf(compiled), frame));
+
+test("hello-script's frames: Pip off the stage, walking in from frame 18 to 131, and there to the end", async () => {
+  const compiled = await compiledOf(HELLO, VOICES);
+  const x = (frame: number) => stagingOf(compiled, frame).characters.map(({ name, at, facing, arm }) => [name, Math.round(at[0]), facing, arm]);
+  assert.deepEqual(x(0), [["pip", -250, 1, 0]]);
+  assert.deepEqual(x(18), [["pip", -250, 1, 0]]);
+  // Slow at both ends: halfway there in the middle of its 113 frames, and nearly there in the last.
+  assert.deepEqual(x(74)[0]![1], Math.round(-250 + 1210 * (0.5 - 0.5 * Math.cos((Math.PI * 56) / 113))));
+  assert.ok((x(130)[0]![1] as number) > 955);
+  for (const frame of [131, 143, 287]) assert.deepEqual(x(frame), [["pip", 960, 1, 0]]);
+  // A walk rises between its steps and ends on the ground.
+  const heights = Array.from({ length: compiled.frames }, (_, frame) => stagingOf(compiled, frame).characters[0]!.at[1]);
+  assert.equal(Math.max(...heights), 880);
+  assert.ok(Math.min(...heights) < 866 && Math.min(...heights) >= 864);
+  assert.equal(heights[131], 880);
+
+  const frames = pictures(compiled);
+  assert.equal(frames.length, 288);
+  assert.deepEqual(pictures(compiled), frames, "the same every time");
+  assert.equal(new Set(frames.slice(0, 19)).size, 1, "off the stage, before the walk");
+  assert.equal(new Set(frames.slice(19, 131)).size, 112, "each frame of the walk is its own");
+  // The narrator's lines move nobody's mouth: after the walk, but for a blink, the picture is one.
+  assert.match(frames[143]!, /^<svg [^>]*viewBox="0 0 1920 1080" width="1920" height="1080">/);
+  assert.equal(frames[143], frames[144]);
+  assert.equal(frames[143], frames[221]);
+});
+
+test("a walk is drawn in a script as it is in a beat: the same way, as far through, at the same time", async () => {
+  const compiled = await compiledOf(HELLO, VOICES);
+  const { use: _use, ...beats } = parse(readFileSync(path.join(root, "videos", "hello.yaml"), "utf8"));
+  const scenario = plugin.check(beats, "hello.yaml", library);
+  const frames = pictures(compiled);
+  for (let frame = 18; frame < 140; frame++) {
+    const moment = { span: 0, progress: Math.min(1, (frame - 18) / 113), time: frame / 30, into: (frame - 18) / 30, mouths: {} };
+    assert.equal(frames[frame], plugin.frame(scenario, moment, size), `frame ${frame}`);
+  }
+});
+
+test("a character's line opens its mouth as the voice goes, and nobody else's; the next scene begins anew", async () => {
+  const text = [
+    ...SCENE,
+    "      pip say: Hello!",
+    "      mo say: Hello, Pip.",
+    "  - background: night",
+    "    places: { pip: middle }",
+    "    script: |",
+    "      tuk say: Who is there?",
+    "      pip walk to=off-right",
+    "",
+  ].join("\n");
+  // Pip's line is from frame 18 for 30; Mo's from 60 for 30; the second scene from frame 120, Tuk's line from 138 for 30.
+  const compiled = await compiledOf(text, [voiced("a.wav", 1), voiced("b.wav", 1), voiced("c.wav", 1)]);
+  assert.deepEqual(compiled.scenes.map((s) => [s.from, ...s.lines.map((l) => l.from)]), [[0, 18, 60], [120, 138, 180]]);
+  const shut = structuredClone(compiled);
+  for (const line of shut.scenes.flatMap((s) => s.lines)) if ("mouth" in line) line.mouth = [];
+  const [spoken, silent] = [pictures(compiled), pictures(shut)];
+  const mouthOf = (who: "pip" | "mo") => (frame: number) => {
+    const parts = library.raw.characters[who].parts.mouth as { fill: string }[];
+    return spoken[frame]!.split(/(?=<g )/).filter((part) => part.includes(parts[0]!.fill)).map((part) => part.match(new RegExp(`ry="([\\d.]+)" fill="${parts[0]!.fill}"`))?.[1]);
+  };
+  // Wide, half and closed, as Pip's voice goes; the mouth of Mo, who says nothing yet, stays shut.
+  assert.deepEqual([18, 19, 20, 21].map((f) => mouthOf("pip")(f)[0]), ["31.5", "20.25", "9", "31.5"]);
+  assert.deepEqual([18, 19, 20, 21].map((f) => mouthOf("mo")(f)[0]), ["8", "8", "8", "8"]);
+  assert.deepEqual([60, 61, 62].map((f) => [mouthOf("pip")(f)[0], mouthOf("mo")(f)[0]]), [["9", "27"], ["9", "17.5"], ["9", "8"]]);
+  for (const frame of [17, 48, 59, 90, 119]) assert.equal(spoken[frame], silent[frame], `nobody speaks in frame ${frame}`);
+  // Tuk has no place in the second scene: a voice off stage moves no mouth.
+  assert.deepEqual(spoken.slice(120), silent.slice(120));
+  assert.deepEqual(stagingOf(compiled, 119).characters.map((c) => [c.name, c.at[0], c.facing]), [["pip", -250, 1], ["mo", 1440, -1]]);
+  assert.deepEqual(stagingOf(compiled, 120).characters.map((c) => [c.name, c.at[0], c.facing]), [["pip", 960, 1]]);
+  assert.deepEqual([119, 120, 200].map((frame) => stagingOf(compiled, frame).background.fill), ["#bfe3ff", "#1b2a4a", "#1b2a4a"]);
 });
 
 test("the check refuses an unknown action, a wrong value and an unknown name, each with its line and a hint", async () => {
@@ -202,7 +317,8 @@ test("the guide's example is a cartoon the plugin takes as a script, against the
   assert.deepEqual(new Set(lines.map((line) => line.action)), new Set(["say", "walk"]));
   assert.deepEqual(new Set(lines.filter((line) => "text" in line).map((line) => line.who)), new Set(["narrator", "pip", "mo"]));
   const said = lines.filter((line) => "text" in line).length;
-  const compiled = compile(checked.scenes, Array.from({ length: said }, (_, n) => ({ file: `${n}.wav`, duration: 2 })), TIMING, "example.yaml");
+  const compiled = compile(checked.scenes, Array.from({ length: said }, (_, n) => voiced(`${n}.wav`, 2)), SETTINGS, "example.yaml");
+  assert.equal(pictures(compiled).length, compiled.frames);
   // The second scene begins on the frame the first ends on.
   assert.equal(compiled.scenes[1]!.from, compiled.scenes[0]!.frames);
   assert.equal(compiled.frames, compiled.scenes[0]!.frames + compiled.scenes[1]!.frames);

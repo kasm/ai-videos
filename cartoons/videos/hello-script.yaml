@@ -2,6 +2,7 @@
 # smallest script. Its lines happen in order, so Pip has stopped before the narrator begins. The
 # format is in CLAUDE.md ("The script"); Pip and the meadow are drawn in library.yaml.
 use: cartoon
+outputs: { web: true } # its page too, beside the video
 
 scenes:
   - background: meadow

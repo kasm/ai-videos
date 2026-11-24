@@ -1,7 +1,7 @@
 // A cartoon written as a script (CLAUDE.md, "The script"; the tool's AGENTS.md, "A script"): the
 // actions a line may name, and the script's check: each scene's setting and each action found in
 // the library and worked out in plain numbers, a mark as a point, an action with its own length.
-// The tool reads the lines and checks what each action takes; nothing here draws.
+// The tool reads the lines and checks what each action takes; picture.ts draws what the check gives.
 import { NARRATOR, listed, nearest, type Action, type Issue, type Library as LibraryFile, type SceneActions, type SceneChecked } from "ai-videos/plugin";
 import { z } from "zod";
 import { GROUND, MARKS, PACE, name, onStage, readLibrary, type Mark } from "./scenario.ts";
@@ -21,8 +21,22 @@ export const ACTIONS = {
   },
 } satisfies Record<string, Action>;
 
+type Point = [number, number];
+
+/** How a scene begins, as the check gives it and the picture draws it: each character it places, at its point, facing 1 (right, as drawn) or -1. */
+export interface Setting {
+  background: string;
+  characters: Record<string, { at: Point; facing: 1 | -1 }>;
+}
+
+/** A walk as the check gives it and the picture draws it: its way, from point to point. */
+export interface Walk {
+  from: Point;
+  to: Point;
+}
+
 /** A scene's own keys, beside its script: what it begins with. */
-const Setting = z.strictObject({
+const Keys = z.strictObject({
   /** The background the scene begins with. */
   background: name,
   /** The mark each character of the scene stands on as it begins. */
@@ -30,7 +44,7 @@ const Setting = z.strictObject({
   /** Which way a character faces as the scene begins: right, as drawn, when it is not named. */
   faces: z.record(name, z.enum(["left", "right"], { error: "it is left or right" })).default({}),
 });
-const SETTING = "a scene has background (one of the library's), places (the mark each of its characters begins on), faces (who begins facing left) and script";
+const KEYS = "a scene has background (one of the library's), places (the mark each of its characters begins on), faces (who begins facing left) and script";
 
 /** Whole milliseconds, so lengths added up stay equal where they should. */
 const ms = (seconds: number) => Math.round(seconds * 1000) / 1000;
@@ -52,12 +66,12 @@ export function checkScript(scenes: SceneActions[], library: LibraryFile | undef
   const issues: Issue[] = [];
   const checked = scenes.map((scene): SceneChecked => {
     const issue = (line: number, message: string, hint: string) => void issues.push({ line, message, hint });
-    const setting = Setting.safeParse(scene.setting);
-    if (!setting.success) {
-      for (const found of setting.error.issues) issue(scene.line, `${found.path.length > 0 ? `${found.path.join(".")}: ` : ""}${found.message}`, SETTING);
+    const keys = Keys.safeParse(scene.setting);
+    if (!keys.success) {
+      for (const found of keys.error.issues) issue(scene.line, `${found.path.length > 0 ? `${found.path.join(".")}: ` : ""}${found.message}`, KEYS);
       return { setting: {}, actions: [] };
     }
-    const { background, places, faces } = setting.data;
+    const { background, places, faces } = keys.data;
     if (!(background in backgrounds)) issue(scene.line, `no background is named "${background}"`, has("backgrounds", Object.keys(backgrounds), background));
     const placed = Object.keys(places);
     const place = (who: string) => `give it the mark it begins on, in the scene's places: places: { ${who}: off-left }`;
@@ -87,10 +101,11 @@ export function checkScript(scenes: SceneActions[], library: LibraryFile | undef
       }
       if (from === undefined) return { values: {}, length: PACE.hold };
       stands.set(who, to);
-      return { values: { from: [MARKS[from], GROUND], to: [MARKS[to], GROUND] }, length: Math.max(ms(Math.abs(MARKS[to] - MARKS[from]) / PACE.walk), 0.001) };
+      const walk = { from: [MARKS[from], GROUND], to: [MARKS[to], GROUND] } satisfies Walk;
+      return { values: walk, length: Math.max(ms(Math.abs(MARKS[to] - MARKS[from]) / PACE.walk), 0.001) };
     });
-    const begins = Object.fromEntries(placed.map((who) => [who, { at: [MARKS[places[who]!], GROUND], facing: faces[who] === "left" ? -1 : 1 }]));
-    return { setting: { background, characters: begins }, actions };
+    const begins = Object.fromEntries(placed.map((who) => [who, { at: [MARKS[places[who]!], GROUND] as Point, facing: faces[who] === "left" ? -1 : 1 } as const]));
+    return { setting: { background, characters: begins } satisfies Setting, actions };
   });
   return issues.length > 0 ? { issues } : { scenes: checked };
 }

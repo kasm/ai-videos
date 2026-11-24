@@ -89,22 +89,24 @@ export async function renderProject(
 }
 
 /**
- * The loudnorm filter that brings `input`'s sound to `loudness` LUFS, its peaks kept 1.5 dB below
- * full scale: the first of two passes measures it, so the second applies one gain to the whole.
- * `before` is a filter the sound goes through first, in both passes.
+ * The filters that bring `input`'s sound to `loudness` LUFS, its peaks kept 1.5 dB below full
+ * scale: `before`, which the sound goes through first, then loudnorm. The first of two passes
+ * measures it, so the second applies one gain to the whole. Silence has no level to bring anywhere:
+ * it goes through `before` alone.
  */
-async function loudnessFilter(input: string, loudness: number, before = ""): Promise<string> {
+async function loudnessFilter(input: string, loudness: number, before: string): Promise<string> {
   const target = `I=${loudness}:TP=-1.5:LRA=11`;
   const measure = await run("ffmpeg", [
     "-hide_banner", "-nostats", "-i", input,
-    "-af", `${before}loudnorm=${target}:print_format=json`,
+    "-af", `${before},loudnorm=${target}:print_format=json`,
     "-vn", "-f", "null", "-",
   ]);
   const json = measure.stderr.match(/\{[^{}]*"input_i"[^{}]*\}/)?.[0];
   if (measure.code !== 0 || !json) throw new Error(`ffmpeg loudness measurement failed:\n${measure.stderr.slice(-600)}`);
   const m = JSON.parse(json) as Record<string, string>;
+  if (m.input_i === "-inf") return before;
   return (
-    `${before}loudnorm=${target}:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}` +
+    `${before},loudnorm=${target}:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}` +
     `:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true`
   );
 }
@@ -118,7 +120,7 @@ const AAC = ["-ar", "48000", "-c:a", "aac", "-b:a", "192k"];
  */
 export async function levelSound(input: string, output: string, loudness: number): Promise<void> {
   await mkdir(path.dirname(output), { recursive: true });
-  const filter = await loudnessFilter(input, loudness, "pan=stereo|c0=c0|c1=c0,");
+  const filter = await loudnessFilter(input, loudness, "pan=stereo|c0=c0|c1=c0");
   const encode = await run("ffmpeg", ["-hide_banner", "-nostats", "-y", "-i", input, "-vn", "-af", filter, ...AAC, "-map_metadata", "-1", "-movflags", "+faststart", output]);
   if (encode.code !== 0) throw new Error(`ffmpeg loudness pass failed:\n${encode.stderr.slice(-600)}`);
 }

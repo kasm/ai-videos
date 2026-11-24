@@ -1,4 +1,4 @@
-// `check <file>` and a script's `make`, as they are typed (cli.ts), on caches with nothing in them:
+// `check <file>` and a script's `make`, as they are typed (cli.ts), on a cache with nothing in it:
 // the check speaks nothing, so it needs no voice model. A script's mistakes come each with the file,
 // its line as written and a hint; any other video file is checked as its plugin checks it. The
 // plugin here is a small one written for the test.
@@ -55,6 +55,7 @@ export default {
       if (issues.length) return { issues };
       return { scenes: scenes.map((scene) => ({ setting: { colour: colours[scene.setting.colour] }, actions: scene.actions.map((a) => ({ values: { x: a.values.to === "right" ? 120 : 20 }, length: 1.5 })) })) };
     },
+    draw: () => () => "<svg/>",
   },
 };
 `;
@@ -140,13 +141,16 @@ test("check takes any other video file as its plugin checks it: mended, planned,
   assert.match((await cli(["check"])).stderr, /"check" needs a video: its file, <name>\.yaml/);
 });
 
-test("make compiles a script only with --fit, and that speaks: it needs the voice model", async () => {
+test("make of a script speaks, so it needs the voice model, and HyperFrames' Chrome for a video; nothing is written without", async () => {
   const file = await video("good", script(["sq slide to=right", "sq say: Here I am."]));
   const whole = await cli(["make", file]);
   assert.equal(whole.code, 1);
-  assert.match(whole.stderr, /good\.yaml is written as a script, which is compiled and not played yet: make it with --fit/);
-  const fit = await cli(["make", file, "--fit"]);
-  assert.equal(fit.code, 1);
-  assert.match(fit.stderr, /^Missing, and not fetched:\n {2}- the voice model/);
+  assert.match(whole.stderr, /^Missing, and not fetched:\n {2}- the voice model[\s\S]*\n {2}- HyperFrames' Chrome/);
+  for (const args of [["--fit"], ["--as", "web"]]) {
+    const { code, stderr } = await cli(["make", file, ...args]);
+    assert.equal(code, 1);
+    assert.match(stderr, /^Missing, and not fetched:\n {2}- the voice model/);
+    assert.doesNotMatch(stderr, /Chrome/);
+  }
   assert.equal(existsSync(path.join(root, ".cache")), false);
 });

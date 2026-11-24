@@ -14,11 +14,11 @@ test("the tool's part shows a script the tool takes, with no action but its own,
   assert.deepEqual(read.lines.map((l) => [l.who, l.action]), [["narrator", "say"], ["narrator", "say"]]);
   // A colon in what is said is the line's own.
   assert.equal(read.lines[1]!.text, "Then somebody calls: hello, is anyone there?");
-  const bare: ScriptPlugin = { actions: {}, guide: "Nothing is drawn.", check: (scenes) => ({ scenes: scenes.map(() => ({ setting: {}, actions: [] })) }) };
+  const bare: ScriptPlugin = { actions: {}, guide: "Nothing is drawn.", check: (scenes) => ({ scenes: scenes.map(() => ({ setting: {}, actions: [] })) }), draw: () => () => "<svg/>" };
   const checked = await checkScenario(bare, { scenes: [{ line: 1, setting: {}, lines: read.lines }], issues: [] }, undefined, []);
   assert.ok("scenes" in checked);
-  const voices = [{ file: "a.wav", duration: 2 }, { file: "b.wav", duration: 3 }];
-  const { scenes } = compile(checked.scenes, voices, { fps: 30, lead: 0.6, gap: 0.4, tail: 1 }, "example.yaml");
+  const voices = [{ file: "a.wav", duration: 2, mouth: [] }, { file: "b.wav", duration: 3, mouth: [] }];
+  const { scenes } = compile(checked.scenes, voices, { fps: 30, loudness: -14, lead: 0.6, gap: 0.4, tail: 1 }, "example.yaml");
   // The second line begins when the first has ended, after the pause.
   assert.deepEqual(scenes[0]!.lines.map((l) => [l.from, l.frames]), [[18, 60], [90, 90]]);
 });

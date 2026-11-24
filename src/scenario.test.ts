@@ -36,6 +36,7 @@ const scripted = (seen: SceneActions[][] = []): ScriptPlugin => ({
     });
     return issues.length > 0 ? { issues } : { scenes: worked };
   },
+  draw: () => () => "<svg/>",
 });
 
 const LIBRARY = { file: "library.yaml", raw: { colours: { red: "#d04040" } } };

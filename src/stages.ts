@@ -28,21 +28,22 @@ export async function folderKey(dir: string, skip: (rel: string) => boolean = ()
   return hash.digest("hex");
 }
 
-/** The tool's own files that a plugin's plan and picture go through. */
+/** The tool's own files that a plugin's plan and picture go through, and the ones a script's picture does. */
 const DRAWING = ["src/host.ts", "src/frames.ts", "src/moments.ts", "src/plugin.ts", "package.json"];
+export const PLAYING = ["src/host.ts", "src/frames.ts", "src/shown.ts", "package.json"];
 
 /** What a folder of code holds but no code: its packages and its dot folders (.cache, .git). */
 const notCode = (rel: string) => rel.split("/").some((part) => part === "node_modules" || part.startsWith("."));
 
 /**
  * The code a plugin's plan and drawing depend on: every file in the plugin's folder (but
- * node_modules and dot folders), and the tool's that run it. So a change to the picture's code
- * draws again; keep the plugin in a folder of its own, as cartoons' src/.
+ * node_modules and dot folders), and the tool's that run it, `through`. So a change to the
+ * picture's code draws again; keep the plugin in a folder of its own, as cartoons' src/.
  */
-export async function codeKey(pluginFile: string): Promise<string> {
+export async function codeKey(pluginFile: string, through: string[] = DRAWING): Promise<string> {
   const own = await folderKey(path.dirname(pluginFile), notCode);
   const tool = path.resolve(import.meta.dirname, "..");
-  return keyOf(own, await Promise.all(DRAWING.map((file) => readFile(path.join(tool, file), "utf8"))));
+  return keyOf(own, await Promise.all(through.map((file) => readFile(path.join(tool, file), "utf8"))));
 }
 
 /**

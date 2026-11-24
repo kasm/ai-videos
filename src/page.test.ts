@@ -1,16 +1,17 @@
 // A video file's web page (page.ts): its drawing, run as the page runs it, gives the SVG each of
-// the video's frames was drawn from; it shows the video's captions, plays the sound it is given,
-// and names no URL. The plugin here is a small one written for the test; the host draws its clip
-// with ffmpeg, as make does.
+// the video's frames was drawn from, of a plan fitted to the voice and of a compiled scenario; it
+// shows the video's captions, plays the sound it is given, and names no URL. The plugin here is a
+// small one written for the test; the host draws its clip with ffmpeg, as make does.
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
 import vm from "node:vm";
+import { compile, compiledText, type Compiled } from "./compile.ts";
 import { sceneCaptions } from "./compose.ts";
 import { loadPlugin, runJob, svgHash } from "./host.ts";
-import { pageVideo, writePage } from "./page.ts";
+import { compiledPage, pageVideo, writePage } from "./page.ts";
 import type { Timeline } from "./timeline.ts";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
@@ -129,6 +130,87 @@ test("the page draws the SVG of each of the video's frames, shows its captions, 
   for (const [, url] of markup.matchAll(/\b(?:src|href)="([^"]*)"/g)) assert.match(url!, /^data:/);
   for (const [, url] of markup.matchAll(/url\(([^)]*)\)/g)) assert.match(url!, /^data:/);
   assert.doesNotMatch(html, /<link\b/);
+});
+
+/** The plugin with a script's picture: the square in its scene's colour, where its slides have it, growing as it speaks. */
+const SCRIPTED = PLUGIN.replace(
+  "export default {",
+  `export default {
+  script: {
+    actions: {},
+    guide: "A square slides, and speaks.",
+    check: () => { throw new Error("a page checks nothing"); },
+    draw(library) {
+      const { colours } = library.raw;
+      return ({ setting, actions, mouths, time }, { width, height }) => {
+        let x = setting.x;
+        for (const { values, progress } of actions) x += (values.x - x) * progress;
+        return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 90" width="' + width + '" height="' + height + '">' +
+          '<rect width="160" height="90" fill="#ffffff"/>' +
+          '<rect x="' + x + '" y="30" width="30" height="' + (30 + 10 * (mouths.sq ?? 0)) + '" opacity="' + (time < 1 ? 1 : 0.5) + '" fill="' + colours[setting.colour] + '"/></svg>';
+      };
+    },
+  },`,
+);
+
+test("a script's clip and its page are drawn from the compiled scenario and the library, with no video file: the same SVGs", async () => {
+  // The project holds its plugin and the compiled scenario, and nothing more.
+  const root = path.join(scratch, "script");
+  const pluginFile = path.join(root, "src", "plugin.mjs");
+  await mkdir(path.dirname(pluginFile), { recursive: true });
+  await writeFile(pluginFile, SCRIPTED);
+  const cache = path.join(root, ".cache", "sq");
+  await mkdir(cache, { recursive: true });
+  const scenes = [
+    {
+      line: 3,
+      setting: { colour: "red", x: 20 },
+      lines: [
+        { line: 5, who: "sq", action: "slide", values: { x: 120 }, length: 0.4 },
+        { line: 6, who: "sq", action: "say", text: "Here I am." },
+      ],
+    },
+    { line: 8, setting: { colour: "blue", x: 60 }, lines: [{ line: 10, who: "narrator", action: "say", text: "And </script> it stays." }] },
+  ];
+  const voices = [
+    { file: "aa.wav", duration: 0.3, mouth: [0.5, 1, 0] },
+    { file: "bb.wav", duration: 0.2, mouth: [1, 1] },
+  ];
+  await writeFile(path.join(cache, "compiled.json"), compiledText(compile(scenes, voices, { fps: 10, loudness: -14, lead: 0.2, gap: 0.2, tail: 0.2 }, "../../videos/sq.yaml")));
+  const compiled = JSON.parse(await readFile(path.join(cache, "compiled.json"), "utf8")) as Compiled;
+  const library = { file: path.join(root, "library.yaml"), raw: { colours: { red: "#d04040", blue: "#4040d0" } } };
+  const size = { width: 160, height: 90 };
+
+  const clip = path.join(cache, "clips", "sq-landscape.mp4");
+  await runJob(await loadPlugin(pluginFile), pluginFile, { call: { step: "play", format: "landscape", ...size, compiled: path.join(cache, "compiled.json"), clip }, library });
+  const svgs = (await readFile(`${clip}.svgs`, "utf8")).trim().split("\n");
+  assert.equal(svgs.length, compiled.frames);
+  assert.equal(compiled.frames, 19);
+  assert.ok(new Set(svgs).size > 8, "the slide, the mouth, the next scene: not one picture held");
+
+  const sound = path.join(root, "sound.m4a");
+  await writeFile(sound, Buffer.from("not really a sound"));
+  const video = compiledPage({ dir: root, name: "sq", compiled, library, size, format: "landscape" });
+  const out = path.join(root, "sq.html");
+  await writePage(ROOT, { title: "sq", source: "videos/sq.yaml", picture: { plugin: pluginFile }, video, sound, out });
+  const html = await readFile(out, "utf8");
+  const given = JSON.parse(scriptOf(html, "video"));
+  assert.deepEqual(Object.keys(given).sort(), ["captions", "compiled", "fade", "format", "fps", "frames", "library", "size"]);
+  const context = vm.createContext({});
+  vm.runInContext(scriptOf(html, "drawing"), context);
+  const drawing = context.drawing(given) as { svgAt(frame: number): string };
+  assert.deepEqual(Array.from({ length: given.frames }, (_, k) => svgHash(drawing.svgAt(k))), svgs);
+  // Sought past either end, it shows the end.
+  assert.equal(svgHash(drawing.svgAt(-5)), svgs[0]);
+  assert.equal(svgHash(drawing.svgAt(400)), svgs.at(-1));
+
+  // The captions are the compiled ones, each on the frames it has: the player's own test of a frame's time.
+  const said = compiled.scenes.flatMap((s) => s.lines).flatMap((line) => ("captions" in line ? line.captions : []));
+  assert.deepEqual(given.captions.map((c: { id: string; text: string }) => [c.id, c.text]), [["sq-cap-1", "Here I am."], ["sq-cap-2", "And </script> it stays."]]);
+  for (const [k, c] of (given.captions as { start: number; duration: number }[]).entries()) {
+    const shown = Array.from({ length: given.frames }, (_, n) => n).filter((n) => n / given.fps >= c.start && n / given.fps < c.start + c.duration);
+    assert.deepEqual([shown[0], shown.length], [said[k]!.from, said[k]!.frames]);
+  }
 });
 
 test("a plugin that does not bundle for a page says so", async () => {

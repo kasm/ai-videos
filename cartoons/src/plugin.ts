@@ -4,7 +4,7 @@
 // as the clip's data, fits it to the voice, and asks for each frame's picture.
 import type { Plugin } from "ai-videos/plugin";
 import { GUIDE, SCRIPT_GUIDE } from "./guide.ts";
-import { frameSvg } from "./picture.ts";
+import { drawScript, frameSvg } from "./picture.ts";
 import { repairScenario } from "./repair.ts";
 import { COMMANDS, NARRATOR, STAGE, checkScenario, type Scenario } from "./scenario.ts";
 import { ACTIONS, checkScript } from "./script.ts";
@@ -26,6 +26,7 @@ export default {
   },
   // The tool's moment names its span: a span is a beat here.
   frame: (scenario, { span, ...moment }, size) => frameSvg(scenario, { beat: span, ...moment }, size),
-  // A cartoon written as a script: the tool reads its lines, and compiles what the check works out.
-  script: { actions: ACTIONS, guide: SCRIPT_GUIDE, check: checkScript },
+  // A cartoon written as a script: the tool reads its lines, compiles what the check works out, and
+  // has each frame of that drawn.
+  script: { actions: ACTIONS, guide: SCRIPT_GUIDE, check: checkScript, draw: drawScript },
 } satisfies Plugin<Scenario>;

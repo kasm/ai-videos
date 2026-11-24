@@ -1,7 +1,10 @@
 // One frame's picture: where everything is at a moment of the scenario, and that as an SVG. A pure
 // function of the scenario and the moment, so the same moment is the same text, and the same pixels.
-// The scenario names moves and poses; how each looks (the numbers below) is the plugin's.
-import { ARM, STAGE, moveOf, type Pose, type Scenario } from "./scenario.ts";
+// The scenario names moves and poses; how each looks (the numbers below) is the plugin's. A cartoon
+// written as a script is drawn the same, from what a frame of its compiled scenario shows.
+import type { Library as LibraryFile, Shown } from "ai-videos/plugin";
+import { ARM, STAGE, moveOf, readLibrary, type Library, type Pose, type Scenario } from "./scenario.ts";
+import type { Setting, Walk } from "./script.ts";
 import type { Moment } from "./timeline.ts";
 
 type Point = [number, number];
@@ -89,13 +92,22 @@ function eyesAt(name: string, time: number): number {
   return BLINK.shut + (1 - BLINK.shut) * open;
 }
 
+/** Where a walk has a character, `p` of the way through it: a whole number of steps, so it ends with the feet down. */
+function walkAt(from: Point, to: Point, p: number): Point {
+  if (p >= 1) return [...to];
+  const [dx, dy] = [to[0] - from[0], to[1] - from[1]];
+  const way = ease(p);
+  const steps = Math.max(1, Math.round(Math.hypot(dx, dy) / STEP));
+  return [from[0] + dx * way, from[1] + dy * way - BOUNCE * Math.abs(Math.sin(Math.PI * steps * way))];
+}
+
 /** A pose's arm angle at `time`: a wave swings around its own. */
 const armAt = (pose: Pose, time: number) => ARM_AT[pose] + (pose === "wave" ? SWING * Math.sin(2 * Math.PI * WAVES * time) : 0);
 
 /**
  * The scene of the moment's beat: its characters where the beats before left them, facing and posed
- * as those left them, and the moment's own beat part of the way. A walk is a whole number of steps
- * and a jump a whole number of hops, so both end with the feet down.
+ * as those left them, and the moment's own beat part of the way. A jump is a whole number of hops,
+ * so it ends with the feet down.
  */
 export function stagingAt(scenario: Scenario, moment: Pick<Moment, "beat" | "progress" | "time" | "into">): Staging {
   let first = 0; // the scene's first beat, counted through the scenario
@@ -124,12 +136,7 @@ export function stagingAt(scenario: Scenario, moment: Pick<Moment, "beat" | "pro
       if (!one) continue;
       const p = now ? moment.progress : 1;
       if (beat.walk) {
-        const { to } = beat.walk;
-        const [dx, dy] = [to[0] - one.at[0], to[1] - one.at[1]];
-        const way = ease(p);
-        const steps = Math.max(1, Math.round(Math.hypot(dx, dy) / STEP));
-        const rise = p >= 1 ? 0 : BOUNCE * Math.abs(Math.sin(Math.PI * steps * way));
-        one.at = p >= 1 ? [...to] : [one.at[0] + dx * way, one.at[1] + dy * way - rise];
+        one.at = walkAt(one.at, beat.walk.to, p);
       } else if (beat.turn) {
         // A cut-out turned round: its width goes as the cosine, fastest edge-on, and never to nothing.
         const width = Math.cos(Math.PI * p);
@@ -139,8 +146,7 @@ export function stagingAt(scenario: Scenario, moment: Pick<Moment, "beat" | "pro
         one.at = [one.at[0], one.at[1] - JUMP * 4 * hop * (1 - hop)];
       }
     }
-    const background = scenario.backgrounds[backdrop];
-    if (!background) throw new Error(`no background is named "${backdrop}"`);
+    const background = backgroundOf(scenario, backdrop);
     // The arm leaves its old pose and reaches the new one over REACH: a wave's swing fades with it.
     const reached = ease(Math.min(1, moment.into / REACH));
     const characters = [...cast].map(([name, { at, facing, pose, was }]) => ({
@@ -153,6 +159,31 @@ export function stagingAt(scenario: Scenario, moment: Pick<Moment, "beat" | "pro
     return { background, characters };
   }
   throw new Error(`the scenario has no beat ${moment.beat}`);
+}
+
+/** A background of the library, by its name. */
+function backgroundOf(library: Pick<Library, "backgrounds">, name: string): Background {
+  const background = library.backgrounds[name];
+  if (!background) throw new Error(`no background is named "${name}"`);
+  return background;
+}
+
+/**
+ * What a frame of a compiled scenario shows (the tool's AGENTS.md, "A script"), as a staging: the
+ * scene's characters where it begins, each then where its walks have it by now. Nothing turns a
+ * character or moves its arm yet.
+ */
+export function scriptStaging(library: Library, shown: Shown): Staging {
+  const { background, characters } = shown.setting as unknown as Setting;
+  const at = new Map(Object.entries(characters).map(([name, one]) => [name, one.at]));
+  for (const { who, values, progress } of shown.actions) {
+    const { from, to } = values as unknown as Walk;
+    at.set(who, walkAt(from, to, progress));
+  }
+  return {
+    background: backgroundOf(library, background),
+    characters: Object.entries(characters).map(([name, { facing }]) => ({ name, at: at.get(name)!, facing, arm: ARM_AT.stand, eyes: eyesAt(name, shown.time) })),
+  };
 }
 
 /** Hundredths of a pixel (or one part in `per`): enough for the picture, and the same text for the same place. */
@@ -206,15 +237,29 @@ function characterSvg(character: Character, actor: Actor, mouth: number): string
   return `<g transform="translate(${n(actor.at[0])} ${n(actor.at[1])})${facing === "1" ? "" : ` scale(${facing} 1)`}">${parts.join("")}</g>`;
 }
 
+/** A picture's size, pixels. */
+interface Size {
+  width: number;
+  height: number;
+}
+
 /** The moment's picture as an SVG of the whole stage, `width` by `height` pixels. */
-export function frameSvg(scenario: Scenario, moment: Moment, { width, height }: { width: number; height: number }): string {
-  const { background, characters } = stagingAt(scenario, moment);
+export const frameSvg = (scenario: Scenario, moment: Moment, size: Size) => svgOf(scenario, stagingAt(scenario, moment), moment.mouths, size);
+
+/** The pictures of a cartoon written as a script: the library read once, and each frame's SVG drawn from what it shows. */
+export function drawScript(file: LibraryFile | undefined): (shown: Shown, size: Size) => string {
+  const library = readLibrary(file);
+  return (shown, size) => svgOf(library, scriptStaging(library, shown), shown.mouths, size);
+}
+
+/** A staging as an SVG of the whole stage, the characters drawn as the library has them, each mouth as open as `mouths` says. */
+function svgOf(library: Pick<Library, "characters">, { background, characters }: Staging, mouths: Record<string, number>, { width, height }: Size): string {
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${STAGE.width} ${STAGE.height}" width="${width}" height="${height}">`,
     `<rect width="${STAGE.width}" height="${STAGE.height}" fill="${background.fill}"/>`,
     ...background.shapes.map(shapeSvg),
     // Only a speaker's mouth moves: the others keep theirs closed, as the scenario writes it.
-    ...characters.map((actor) => characterSvg(scenario.characters[actor.name]!, actor, moment.mouths[actor.name] ?? 0)),
+    ...characters.map((actor) => characterSvg(library.characters[actor.name]!, actor, mouths[actor.name] ?? 0)),
     "</svg>",
   ].join("\n");
 }

@@ -28,7 +28,19 @@
   `.cache/hello-script/compiled.json`; `check`, on a broken copy of it
   with an empty `AI_VIDEOS_CACHE`, refuses an unknown action, a wrong
   value and an unknown name, each with its line and a hint.
-- **Next: step 2, play it.**
+- **Step 2 done 2026-11-25**, watched by the user beside `hello`. The
+  narrator begins after the walk (4.77 s, `hello`'s at 0.6 s), as lines
+  only follow each other so far: the user's pick was to pin that in step
+  4's "Done when". Other picks: the tool works out what a frame shows and
+  the plugin draws that; a said line holds its mouth and its captions.
+  Checked: `npm test` and `npm run typecheck` here and in `cartoons/`;
+  RayCraft's media typecheck and `test:libs`, no file of it changed;
+  `make --fit` of the ten gives requests equal to the baseline, byte for
+  byte, and the seven cartoons, made whole, draw the same `.svgs`;
+  `make cartoons/videos/hello-script.yaml` gives the video, 289 frames
+  as compiled, and the page, whose own drawing gives the video's `.svgs`;
+  so did a longer script (two scenes, four speakers, 25 fps).
+- **Next: step 3, fit what happens at once.**
 
 
 ## Goal
@@ -302,11 +314,12 @@ word, seconds before its end), and what goes on under the rest, cut or
 waited for. **Done when:** a new `videos/all-at-once.yaml` with a
 chorus, an interruption at a word, a murmur of two lines under three
 others, cut where they end, and a radio the talk waits for makes as a
-video and a page; a test finds each voice in the sound at its compiled
-time, and the cut ones silent after the cut; `check` refuses a name from
-below, a loop, and a voice that follows a cut one in its block, each
-with both lines and a hint; a fresh `claude -p` with no tools, given
-only the guide, writes such a scene that passes `check`.
+video and a page; `hello-script`, its narrator joined to the walk,
+begins to speak when `hello` does; a test finds each voice in the sound
+at its compiled time, and the cut ones silent after the cut; `check`
+refuses a name from below, a loop, and a voice that follows a cut one in
+its block, each with both lines and a hint; a fresh `claude -p` with no
+tools, given only the guide, writes such a scene that passes `check`.
 
 ### 5. Name values and inherit them (the tool)
 

@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
-import { codeKey, folderKey, inputsKey, keyOf, stagesIn } from "./stages.ts";
+import { PLAYING, codeKey, folderKey, inputsKey, keyOf, stagesIn } from "./stages.ts";
 
 const scratch = await mkdtemp(path.join(os.tmpdir(), "ai-videos-stages-"));
 after(() => rm(scratch, { recursive: true, force: true }));
@@ -90,6 +90,9 @@ test("the plugin's code: a file in its folder changes the key, node_modules and 
   const before = await codeKey(plugin);
   await folder("project/src", { "node_modules/x/index.js": "1", ".cache/y": "2" });
   assert.equal(await codeKey(plugin), before);
+  const played = await codeKey(plugin, PLAYING);
+  assert.notEqual(played, before, "a script's picture goes through other files of the tool's");
   await folder("project/src", { "picture.ts": "b" });
   assert.notEqual(await codeKey(plugin), before);
+  assert.notEqual(await codeKey(plugin, PLAYING), played);
 });

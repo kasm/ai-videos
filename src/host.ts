@@ -2,7 +2,8 @@
 // file and sends it make's calls (make.ts, Call), one at a time, each with the video's source. It
 // does for every plugin what is the same in each: has the source checked, writes the plan as the
 // clip's data, and draws the clip to the request, a moment at a time, encoded by frames.ts: a
-// drawing plugin's SVG turned into pixels by resvg, a recording plugin's PNG as it is.
+// drawing plugin's SVG turned into pixels by resvg, a recording plugin's PNG as it is. A video
+// written as a script is checked and drawn here too, from its compiled scenario alone.
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -11,10 +12,12 @@ import { Resvg } from "@resvg/resvg-js";
 import { z } from "zod";
 import type { requestDocument } from "./fit.ts";
 import { encoder, moments, writeClipData, type ClipText } from "./frames.ts";
+import type { Compiled } from "./compile.ts";
 import type { Call } from "./make.ts";
 import type { DrawingPlugin, EventLimits as Limits, Library, Plan, Plugin, RecordingPlugin, Schema } from "./plugin.ts";
-import { SAY, checkScenario, readScript, type Checked, type WrittenScript } from "./scenario.ts";
+import { SAY, checkScenario, readScript, type Checked, type ScriptPlugin, type WrittenScript } from "./scenario.ts";
 import { EventLimits, FORMATS, slug } from "./script.ts";
+import { pictureOf, shownAt } from "./shown.ts";
 
 /** The check of a video written as a script (scenario.ts): its scenes as written, and the names with a voice. */
 export interface ScriptCall {
@@ -23,18 +26,27 @@ export interface ScriptCall {
   speakers: string[];
 }
 
-/**
- * A call for the plugin, with the video file and its source (the file, parsed, without the tool's
- * keys), and the project's library, when it has one: one of make's (make.ts), import's check,
- * which mends, checks and plans the source and writes nothing, or a script's check, which writes
- * nothing either.
- */
-export interface Job {
-  call: Call | { step: "check" } | ScriptCall;
-  file: string;
-  source: unknown;
-  library?: Library;
+/** The drawing of a video written as a script: its compiled scenario, and the clip to draw from it. */
+export interface PlayCall {
+  step: "play";
+  format: string;
+  /** The size to draw at: the format's. */
+  width: number;
+  height: number;
+  /** The compiled scenario's file (compile.ts), and the clip's. */
+  compiled: string;
+  clip: string;
 }
+
+/**
+ * A call for the plugin, with the project's library, when it has one: one of make's (make.ts), with
+ * the video file and its source (the file, parsed, without the tool's keys); import's check of the
+ * same, which mends, checks and plans the source and writes nothing; a script's check, which writes
+ * nothing either; or a script's drawing, which is given no video file.
+ */
+export type Job =
+  | { call: Call | { step: "check" } | ScriptCall; file: string; source: unknown; library?: Library }
+  | { call: PlayCall; library?: Library };
 
 /** What a plugin says of itself when it is ready: its scene, its stage, how it pictures, and its part of the prompt. */
 export interface Described {
@@ -109,6 +121,7 @@ const PluginShape = z
         ),
         guide: z.string().trim().min(1, "give the plugin's part of the guide to a script (plugin.ts, script)"),
         check: fn,
+        draw: fn,
       })
       .optional(),
   })
@@ -195,6 +208,7 @@ function fills(plugin: Plugin, format: string, { width, height }: { width: numbe
 }
 
 type Request = ReturnType<typeof requestDocument>;
+type Size = { width: number; height: number };
 
 function readRequest(file: string): Request {
   let text: string;
@@ -224,22 +238,32 @@ function retime(plan: Plan, request: Request): ClipText[] {
   return plan.texts.map((text) => ({ ...text, from: at(text.from, false), to: Math.min(at(text.to, true), request.duration) }));
 }
 
+/** The SVG of each frame of the source drawn to the request, a moment at a time. */
+function* framesTo(plugin: DrawingPlugin, source: unknown, request: Request, size: Size) {
+  for (const moment of moments(request)) yield plugin.frame(source, moment, size);
+}
+
+/** The SVG of each frame of a compiled scenario, drawn by the plugin's script. */
+function* framesOf(script: ScriptPlugin, compiled: Compiled, library: Library | undefined, size: Size) {
+  const picture = pictureOf(compiled);
+  const draw = script.draw(library);
+  for (let frame = 0; frame < picture.frames; frame++) yield draw(shownAt(picture, frame), size);
+}
+
 /**
- * Draws the source to the request into `call.clip`, a moment at a time. A frame whose SVG is the one
- * before is not drawn again. Beside the clip's `.frames`, `<clip>.svgs` holds a hash of each frame's
- * SVG, a line a frame: what a web page of the video draws (page.ts) is compared with it.
+ * Draws the clip `file` from its frames' SVGs, in order. A frame whose SVG is the one before is not
+ * drawn again. Beside the clip's `.frames`, `<clip>.svgs` holds a hash of each frame's SVG, a line a
+ * frame: what a web page of the video draws (page.ts) is compared with it.
  */
-async function draw(plugin: DrawingPlugin, source: unknown, call: Extract<Call, { step: "draw" }>, request: Request) {
-  const size = { width: call.width, height: call.height };
-  const out = encoder(call.clip, { ...size, fps: request.fps, crf: CRF });
+async function draw(file: string, size: Size, fps: number, frames: Iterable<string>) {
+  const out = encoder(file, { ...size, fps, crf: CRF });
   let drawn = 0;
   let svg = "";
   let picture: Uint8Array | undefined;
   const svgs: string[] = [];
   let hash = "";
   try {
-    for (const moment of moments(request)) {
-      const next = plugin.frame(source, moment, size);
+    for (const next of frames) {
       if (next !== svg || !picture) {
         svg = next;
         hash = svgHash(svg);
@@ -259,9 +283,9 @@ async function draw(plugin: DrawingPlugin, source: unknown, call: Extract<Call, 
     out.abort();
     throw e;
   }
-  const frames = await out.end();
-  writeFileSync(`${call.clip}.svgs`, `${svgs.join("\n")}\n`);
-  return { frames, drawn };
+  const count = await out.end();
+  writeFileSync(`${file}.svgs`, `${svgs.join("\n")}\n`);
+  return { frames: count, drawn };
 }
 
 /**
@@ -293,6 +317,17 @@ async function record(plugin: RecordingPlugin, source: unknown, call: Extract<Ca
   return { frames: await out.end(), drawn };
 }
 
+/** A compiled scenario's clip, drawn from its file and the library, and nothing else. */
+async function play(plugin: Plugin, call: PlayCall, library: Library | undefined): Promise<Done> {
+  if (!plugin.script) throw new Error(`the ${plugin.scene} plugin draws no script: it has no script (AGENTS.md, "A script")`);
+  fills(plugin, call.format, call);
+  const compiled = JSON.parse(readFileSync(call.compiled, "utf8")) as Compiled;
+  const size = { width: call.width, height: call.height };
+  const began = performance.now();
+  const { frames, drawn } = await draw(call.clip, size, compiled.fps, framesOf(plugin.script, compiled, library, size));
+  return { frames, drawn, seconds: (performance.now() - began) / 1000 };
+}
+
 /** A frame's SVG as `<clip>.svgs` holds it: the md5 of its text, as UTF-8. */
 export const svgHash = (svg: string) => createHash("md5").update(svg).digest("hex");
 
@@ -300,9 +335,11 @@ export const svgHash = (svg: string) => createHash("md5").update(svg).digest("he
  * One of make's calls: step one writes the plan as the clip's data, and says what the plugin
  * mended in the source, the plan's limits and the files it is made from; step two draws the clip
  * and writes its data again. Each has the source mended, then checked. Import's check gives what
- * was mended and the plan, and writes nothing.
+ * was mended and the plan, and writes nothing. A script's two: its check, and its clip drawn from
+ * the compiled scenario.
  */
 export async function runJob(plugin: Plugin, pluginFile: string, job: Job): Promise<Done> {
+  if (!("file" in job)) return play(plugin, job.call, job.library);
   const { call, file } = job;
   if (call.step === "script") {
     if (!plugin.script) throw new Error(`${file} is written as a script, and the ${plugin.scene} plugin takes none: it has no script (AGENTS.md, "A script")`);
@@ -328,7 +365,10 @@ export async function runJob(plugin: Plugin, pluginFile: string, job: Job): Prom
   const asked = kinds(request.spans.map((s) => ({ name: s.event, span: s.span })));
   if (asked !== kinds(plan.events)) throw new Error(`the request's spans (${asked}) are not the source's beats (${kinds(plan.events)}): make the video again`);
   const began = performance.now();
-  const { frames, drawn } = plugin.camera ? await record(plugin, source, call, request) : await draw(plugin, source, call, request);
+  const size = { width: call.width, height: call.height };
+  const { frames, drawn } = plugin.camera
+    ? await record(plugin, source, call, request)
+    : await draw(call.clip, size, request.fps, framesTo(plugin, source, request, size));
   writeClipData(call.data, {
     ...made,
     request: call.request,

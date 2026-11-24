@@ -48,11 +48,12 @@ the tool's projects, and a session for it is opened in the repo's root.
     drawings, each mark a point, each beat's length known.
   - `script.ts`: a cartoon written as a script (The script, below): the
     actions a line may name (`ACTIONS`), and the script's check, which
-    works each scene and action out in plain numbers.
+    works each scene and action out in plain numbers (`Setting`, `Walk`).
   - `timeline.ts`: beats and lines as the clip's events and texts, at the
     scenario's own pace (the plan).
   - `picture.ts`: one moment's picture, as an SVG: who stands where, facing
-    which way, with the arm, the eyes and the mouth how.
+    which way, with the arm, the eyes and the mouth how. A script's too,
+    from what a frame of it shows (`drawScript`).
   - The rest is the tool's, the same for every plugin: reading the file,
     which moment each frame shows, the SVG turned into pixels, the encoder,
     and the clip's data written.
@@ -185,7 +186,8 @@ characters:
   every name. `make` prints the speaker and voice of each character's line.
 - `videos/meet.yaml` has two characters and the narrator, three voices.
 
-The picture depends only on the scenario, the library and the request, so two runs
+The picture depends only on the scenario, the library and the request (a
+script's only on its compiled scenario and the library), so two runs
 draw the same frames. `.cache/<name>/clips/<name>-landscape.mp4.frames`
 holds a hash of each frame's pixels, a line a frame: compare two runs'
 files to see it, or to find the frame where they part.
@@ -278,10 +280,11 @@ A cartoon may be written as a script: each scene has a `script:`, a
 block of lines, in place of `beats:`. `videos/hello-script.yaml` is
 `hello` written so. The plan `docs/plans/compiled-scenario.md` builds
 this step by step, and the seven cartoons stay in beats until its end.
-So far a script is checked and compiled (`make <file> --fit` writes
-`.cache/<name>/compiled.json`): no video is made from it yet. The tool's
-`AGENTS.md`, "A script", has the line's form, the check and the
-compiled scenario.
+`make` checks and compiles it (`.cache/<name>/compiled.json`; `--fit`
+stops there), and makes the video and the page from that and the
+library's drawings, as it makes any cartoon's. The tool's `AGENTS.md`,
+"A script", has the line's form, the check, the compiled scenario and
+what a frame of it shows.
 
 ```yaml
 use: cartoon
@@ -311,6 +314,10 @@ scenes:
   -1, and each walk as its two points with its own length. A mistake
   comes with its line and a hint: the library's names, and the nearest.
   Nothing is mended in a script.
+- **The picture** (`drawScript`, `picture.ts`) is drawn from what the
+  tool says a frame shows: the scene as it began, each walk as far
+  through as it is, and whose mouth is open. A walk, a blink and a mouth
+  look as they do in beats; the arm hangs.
 - **The guide** to a cartoon as a script is `SCRIPT_GUIDE` in `guide.ts`,
   the plugin's part; the tool adds how a line is written, and the
   actions. It teaches what a script has so far. `GUIDE`, the prompt's,
@@ -396,8 +403,8 @@ characters on one mark, is refused, with the place and the reason.
 - **Of the tool's sources, only the module its `package.json` exports
   is imported**: `ai-videos/plugin`, for the plugin's types, for a
   script's words and hints (`NARRATOR`, `nearest`), and in the tests for
-  `moments` and for a script's reading, check and compiling. It needs
-  none of the tool's packages.
+  `moments` and for a script's reading, check, compiling and what a frame
+  of it shows. It needs none of the tool's packages.
 - **The plugin's code is pure**: no Node API (the tool reads the files),
   and a frame's picture is a function of the scenario, the library and the moment alone:
   no clock, no random number, no font of the machine (a picture holds no

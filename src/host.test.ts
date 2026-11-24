@@ -9,6 +9,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
+import { loadDrawn } from "./clip.ts";
+import { compile, compiledText } from "./compile.ts";
 import { moments } from "./frames.ts";
 import { loadPlugin, runJob } from "./host.ts";
 import { pluginOf, startPlugin } from "./make.ts";
@@ -343,7 +345,8 @@ test("a recording plugin's camera is closed when a shot fails; its limits and in
 
 /**
  * The square with a script (plugin.ts, script): one action, `slide`, to a side; its check finds a
- * scene's colour in the library and works the slide out in pixels.
+ * scene's colour in the library and works the slide out in pixels, and its picture is the square
+ * where its slides have it, as tall as it speaks, on the library's ground.
  */
 const SCRIPTED = PLUGIN.replace(
   "export default {",
@@ -364,6 +367,16 @@ export default {
       const issues = scenes.filter((scene) => !colour(scene)).map((scene) => ({ line: scene.line, message: "no colour is named " + scene.setting.colour, hint: "name a colour of the library" }));
       if (issues.length) return { issues };
       return { scenes: scenes.map((scene) => ({ setting: { colour: colour(scene) }, actions: scene.actions.map((a) => ({ values: { x: a.values.to === "right" ? 120 : 20 }, length: 1.5 })) })) };
+    },
+    draw(library) {
+      const ground = library.raw.ground;
+      return (shown, { width, height }) => {
+        let x = 20;
+        for (const { values, progress } of shown.actions) x += (values.x - x) * progress;
+        return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 90" width="' + width + '" height="' + height + '">' +
+          '<rect width="160" height="90" fill="' + ground + '"/>' +
+          '<rect x="' + x + '" y="30" width="30" height="' + (30 + 10 * (shown.mouths.sq ?? 0)) + '" fill="' + shown.setting.colour + '"/></svg>';
+      };
     },
   },`,
 );
@@ -404,6 +417,63 @@ test("a plugin with a script: its guide and actions come with it, and a script's
   } finally {
     host.close();
   }
+});
+
+test("a script's clip is drawn from its compiled scenario and the library, with no video file", async () => {
+  const root = await project("played", () => SCRIPTED);
+  const plugin = (await pluginOf(path.join(root, "videos", "sq.yaml")))!;
+  await rm(path.join(root, "videos"), { recursive: true });
+  // Ten frames a second: the slide from frame 2 for 4, the line from 8 for 3, then 2 frames more.
+  const scenes = [
+    {
+      line: 3,
+      setting: { colour: "#d04040" },
+      lines: [
+        { line: 5, who: "sq", action: "slide", values: { x: 120 }, length: 0.4 },
+        { line: 6, who: "sq", action: "say", text: "Here I am." },
+      ],
+    },
+  ];
+  const compiled = compile(scenes, [{ file: "a.wav", duration: 0.3, mouth: [0.5, 1, 0] }], { fps: 10, loudness: -14, lead: 0.2, gap: 0.2, tail: 0.2 }, "../../videos/sq.yaml");
+  const cache = path.join(root, ".cache", "sq");
+  const file = path.join(cache, "compiled.json");
+  await mkdir(cache, { recursive: true });
+  await writeFile(file, compiledText(compiled));
+  const clip = path.join(cache, "clips", "sq-landscape.mp4");
+  const library = { file: path.join(root, "library.yaml"), raw: { ground: "#ffffff" } };
+  const call = { format: "landscape", width: 160, height: 90, compiled: file, clip };
+  const said: string[] = [];
+  const host = await startPlugin(plugin, quiet);
+  try {
+    await host.play(call, library, (m) => said.push(m));
+    assert.match(said[0]!, /^square: .*sq-landscape\.mp4, drawn from compiled\.json \(landscape\)$/);
+    assert.match(said[1]!, /^ {2}13 frames \(8 drawn\) in [\d.]+ s$/);
+    // The slide's four places and its end, the mouth's two, and the end again: the rest holds.
+    const frames = (await readFile(`${clip}.frames`, "utf8")).trim().split("\n");
+    assert.deepEqual(frames.map((f) => frames.indexOf(f)), [0, 0, 0, 3, 4, 5, 6, 6, 8, 9, 6, 6, 6]);
+    const svgs = (await readFile(`${clip}.svgs`, "utf8")).trim().split("\n");
+    assert.deepEqual(svgs.map((s) => svgs.indexOf(s)), frames.map((f) => frames.indexOf(f)));
+    // The clip lasts what is compiled, to the frame: one left from another run does not.
+    assert.deepEqual(await loadDrawn(clip, 13, 10), { width: 160, height: 90, fps: 10, duration: 1.3 });
+    await assert.rejects(loadDrawn(clip, 14, 10), /lasts 1\.3 s at 10 frames a second, not the 14 frames at 10 compiled/);
+    await assert.rejects(loadDrawn(`${clip}.none.mp4`, 13, 10), /No clip at .*none\.mp4/);
+    // Drawn again, it is the same; with another library, it is not.
+    await host.play(call, library, quiet);
+    assert.equal(await readFile(`${clip}.frames`, "utf8"), `${frames.join("\n")}\n`);
+    await host.play(call, { ...library, raw: { ground: "#eeeeee" } }, quiet);
+    assert.notEqual((await readFile(`${clip}.frames`, "utf8")).split("\n")[0], frames[0]);
+    // What fails says why, and the host takes the next call.
+    await assert.rejects(host.play({ ...call, width: 90, height: 160, format: "portrait" }, library, quiet), /the square stage is 160 by 90: it does not fill portrait \(90 by 160\)/);
+    await assert.rejects(host.play({ ...call, compiled: path.join(root, "none.json") }, library, quiet), /none\.json/);
+    await host.play(call, library, quiet);
+  } finally {
+    host.close();
+  }
+  const plain = await project("plain", (t) => t);
+  const unscripted = await loadPlugin(path.join(plain, "src", "plugin.mjs"));
+  await assert.rejects(runJob(unscripted, "plugin.mjs", { call: { step: "play", ...call }, library }), /the square plugin draws no script: it has no script/);
+  const undrawn = await project("undrawn", () => SCRIPTED.replace("draw(library)", "drawing(library)"));
+  await assert.rejects(loadPlugin(path.join(undrawn, "src", "plugin.mjs")), /is not a plugin[\s\S]*script\.draw/);
 });
 
 test("a plugin with no script takes none; an action's example is a line that names it and passes its schema", async () => {

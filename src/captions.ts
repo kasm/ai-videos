@@ -1,6 +1,9 @@
 // A line split into captions. Lines are known text, so no speech recognition is involved.
 const MAX_CHARS = 84; // a longer line is split
 
+/** Seconds a caption may stay after its words, when no other comes: a short line is up long enough to read. */
+export const LINGER = 1.0;
+
 /** Splits a long line at clause boundaries into chunks that fit one caption. */
 function chunk(text: string): string[] {
   if (text.length <= MAX_CHARS) return [text];
@@ -18,7 +21,7 @@ function chunk(text: string): string[] {
   return chunks;
 }
 
-/** A line as captions: pieces that fit one each, timed in proportion to their length from `start`. */
+/** A line as captions: pieces that fit one each, timed in proportion to their length from `start` (seconds, or frames). */
 export function captionsOf(text: string, start: number, duration: number): { text: string; start: number; end: number }[] {
   const chunks = chunk(text);
   const total = chunks.reduce((sum, c) => sum + c.length, 0);

@@ -42,7 +42,7 @@ the voice model always stay in this tool.
 | Path | What it is |
 | --- | --- |
 | `scenes/clip/scene.html` | The scene template (a HyperFrames sub-composition with `{{placeholders}}`): the plugin's clip, muted, with the captions over it. |
-| `src/` | The pipeline: `video-file` (the file, its settings in layers, and the `script` the pipeline reads) → the plugin in its process (`plugin`, `make`, `host`): its plan → `tts` → `timeline` (and `fit` with `mouth`) → `sound` → the drawing (`moments`, `frames`, `clip`) → `compose` (with `bundle` and `captions`) → `render`; `page`, the web page; `stages` and `lock`, a make's cache and its lock (see The cache); `setup`, what the commands need on the disk; `prompt` and `import`, a story's prompt for a web chat and its reply taken in, and `story`, the two by the clipboard and the episodes made (see prompt, import, story); `scenario`, `compile` and `guide`, a video written as a script: its lines read and checked, compiled, and taught (see A script). |
+| `src/` | The pipeline: `video-file` (the file, its settings in layers, and the `script` the pipeline reads) → the plugin in its process (`plugin`, `make`, `host`): its plan → `tts` → `timeline` (and `fit` with `mouth`) → `sound` → the drawing (`moments`, `frames`, `clip`) → `compose` (with `bundle` and `captions`) → `render`; `page`, the web page; `stages` and `lock`, a make's cache and its lock (see The cache); `setup`, what the commands need on the disk; `prompt` and `import`, a story's prompt for a web chat and its reply taken in, and `story`, the two by the clipboard and the episodes made (see prompt, import, story); `scenario`, `compile`, `shown` and `guide`, a video written as a script: its lines read and checked, compiled, what each frame of it shows, and how it is taught (see A script). |
 | `cartoons/` | A project of the tool's, in this repo: the cartoon plugin (`cartoons/src/plugin.ts`), its library, videos and stories, and its notes, `cartoons/CLAUDE.md`. Its `episode` skill is the repo's, `.claude/skills/episode/`. |
 | `out/voice-samples/` | What `voices` writes. |
 | `.cache/tts/` | Narration audio, keyed by text, voice and speed. |
@@ -72,8 +72,8 @@ A project's plugin draws its videos: a module the tool runs in a child process o
   folder>"` in the project's `package.json` (`cartoons/`, in this repo, the same: `"file:.."`). It
   exports one module, `ai-videos/plugin`, which a plugin imports for its types (`import type {
   Plugin } from "ai-videos/plugin"`), its tests for `moments` (see Moments), and both for a
-  script's reading, check and compiling (see A script). It runs nothing else, so the project needs
-  none of the tool's packages, and Node 24 runs it as it is written.
+  script's reading, check, compiling and what a frame of it shows (see A script). It runs nothing
+  else, so the project needs none of the tool's packages, and Node 24 runs it as it is written.
 - **What it is:** the module's default export, `Plugin` in `src/plugin.ts`:
   - `scene`: the scene it draws (`cartoon`): a video file's `use:` names it.
   - `stage`: the size its picture is drawn at. The video's format is the one of its shape; a stage
@@ -122,6 +122,9 @@ A project's plugin draws its videos: a module the tool runs in a child process o
       them. It gives each scene's `setting` (how it begins) and each action's `values` and own
       `length`, seconds, all in plain numbers: numbers and names, in lists and tables. Or it gives
       `issues`, each `{ line, message, hint }`.
+    - `draw(library)`: its picture. It gives a function, `(shown, size)` to SVG, that draws what a
+      frame shows (see A script) as `frame` draws a moment: the whole stage, `width` × `height`
+      pixels. A script's picture is drawn, never recorded.
 
   A drawing plugin's functions are pure: no Node APIs, no clock, no unseeded randomness. So a frame
   is the same in every run, and the same code draws in the video's web page (see The web page), the
@@ -138,15 +141,16 @@ A project's plugin draws its videos: a module the tool runs in a child process o
   holds no text), and a frame whose SVG is the one before is not drawn again; beside the clip's
   `.frames`, `<clip>.svgs` holds a hash of each frame's SVG (its md5), a line a frame: what the web
   page draws is compared with it. A recording plugin's PNGs are encoded as they come, `.frames`
-  holding the md5 of each, and it has no `.svgs`.
+  holding the md5 of each, and it has no `.svgs`. A script has neither step: its check, and its
+  clip drawn from the compiled scenario, as a drawing plugin's is.
 - **The process:** `make` starts the host at the first stage it makes (none when each is in the
   cache), in the `package.json`'s folder, and closes it when it is done. Ready, the host says the
   plugin's scene, stage, picture (`drawn` or `recorded`), guide and commands (their descriptions
   and examples), and its script's guide and actions. Each call is a message (`Call`,
   `src/make.ts`), with the video file's source and the library, answered before the next; one that
   fails says why, and `make` stops there. `import`'s call mends, checks and plans a source and
-  writes nothing; a script's check is a call too, and writes nothing either. `src/host.test.ts`
-  shows each case.
+  writes nothing. A script's two are its check, which writes nothing either, and its drawing, with
+  the compiled scenario and the library and no video file. `src/host.test.ts` shows each case.
 
 ### A video file
 
@@ -182,10 +186,10 @@ scenes: [ … ]
 
 ### A script
 
-A video may be written as a script: each of its scenes has a `script:`, a block of lines, and the
-tool reads and compiles them. `docs/plans/compiled-scenario.md` builds this step by step. So far a
-script is checked and compiled: no picture and no sound is made from it yet. The beats of a
-cartoon and RayCraft's events go the way the rest of this file describes, as before.
+A video may be written as a script: each of its scenes has a `script:`, a block of lines. The tool
+reads and compiles them, and makes the sound, the picture, the captions and the web page from the
+compiled scenario alone. `docs/plans/compiled-scenario.md` builds this step by step. The beats of
+a cartoon and RayCraft's events go the way the rest of this file describes, as before.
 
 ```yaml
 use: cartoon
@@ -220,15 +224,20 @@ scenes:
   `setup`, and exits with 1 when it refuses. A video file that is not a script it takes as
   `import` takes an episode: mended, checked and planned by its plugin, every speaker with a voice
   the tool speaks in.
-- **`make <file> --fit`** runs the check, speaks and measures each said line (the voice cache),
-  and writes the compiled scenario, `.cache/<name>/compiled.json`, with its timing shown. It holds
-  the video's lock. Without `--fit` a script is refused: nothing is made from it yet.
+- **`make <file>`** runs the check, speaks and measures each said line (the voice cache), and
+  writes the compiled scenario, `.cache/<name>/compiled.json`, with its timing shown; `--fit` stops
+  there. Then it makes what any video's outputs say, as any video's (see make), from that file, read
+  back. The check and the compiling run every time, in a second or so, so the plugin always starts.
 - **The compiled scenario** (`compile`, `src/compile.ts`) has every line on whole frames of the
   video's `fps`: `from`, the frame of the video it begins on, and `frames`, how many it lasts.
   For now the lines happen in the order written: a scene's first begins `timing.lead` after the
   scene does, each next one `timing.gap` after the one before has ended, and the scene ends
   `timing.tail` after its last; the scenes follow each other. A voice lasts the frames it sounds
   in, and an action its own length (the plugin's), to the nearest frame.
+- **A said line** holds all of itself: its `text`, its voice's `file`, its `mouth` (how open, a
+  number for each of its frames, as in Fitting a clip to the voice; the example shows three) and
+  its `captions`. A caption stays up until the next one, a second after its words, or the scene's
+  end. `loudness` is the video's (see How loud).
 - **It holds plain values:** numbers, the lines' texts, file names (a voice's, in the tool's voice
   cache), and the names of the library and of actions. A mark is compiled to its point.
 
@@ -239,27 +248,38 @@ scenes:
   "made": { "by": "ai-videos compile", "from": "../../videos/hello-script.yaml" },
   "fps": 30,
   "frames": 289,
+  "loudness": -14,
   "scenes": [
     {
       "from": 0,
       "frames": 289,
       "setting": { "background": "meadow", "characters": { "pip": { "at": [-250, 880], "facing": 1 } } },
       "lines": [
-        { "line": 10, "who": "pip", "action": "walk", "from": 18, "frames": 113, "values": { "from": [-250, 880], "to": [960, 880] } },
-        { "line": 11, "who": "narrator", "action": "say", "from": 143, "frames": 67, "text": "This is Pip. Pip walks into the meadow.", "file": "88d4ac005a4a53dca76a.wav" }
+        { "line": 11, "who": "pip", "action": "walk", "from": 18, "frames": 113, "values": { "from": [-250, 880], "to": [960, 880] } },
+        { "line": 12, "who": "narrator", "action": "say", "from": 143, "frames": 67, "text": "This is Pip. Pip walks into the meadow.", "file": "88d4ac005a4a53dca76a.wav",
+          "mouth": [0, 0.56, 0.96], "captions": [{ "text": "This is Pip. Pip walks into the meadow.", "from": 143, "frames": 79 }] }
       ]
     }
   ]
 }
 ```
 
+- **What a frame shows** (`shownAt`, `src/shown.ts`) is worked out by the tool, for the host and for
+  the web page: the scene's `setting`, its `actions` that have begun by the frame, in the order
+  written, the `mouths` (as a moment's, but with the narrator's too) and the `time` since the video
+  began, seconds. An action has its `who`, `action` and `values`, its `progress`, evenly from 0 on
+  its first frame to 1 on the frame after its last, where it stays, and `into`, the seconds since it
+  began. A plugin's `script.draw` draws that, and counts no frames of its own.
+- **The build** (see make) has the clip and the captions, each on its own frames, and no voices: the
+  video's sound is the tool's one track (see How loud), silent when nobody speaks.
 - **The guide** to writing a script (`guideOf`, `src/guide.ts`) is the tool's part (a line's form,
   `say`, the order of lines), the plugin's `script.guide`, and the actions, each with its
   description and example. Each part's example is compiled by a test. The prompt for a web chat
   does not teach scripts yet.
 
-`src/scenario.test.ts`, `src/compile.test.ts`, `src/guide.test.ts` and `src/check.test.ts` show
-each rule.
+`src/scenario.test.ts`, `src/compile.test.ts`, `src/shown.test.ts`, `src/guide.test.ts` and
+`src/check.test.ts` show each rule; `src/page.test.ts` draws the clip and the page from a compiled
+scenario and a library, with no video file, and finds their frames the same.
 
 ### The cast
 
@@ -336,9 +356,14 @@ comes before the page: a step of its own when the video is made too, else the pa
 | The video | the render's picture, the sound | `out/<name>.mp4`, written every time |
 | The page | the sound, the source, the library, the request, the plugin's code, or a recording plugin's clip | `out/<name>.html`, written every time |
 
+A script has no plan and no fit: its `compiled.json` is written every time (see A script). Its sound
+is made from the voices' first frames, the video's frames and the loudness in it; its drawing from
+the rest but the words and the captions (`pictureOf`, `src/shown.ts`), the library (but its voices)
+and the plugin's code. The other stages are as any video's.
+
 - The plugin's code is every file in the plugin's folder (but `node_modules` and dot folders)
-  and the tool's files it runs through (`DRAWING`, `src/stages.ts`): keep the plugin in a folder
-  of its own, as `cartoons`' `src/`.
+  and the tool's files it runs through (`DRAWING`, or a script's `PLAYING`, `src/stages.ts`): keep
+  the plugin in a folder of its own, as `cartoons`' `src/`.
 - Its inputs are the files its plan named (`inputs`, see Plugins), as they are now: a file's
   bytes, a folder's files as the code's (`inputsKey`). The list is the one the plan named when it
   was last made, kept with it: one changed, or come or gone, makes the plan again, which names
@@ -365,7 +390,8 @@ shows each case.
 cache when what it is made from is unchanged (see The cache), and stops at the first that fails
 (`makeFile`, `src/cli.ts`). It holds the video's lock (see The cache) and writes only in the
 project's `.cache/<name>/` and `out/`, but for the voice cache, which stays in the tool. A video
-written as a script is compiled instead, with `--fit` (see A script).
+written as a script has its check in place of the plan, and is compiled in place of the fit (see A
+script); its clip is checked against the frames compiled, and the rest is the same.
 
 1. The plan: the plugin's step one (see Plugins), and what it mended, said.
 2. The voices and the fit: each line spoken (from the voice cache when it has not changed) and
@@ -424,7 +450,9 @@ again.
   imports a Node module) is refused, with esbuild's reason. A recording plugin's picture is its
   clip instead, the drawing's `.mp4` in the file as it is, played muted with the sound: set on the
   sound's time when the two are more than two frames apart, and on the frame itself while paused.
-  Its code is not bundled.
+  Its code is not bundled. A script's page has the compiled scenario's picture (`pictureOf`) and
+  the library, in place of the source and the request: `shownAt` in place of `moments`, and the
+  plugin's `script.draw` in place of its `frame`.
 - **The rest:** the sound (`sound.m4a`, the same track the video plays), the captions (the clip
   scene's, split, timed and styled as the video's: `sceneCaptions`, `clipStyle`) and their font
   (Inter 700, each subset), all inside the file. It names no URL.
@@ -688,3 +716,8 @@ end above y 1248, the area social apps leave clear.
   preview seeking slow; rendering is unaffected.
 - A clip with more than a few captions gets HyperFrames' `timeline_track_too_dense` warning (a
   caption is a timed element): a size hint, not a fault.
+- A script's build holds no voices, so its check says `audio_none`, "The film has no sound": the
+  sound is put with the render (`muxSound`).
+- HyperFrames counts a length's frames upwards, so a video whose length in milliseconds is rounded
+  up renders a frame more than its request (`hello`: 165 for 164), held. A script's times are given a
+  hair early (`frameTime`, `src/compose.ts`), and render the frames compiled.
