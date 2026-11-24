@@ -124,6 +124,8 @@ async function makeFileWith(video: VideoFile, opts: { fit: boolean; outputs: Mod
   let step = 0;
   const begin = (what: string) => log(`\n== ${++step}/${steps}: ${what}\n`);
   const shown = (file: string) => path.relative(video.plugin.dir, file);
+  // A finished file is shown as it opens from where the command was typed: its project may be another folder.
+  const finished = (file: string) => path.relative(CALLER, file);
   const cached = (what: string) => log(`From the cache: ${what}`);
   const stages = await stagesIn(video.cache);
   const code = await codeKey(video.plugin.file);
@@ -252,7 +254,7 @@ async function makeFileWith(video: VideoFile, opts: { fit: boolean; outputs: Mod
       sound,
       out: page,
     });
-    log(`Page: ${shown(page)}, ${(bytes / 1e6).toFixed(1)} MB`);
+    log(`Page: ${finished(page)}, ${(bytes / 1e6).toFixed(1)} MB`);
     made.push(page);
   }
   if (!asVideo) return made;
@@ -292,9 +294,9 @@ async function makeFileWith(video: VideoFile, opts: { fit: boolean; outputs: Mod
   }
   // The render's picture, with the one sound: the page plays the same.
   await muxSound(rendered, sound, `${video.out}.mp4`);
-  log(`Video: ${shown(`${video.out}.mp4`)}, the render's picture with the sound`);
+  log(`Video: ${finished(`${video.out}.mp4`)}, the render's picture with the sound`);
   await writeFile(`${video.out}.srt`, toSrt(timeline));
-  log(`Subtitles: ${shown(`${video.out}.srt`)}`);
+  log(`Subtitles: ${finished(`${video.out}.srt`)}`);
   return [...made, `${video.out}.mp4`];
 }
 
