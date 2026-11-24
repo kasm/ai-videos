@@ -43,9 +43,11 @@ The tool is developed on Windows, and one command, `story`, works only there.
 
 ## Set up
 
-In this folder, once:
+Once:
 
 ```
+git clone https://github.com/kasm/ai-videos.git
+cd ai-videos
 npm ci
 npm run -s video -- setup
 ```
