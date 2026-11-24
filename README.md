@@ -2,8 +2,7 @@
 
 ai-videos turns a text file into a narrated video, on your own computer. You write what happens and
 what is said in one YAML file. A voice on your machine says the lines, the picture is drawn to fit
-them, and you get an MP4 with captions and a subtitle file, or a web page that plays the same
-offline.
+them, and you get an MP4 with captions, or a web page that plays the same offline.
 
 The picture comes from a plugin. The one in this repository, [cartoons](cartoons/README.md), draws
 simple 2D cartoons with talking characters.
@@ -63,10 +62,8 @@ ignore that.
 npm run -s video -- make cartoons/videos/hello.yaml
 ```
 
-The first time takes about half a minute on a desktop PC. Then you have:
-
-- `cartoons/out/hello.mp4`, the video with its captions
-- `cartoons/out/hello.srt`, its subtitles
+The first time takes about half a minute on a desktop PC. Then you have
+`cartoons/out/hello.mp4`, the video with its captions.
 
 Make it again after a change, and only what the change touches is redone. To get the web page
 instead, `cartoons/out/hello.html`, one file that plays in any browser:

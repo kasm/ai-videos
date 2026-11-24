@@ -15,7 +15,6 @@ import { hyperframes, muxSound, renderProject } from "./render.ts";
 import { FORMATS, type EventLimitsScript, type FormatName, type LoadedVideo } from "./script.ts";
 import { cachePaths, cacheRoot, ready, setup } from "./setup.ts";
 import { writeSound } from "./sound.ts";
-import { toSrt } from "./srt.ts";
 import { codeKey, folderKey, inputsKey, keyOf, stagesIn } from "./stages.ts";
 import { runStory, windowsIO } from "./story.ts";
 import { buildTimeline, narrate } from "./timeline.ts";
@@ -45,7 +44,7 @@ Commands
   make <file.yaml>  A video: its plan, the voices and the fit, the sound, then what its outputs
                     turn on: its page (off by default), and the drawing, check and the video, each
                     stage from the cache when what it is made from is unchanged. Writes the
-                    project's .cache/<name>/ and out/<name>.mp4 and .srt (and .html). A second make
+                    project's .cache/<name>/ and out/<name>.mp4 (and .html). A second make
                     of the video, while one runs, is refused (AGENTS.md, "The cache")
   story <story.md>  A story to its videos, by a web chat and the clipboard: the prompt copied, each
                     answer copied back into <name>.reply.md and imported, what was refused copied
@@ -295,8 +294,6 @@ async function makeFileWith(video: VideoFile, opts: { fit: boolean; outputs: Mod
   // The render's picture, with the one sound: the page plays the same.
   await muxSound(rendered, sound, `${video.out}.mp4`);
   log(`Video: ${finished(`${video.out}.mp4`)}, the render's picture with the sound`);
-  await writeFile(`${video.out}.srt`, toSrt(timeline));
-  log(`Subtitles: ${finished(`${video.out}.srt`)}`);
   return [...made, `${video.out}.mp4`];
 }
 

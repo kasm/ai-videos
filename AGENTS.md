@@ -41,7 +41,7 @@ the voice model always stay in this tool.
 | Path | What it is |
 | --- | --- |
 | `scenes/clip/scene.html` | The scene template (a HyperFrames sub-composition with `{{placeholders}}`): the plugin's clip, muted, with the captions over it. |
-| `src/` | The pipeline: `video-file` (the file, its settings in layers, and the `script` the pipeline reads) → the plugin in its process (`plugin`, `make`, `host`): its plan → `tts` → `timeline` (and `fit` with `mouth`) → `sound` → the drawing (`moments`, `frames`, `clip`) → `compose` (with `bundle`) → `render` → `srt`; `page`, the web page; `stages` and `lock`, a make's cache and its lock (see The cache); `setup`, what the commands need on the disk; `prompt` and `import`, a story's prompt for a web chat and its reply taken in, and `story`, the two by the clipboard and the episodes made (see prompt, import, story). |
+| `src/` | The pipeline: `video-file` (the file, its settings in layers, and the `script` the pipeline reads) → the plugin in its process (`plugin`, `make`, `host`): its plan → `tts` → `timeline` (and `fit` with `mouth`) → `sound` → the drawing (`moments`, `frames`, `clip`) → `compose` (with `bundle` and `captions`) → `render`; `page`, the web page; `stages` and `lock`, a make's cache and its lock (see The cache); `setup`, what the commands need on the disk; `prompt` and `import`, a story's prompt for a web chat and its reply taken in, and `story`, the two by the clipboard and the episodes made (see prompt, import, story). |
 | `cartoons/` | A project of the tool's, in this repo: the cartoon plugin (`cartoons/src/plugin.ts`), its library, videos and stories, and its notes, `cartoons/CLAUDE.md`. Its `episode` skill is the repo's, `.claude/skills/episode/`. |
 | `out/voice-samples/` | What `voices` writes. |
 | `.cache/tts/` | Narration audio, keyed by text, voice and speed. |
@@ -158,8 +158,8 @@ scenes: [ … ]
 - **Its format** is the one of its plugin's stage (1920 by 1080: landscape), and it has that
   one alone.
 - **Its name** is the file's: what is made goes into `.cache/<name>/`, and the finished files are
-  `out/<name>.mp4` and `out/<name>.srt`, and the page `out/<name>.html`, all in the project's
-  folder, the `package.json`'s.
+  `out/<name>.mp4` and the page `out/<name>.html`, both in the project's folder, the
+  `package.json`'s.
 
 `src/video-file.test.ts` shows each rule.
 
@@ -213,7 +213,7 @@ A video file's settings come in layers, each over the one before, key by key (a 
 
 The profiles are the tool's (`PROFILES`, `src/video-file.ts`): `youtube` (-14 LUFS), `quiet`
 (-20 LUFS) and `draft` (the fast render). With a profile, the finished files take its name:
-`out/<name>-quiet.mp4`, `.srt`, `.html`. A mistake is reported against the file that holds it: the
+`out/<name>-quiet.mp4`, `.html`. A mistake is reported against the file that holds it: the
 `package.json` or the video file. The project's settings are the user's; an AI changes them only
 when asked.
 
@@ -235,7 +235,7 @@ comes before the page: a step of its own when the video is made too, else the pa
 | The drawing | the request, the source, the library (but its voices), the plugin's code, its inputs | `clips/<name>-<format>.mp4`, its `.json`, `.frames` and (drawn) `.svgs` |
 | Check | the build (`build/<format>/`, but HyperFrames' own `.hyperframes/` and `renders/`), HyperFrames' version | |
 | The render | the build, `quality`, `fps` | `render.mp4` |
-| The video | the render's picture, the sound | `out/<name>.mp4` and `.srt`, written every time |
+| The video | the render's picture, the sound | `out/<name>.mp4`, written every time |
 | The page | the sound, the source, the library, the request, the plugin's code, or a recording plugin's clip | `out/<name>.html`, written every time |
 
 - The plugin's code is every file in the plugin's folder (but `node_modules` and dot folders)
@@ -282,8 +282,7 @@ Then what its outputs turn on (see A video file), or the one `--as` names:
 6. Check: the drawn clip read back (see The clip and its JSON), the build composed into
    `.cache/<name>/build/<format>/` and checked by HyperFrames. A clip not drawn to its request, or
    a check's error, stops it.
-7. The video: the build rendered, its picture with the sound, into `out/<name>.mp4`, with the
-   subtitles beside it.
+7. The video: the build rendered, its picture with the sound, into `out/<name>.mp4`.
 
 ### Moments
 
@@ -501,7 +500,7 @@ schema is `ClipData` in `src/clip.ts`:
   the scene lasts until both the clip and the voice are done; past the clip's end, a still of its
   last frame holds. The log notes each line that waits for its event longer than a frame or
   starts later after it than the scene's `lead`.
-- Captions are the lines, split as the subtitles are, in the area social apps leave clear. Each
+- Captions are the lines, long ones split, in the area social apps leave clear. Each
   stays through the pause after its words, at most 1 s.
 - The drawn clip is read back before the build (`loadClip`): a clip or its JSON missing, JSON the
   schema refuses, or a length that does not match stops `make` with the reason.
@@ -584,7 +583,7 @@ end above y 1248, the area social apps leave clear.
 - HyperFrames telemetry is disabled on this machine (`npx hyperframes telemetry disable`). Its update
   check, which asks npm from a process that outlives the command, is off for every run of the tool
   (`HYPERFRAMES_NO_UPDATE_CHECK`, set in `src/cli.ts`).
-- Subtitles come from the lines and their timings; long lines are split in proportion to their
+- Captions come from the lines and their timings; long lines are split in proportion to their
   length, not by word timestamps.
 - A clip with long holds gets HyperFrames' "sparse keyframes" warning at render: few keyframes make
   preview seeking slow; rendering is unaffected.

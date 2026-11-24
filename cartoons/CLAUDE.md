@@ -17,8 +17,8 @@ the tool's projects, and a session for it is opened in the repo's root.
   characters and backgrounds, places as marks, each line written once, in
   its beat (the tool's `AGENTS.md`, "A video file").
 - `.cache/<name>/`: what the tool makes on the way (the plan, the request,
-  the clip, the build); `out/<name>.mp4` and `out/<name>.srt`: the
-  finished video and its subtitles, and `out/<name>.html`, its web page.
+  the clip, the build); `out/<name>.mp4`: the finished video,
+  and `out/<name>.html`, its web page.
   Made, not in git, never edited.
 - `stories/<name>.md`: a story in prose (a book's chapter), the source of
   its episodes, `videos/<name>-1.yaml` and on. The tool wraps it in its
@@ -80,9 +80,8 @@ give the tool the paths from there: `make cartoons/videos/<name>.yaml`):
   speaker), says what the plugin mended in it (Mending, below), speaks the
   lines and prints how the clip fits them, before anything is drawn.
 - `npm run -s video -- make videos/<name>.yaml`: the whole video, into
-  `out/<name>.mp4`, with its subtitles beside it. A stage made from what
-  has not changed since is taken from `.cache/<name>/`, and the log says
-  "From the cache".
+  `out/<name>.mp4`. A stage made from what has not changed since is taken
+  from `.cache/<name>/`, and the log says "From the cache".
 - `--profile quiet` (or `youtube`, `draft`): the tool's settings of that
   name over the rest, into `out/<name>-quiet.mp4` (the tool's `AGENTS.md`,
   "Settings in layers").

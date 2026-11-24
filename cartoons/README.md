@@ -21,7 +21,7 @@ message. `<name>` is in lowercase letters, digits and dashes, and names the epis
 | 3 | the tool | Puts the prompt on the clipboard. | the story, `library.yaml` | the clipboard |
 | 4 | you | Paste it into a new chat. When it has answered, copy the whole answer with the chat's copy button, and press Enter in the terminal. | | the clipboard |
 | 5 | the tool | Keeps the answer, checks it, and writes each episode it takes, with any new characters and backgrounds. | the clipboard | `stories/<name>.reply.md`, `videos/<episode>.yaml`, `library.yaml` |
-| 6 | the tool | Makes each episode. | `videos/<episode>.yaml`, `library.yaml` | `out/<episode>.mp4`, `out/<episode>.srt` |
+| 6 | the tool | Makes each episode. | `videos/<episode>.yaml`, `library.yaml` | `out/<episode>.mp4` |
 
 When it does not go straight through:
 

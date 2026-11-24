@@ -2,10 +2,10 @@
 import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { bundle, FONTS_CSS, GSAP_SRC } from "./bundle.ts";
+import { captionsOf } from "./captions.ts";
 import type { SceneClip } from "./clip.ts";
 import { run } from "./render.ts";
 import { FORMATS, type FormatName, type LoadedVideo, type SceneScript } from "./script.ts";
-import { captionsOf } from "./srt.ts";
 import type { TimedLine, TimedScene, Timeline } from "./timeline.ts";
 
 const esc = (s: string) =>
@@ -32,7 +32,7 @@ export interface Caption {
 }
 
 /**
- * A clip scene's captions: its lines split and timed as the subtitles are. A caption stays through
+ * A clip scene's captions: its lines split and timed (captions.ts). A caption stays through
  * the pause after its words, until the next one or CAPTION_LINGER after its words end, so a short
  * line is up long enough to read. The video's clip scene and the web page (page.ts) show these.
  */
@@ -54,7 +54,7 @@ export async function clipStyle(root: string, width: number, height: number): Pr
 
 /**
  * A clip scene's placeholders: the clip, copied into the project; a still of its last frame when
- * the scene runs on past it; and the narration as captions, split and timed as the subtitles are.
+ * the scene runs on past it; and the narration as captions.
  */
 async function clipScene(project: string, scene: SceneScript, timed: TimedScene, clips: SceneClip, fps: number) {
   const clip = clips.clip;
