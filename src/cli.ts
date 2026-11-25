@@ -249,9 +249,10 @@ async function playScript(video: VideoFile, fit: boolean, plugin: () => Promise<
         continue;
       }
       // A voice with fewer frames than it needs is cut, and a fitted action has another length than its own.
+      // An action that is over at once, in less than a frame, has no speed.
       const needs = own.get(line.line)! * compiled.fps;
       const cut = "text" in line && Math.ceil(needs - 1e-6) > on.frames;
-      const fitted = !("text" in line) && Math.round(needs) !== on.frames;
+      const fitted = !("text" in line) && Math.round(needs) > 0 && Math.round(needs) !== on.frames;
       const how = cut ? ", cut" : fitted ? `, ${(needs / on.frames).toFixed(2)} times its own speed` : "";
       log(`${what}  at ${seconds(on.from).padStart(7)} for ${seconds(on.frames).padStart(6)}, frames ${on.from} to ${on.from + on.frames - 1}${how}`);
     }

@@ -165,6 +165,9 @@ test("a mistake in the library is reported against the library", () => {
   const named = library();
   Object.assign(named.characters, { narrator: named.characters.pip });
   assert.throws(() => check(small(), named), /library\.yaml is not a library[\s\S]*"narrator" is the speaker nobody draws/);
+  const scene = library();
+  Object.assign(scene.characters, { scene: scene.characters.pip });
+  assert.throws(() => check(small(), scene), /library\.yaml is not a library[\s\S]*"scene" is whose line changes the background, and nobody on the stage/);
 
   assert.throws(() => check(small(), { characters: {}, backgrounds: {}, props: {} }), /library\.yaml is not a library[\s\S]*props/);
 });

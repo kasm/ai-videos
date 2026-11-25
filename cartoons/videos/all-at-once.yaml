@@ -3,9 +3,9 @@
 # murmur of two lines under three others, cut where they end. All its pauses are one beat, and the
 # radio's two: beat changed times all of it anew. In the second scene Mo stands beside the reeds, a
 # point of the scene's own, and Tuk comes between Pip and Mo, then up to Pip. In the third, the badger
-# walks in while Tuk hops and Mo, a second later, turns to look and points, and Pip walks up waving and
-# talking. The format is in CLAUDE.md ("The script"); the characters and the backgrounds are drawn in
-# library.yaml, and the radio is only heard.
+# walks in while Tuk hops and Mo, a second later, turns to look and points, Pip walks up waving and
+# talking, and at a word, as the badger walks off, the day breaks. The format is in CLAUDE.md ("The
+# script"); the characters and the backgrounds are drawn in library.yaml, and the radio is only heard.
 use: cartoon
 outputs: { web: true } # its page too, beside the video
 cast: { radio: am_michael }
@@ -73,4 +73,5 @@ scenes:
       badger turn
       badger walk to=off-right
       & pip wave
-      & narrator say: And the badger goes home again.
+      & [home] narrator say: And as the day breaks, the badger goes home.
+      scene background to=morning @ home.word(breaks)

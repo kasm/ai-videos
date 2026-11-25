@@ -179,13 +179,18 @@ function backgroundOf(library: Pick<Library, "backgrounds">, name: string): Back
  * What a frame of a compiled scenario shows (the tool's AGENTS.md, "A script"), as a staging: the
  * scene's characters as it begins, and then as their actions have them by now, each on its own channel,
  * whose actions are one after another: where a walk has it, how far round a turn, how high a jump over
- * that, and where its arm is.
+ * that, and where its arm is. The background is the last one it has changed to, or the one it begins with.
  */
 export function scriptStaging(library: Library, shown: Shown): Staging {
   const { background, characters } = shown.setting as unknown as Setting;
   const { time } = shown;
+  let backdrop = background;
   const cast = new Map(Object.entries(characters).map(([name, { at, facing }]) => [name, { at, facing: facing as number, high: 0, arm: armAt("stand", time) }]));
   for (const { who, progress, ...did } of shown.actions as unknown as (Pick<ShownAction, "who" | "progress"> & Did)[]) {
+    if (did.action === "background") {
+      backdrop = did.values.to;
+      continue;
+    }
     const one = cast.get(who)!;
     if (did.action === "walk") one.at = walkAt(did.values.from, did.values.to, progress);
     else if (did.action === "turn") one.facing = turnAt(did.values.from, progress);
@@ -193,7 +198,7 @@ export function scriptStaging(library: Library, shown: Shown): Staging {
     else one.arm = armBetween(did.values.from, did.values.to, progress, time);
   }
   return {
-    background: backgroundOf(library, background),
+    background: backgroundOf(library, backdrop),
     characters: [...cast].map(([name, { at: [x, y], facing, high, arm }]) => ({ name, at: [x, y - high], facing, arm, eyes: eyesAt(name, time) })),
   };
 }

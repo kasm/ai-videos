@@ -177,7 +177,28 @@
   one another, or to one's end). For step 13, a script cannot change the
   background within a scene, which `sundown` and `the-shy-visitor` do, in
   two beats each: step 7a, new, the user's yes 2026-11-25.
-- **Next: step 7a, change the background.**
+- **Step 7a done 2026-11-25**, `all-at-once`'s change accepted by the user
+  that day. The user's picks: the row is `scene background to=night`, so
+  `scene` is no character's name; it lasts a frame, or the time it is given;
+  two anchored to one moment are taken, as on any channel (law 7 stays as it
+  is). In `all-at-once` the third scene's last words are new, and the day
+  breaks in them as the badger walks off. Checked: `npm test` and
+  `npm run typecheck` here and in `cartoons/`; RayCraft's media typecheck and
+  `test:libs`, no file of it changed; `make --fit` of the ten gives requests
+  equal to the baseline, byte for byte, and the seven cartoons draw the same
+  6,942 frames; `hello-script` compiles to the same bytes as before, and
+  `all-at-once`'s first two scenes too; `all-at-once` made whole has the
+  frames compiled (1,346), the page's own drawing gives the video's `.svgs`,
+  and its 23 voices are in its sound at their compiled times; of 60,000
+  different random scripts with the cartoon plugin, 30,990 are taken, each
+  frame of them shows the last background that has begun, and what is refused
+  of a change is what a plain re-telling of the rows says; each of 46 rules
+  broken on purpose fails a test. Not tried: the guide on a fresh `claude -p`; and no
+  test has the timing `make` prints, which gives no speed to what is over
+  within a frame.
+- Left by step 7a: of two changes anchored to one moment the second waits a
+  frame, so the first shows for one.
+- **Next: step 8, look at someone who moves.**
 
 
 ## Goal

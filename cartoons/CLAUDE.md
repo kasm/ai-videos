@@ -287,7 +287,8 @@ block of lines, in place of `beats:`. `videos/hello-script.yaml` is
 once: a chorus, an interruption, a radio, words that end with a walk, a
 murmur under a talk, its pauses all of one named value, its second
 scene's places worked out from others, and in its third, several who act
-at once and one who walks, waves and talks. The plan
+at once, one who walks, waves and talks, and a background that changes
+at a word. The plan
 `docs/plans/compiled-scenario.md` builds this step by step, and the
 seven cartoons stay in beats until its end.
 `make` checks and compiles it (`.cache/<name>/compiled.json`; `--fit`
@@ -341,6 +342,16 @@ scenes:
     there, and stays so until another of the three, through the lines after
     it; a scene begins with every arm hanging. `wave` and `point` need the
     character's `arm`.
+- **`scene background to=night`** changes the background, as a beat's
+  `background` does: at once, as its row begins, until another such row of
+  the scene. Everyone stays where they are, and goes on with what they do.
+  Nobody does it, so its row is the scene's (`SCENE`, `scenario.ts`): the
+  scene does nothing else, and no character of the library is called
+  `scene`. It is on a channel of its own, `background`, and is a frame long
+  (`AT_ONCE`, `script.ts`), so the next row in order comes a pause after it,
+  unless it is given its time (`takes=2s`). Two that would begin at once, a
+  name the library lacks and the background that is there already are
+  refused.
 - **A place** (`places.ts`), in `to` and in the scene's `places`, is one
   of these. Everyone stands on the ground, so it is an x alone, in whole px.
   - A mark. The two off the stage are out of sight, where any number wait;
@@ -387,9 +398,9 @@ scenes:
   -1, and each action with its own length, worked out from how the lines
   above on its channel left the character, in the order written, as that
   is their order in time: a walk as its two points, a turn as the facing
-  before it and after, an arm's action as the poses, a jump as its hops. A
-  mistake comes with its line and a hint: the library's names, and the
-  nearest. Nothing is mended in a script.
+  before it and after, an arm's action as the poses, a jump as its hops, a
+  change of background as its name. A mistake comes with its line and a
+  hint: the library's names, and the nearest. Nothing is mended in a script.
 - **The picture** (`drawScript`, `picture.ts`) is drawn from what the
   tool says a frame shows: the scene as it began, each action as far
   through as it is, and whose mouth is open.

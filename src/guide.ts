@@ -16,7 +16,7 @@ A scene's \`script\` says what happens in it, a row for each thing. It is writte
 
 A line is one thing one character does or says:
 
-- who does it comes first: a character's name, or \`narrator\`, whom nobody sees;
+- who does it comes first: a character's name, or \`narrator\`, whom nobody sees; for an action below that nobody does, the name its example has;
 - then the action: \`${SAY}\`, or one of the actions below;
 - then the action's values, each as \`name=value\`: the actions below say what each takes;
 - then, for \`${SAY}\`, a colon and the words, to the end of the line, as they are said: no quotes.

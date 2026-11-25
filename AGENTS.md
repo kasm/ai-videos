@@ -245,7 +245,9 @@ scenes:
   0.08 s on average, and at most 0.21, where the cached voices make a pause.
 - **`say`** is the tool's own action: the line's text, said in its speaker's voice (see The cast).
   `narrator` is the speaker nobody draws, and its lines are said in the video's `voice`. Every
-  other action is the plugin's (see Plugins, `script`).
+  other action is the plugin's (see Plugins, `script`), and whose line it may be is for its check to
+  say. One that nobody does has a name of the plugin's for its who (a cartoon's
+  `scene background to=night`), with channels of its own, as a character's.
 - **The check** (`checkScenario`) is the pass before the voices, and the only one that refuses:
   1. a row that does not read, a value that a comma cuts (see Values), an action nobody names, values
      the action's schema refuses, a `say`

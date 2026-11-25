@@ -108,7 +108,7 @@ A background the library lacks is drawn under library: backgrounds:, when no bac
  * with it.
  */
 export const SCRIPT_GUIDE = `
-A cartoon is drawn on one stage, 1920 by 1080 pixels, with characters made of flat rectangles and ellipses. They stand on the ground in front of a background; they walk, turn round, hop, wave, point, blink and talk, several of them at once where the story has it so, and one of them several things at once. A cartoon has no props, no faces that change, and nobody who sits, lies down, climbs, flies or swims: what the story has besides, the narrator says in a few words, or it is left out. Never invent a key, a mark or an action: the tool refuses it.
+A cartoon is drawn on one stage, 1920 by 1080 pixels, with characters made of flat rectangles and ellipses. They stand on the ground in front of a background, which can change, as a cut; they walk, turn round, hop, wave, point, blink and talk, several of them at once where the story has it so, and one of them several things at once. A cartoon has no props, no faces that change, and nobody who sits, lies down, climbs, flies or swims: what the story has besides, the narrator says in a few words, or it is left out. Never invent a key, a mark or an action: the tool refuses it.
 
 ### An episode
 
@@ -137,7 +137,7 @@ scenes:
         mo say: We can skate!
         pip turn @ block.start + 1s
         pip point @ prev.end
-  - background: night                      # a new scene: everyone placed anew
+  - background: sundown                    # a new scene: everyone placed anew
     places:                                # a place with a comma in it is on a row of its own
       pip: off-left
       mo: left-of(pond, near)
@@ -146,7 +146,8 @@ scenes:
     script: |
       ending together:
         pip walk to=left-of(mo, near)
-        narrator say: By night, Pip comes back.
+        [late] narrator say: Pip comes back as the night falls.
+      scene background to=night @ late.word(night)
       in order:
         under:
           mo say: One star, two stars, three stars, four stars.
@@ -162,6 +163,7 @@ scenes:
 ### Scenes and places
 
 - A scene is one stretch of the story. It names the background it begins with, the place where each of its characters stands as it begins (places), who faces left (faces), and its script; it may have values. A new scene begins anew: everyone at its own place, facing as the scene says.
+- Time passing in the same place is no new scene: scene background to=night changes the background there, at once, as its row begins, and it stays so until a row changes it again. Everyone stays where they are, and goes on with what they do. Nobody does it, so the row is the scene's. Join it to the line that tells of it, or begin it at a word of that line: @ late.word(night). For a look at it with nothing said, give it its time: takes=2s.
 - A place is a mark, a point, or one worked out from others by a construction (left-of, right-of and midpoint, below). Everyone stands on the ground, so a place says only how far across the stage.
 - The marks are left, middle and right on the stage, and off-left and off-right out of sight, where any number wait. A place that is not a mark is on the stage.
 - A point is a number from 0, the stage's left edge, to 1920, its right. Give the ones a scene comes back to a name, among its values: values: { pond: 1500 }. Then to=pond goes there, and to=pond + 100 a little to its right.

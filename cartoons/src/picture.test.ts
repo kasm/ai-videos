@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { checkScenario as checkScript, compile, pictureOf, readScript, shownAt } from "ai-videos/plugin";
-import { frameSvg, scriptStaging, stagingAt, type Actor } from "./picture.ts";
+import { checkScenario as checkScript, compile, pictureOf, readScript, shownAt, type Shown } from "ai-videos/plugin";
+import { drawScript, frameSvg, scriptStaging, stagingAt, type Actor, type Staging } from "./picture.ts";
 import plugin from "./plugin.ts";
 import { checkScenario, readLibrary } from "./scenario.ts";
 
@@ -277,22 +277,25 @@ test("each character blinks at its own times", () => {
 
 // A script's pictures: what its actions show at once, each on its own channel. Three of one drawing, with an arm.
 const puppet = { shoulder: [40, -150], parts: { body: [{ shape: "rect", at: [0, -100], size: [100, 200], fill: "#f2a33a" }], arm: [{ shape: "rect", at: [40, -110], size: [20, 100], fill: "#d9861f" }] } };
-const puppets = { file: "library", raw: { characters: { bo: puppet, pip: puppet, mo: puppet }, backgrounds: { day: { fill: "#bfe3ff" } } } };
+const puppets = { file: "library", raw: { characters: { bo: puppet, pip: puppet, mo: puppet }, backgrounds: { day: { fill: "#bfe3ff" }, dusk: { fill: "#f7a072" }, night: { fill: "#101030" } } } };
 
 /**
- * A scene's frames at 30 a second, its rows laid as the tool lays them: everyone of it in each frame, by
- * name. Bo begins at the left, Pip at 700 and Mo at 900; its lines last these seconds.
+ * What each frame of a video shows, at 30 a second, its scenes' rows laid as the tool lays them. Each scene
+ * begins by day, Bo at the left, Pip at 700 and Mo at 900; its lines last these seconds.
  */
-async function staged(rows: string[], ...voices: number[]): Promise<Record<string, Actor>[]> {
-  const { items, issues } = readScript(rows.join("\n"));
-  const script = { scenes: [{ line: 100, setting: { background: "day", places: { bo: "left", pip: 700, mo: 900 } }, items }], issues };
+async function shownIn(scenes: string[][], ...voices: number[]): Promise<Shown[]> {
+  const read = scenes.map((rows, n) => readScript(rows.join("\n"), 100 * n + 1));
+  const script = { scenes: read.map(({ items }, n) => ({ line: 100 * n + 99, setting: { background: "day", places: { bo: "left", pip: 700, mo: 900 } }, items })), issues: read.flatMap(({ issues }) => issues) };
   const checked = await checkScript(plugin.script, script, puppets, ["bo", "pip", "mo"], { lead: 0.6, gap: 0.4, tail: 1 });
   assert.ok("scenes" in checked, JSON.stringify(checked));
   const voiced = voices.map((duration, n) => ({ file: `${n}.wav`, duration, mouth: [] }));
   const picture = pictureOf(compile(checked.scenes, voiced, { fps: 30, loudness: -14, moves: { slowest: 0.5, fastest: 2 } }, "x.yaml"));
-  const library = readLibrary(puppets);
-  return Array.from({ length: picture.frames }, (_, frame) => Object.fromEntries(scriptStaging(library, shownAt(picture, frame)).characters.map((one) => [one.name, one])));
+  return Array.from({ length: picture.frames }, (_, frame) => shownAt(picture, frame));
 }
+/** Such scenes' frames as they are staged. */
+const stagings = async (scenes: string[][], ...voices: number[]): Promise<Staging[]> => (await shownIn(scenes, ...voices)).map((shown) => scriptStaging(readLibrary(puppets), shown));
+/** Everyone of one such scene in each of its frames, by name. */
+const staged = async (rows: string[], ...voices: number[]): Promise<Record<string, Actor>[]> => (await stagings([rows], ...voices)).map(({ characters }) => Object.fromEntries(characters.map((one) => [one.name, one])));
 /** The frames in which something of somebody moves: the first from which it is another in the next, and the one it is there in. */
 const moves = (frames: Record<string, Actor>[], who: string, of: (actor: Actor) => number): [number, number] => {
   const values = frames.map((one) => of(one[who]!));
@@ -362,6 +365,64 @@ test("in a block stretched by its lines, the actions keep their order: who begin
   // Beside no words at all, each at its own pace.
   const alone = await staged(rows.filter((row) => !row.includes("narrator") && !row.includes("in order")));
   assert.deepEqual([moves(alone, "bo", X), moves(alone, "pip", HIGH), moves(alone, "mo", FACING)], [[18, 108], [18, 54], [48, 63]]);
+});
+
+/** The backgrounds of frames, each from the frame it is there in first, by its fill. */
+const backdrops = (frames: Staging[]) => frames.flatMap(({ background: { fill } }, frame) => (fill === frames[frame - 1]?.background.fill ? [] : [[frame, fill]]));
+const [DAY, DUSK, NIGHT] = Object.values(puppets.raw.backgrounds).map(({ fill }) => fill);
+
+test("in a script, the background changes as its row begins, and stays so until a row changes it again: everyone stays where they are", async () => {
+  const rows = ["bo walk to=right", "pip turn", "mo wave", "scene background to=night", "narrator say: Now it is night.", "narrator say: And it stays so.", "scene background to=dusk", "narrator say: Then it is dusk."];
+  const frames = await stagings([rows, ["narrator say: The next day."]], 2, 4, 1, 1);
+  // After the lead, 18 frames, the walk's 90, the turn's 15 and the wave's 9, each with the pause of 12 after it: 168. The change
+  // is there from its first frame on, and is a frame long: the words begin a pause after it, in 181, and are over in 241 and 373.
+  assert.deepEqual(backdrops(frames), [[0, DAY], [168, NIGHT], [385, DUSK], [458, DAY]]);
+  assert.deepEqual([167, 168, 384].map((frame) => frames[frame]!.background.fill), [DAY, NIGHT, NIGHT], "the frame before it, its first, and one long after");
+  // Everyone is where the rows above left them, before it, in it and long after, and the wave goes on.
+  const where = (frame: number) => frames[frame]!.characters.map(({ name, at, facing }) => [name, ...at, facing]);
+  for (const frame of [167, 168, 384, 385]) assert.deepEqual(where(frame), [["bo", 1440, 880, 1], ["pip", 700, 880, -1], ["mo", 900, 880, 1]], `frame ${frame}`);
+  for (let frame = 156; frame < 458; frame++) near(frames[frame]!.characters[2]!.arm, -155 + 20 * Math.sin(2 * Math.PI * 2 * (frame / 30)), `Mo's arm in frame ${frame}`);
+  // The next scene begins with its own, and everyone placed anew.
+  assert.deepEqual(where(458), [["bo", 480, 880, 1], ["pip", 700, 880, 1], ["mo", 900, 880, 1]]);
+});
+
+test("in a script, a walk goes on through a change of background, as it does without one", async () => {
+  const rows = ["together:", "  bo walk to=right", "  bo wave", "  narrator say: Bo walks on, and the night falls."];
+  const changed = [...rows, "  scene background to=night @ block.start + 1s"];
+  const [without, frames] = [await stagings([rows], 3), await stagings([changed], 3)];
+  // The block begins in frame 18, the walk lasts to 108, and the change is a second in.
+  assert.deepEqual(backdrops(frames), [[0, DAY], [48, NIGHT]]);
+  assert.deepEqual(frames.map(({ characters }) => characters), without.map(({ characters }) => characters));
+  const bo = (frame: number) => frames[frame]!.characters[0]!.at[0];
+  assert.ok(bo(47) < bo(48) && bo(48) < bo(49) && bo(107) < 1440 && bo(108) === 1440, "it is under way, and arrives");
+  // Drawn, the stage is filled with the other background from that frame on, and the rest of each frame is as it is without it.
+  const pictures = async (of: string[]) => (await shownIn([of], 3)).map((shown) => drawScript(puppets)(shown, { width: 960, height: 540 }));
+  const fill = (colour: string) => `<rect width="1920" height="1080" fill="${colour}"/>`;
+  const day = await pictures(rows);
+  assert.ok(day.every((svg) => svg.includes(fill(DAY!))));
+  assert.deepEqual(await pictures(changed), day.map((svg, frame) => (frame < 48 ? svg : svg.replace(fill(DAY!), fill(NIGHT!)))));
+  // With the words alone beside it, the walk is fitted to them as it was: a change is no voice, and no longer than a frame.
+  const joined = await stagings([["scene background to=night", "& bo walk to=right", "& narrator say: Bo walks by night."]], 2);
+  assert.deepEqual(backdrops(joined), [[0, DAY], [18, NIGHT]]);
+  assert.deepEqual([17, 18, 19, 77, 78].map((frame) => joined[frame]!.characters[0]!.at[0]).map((x) => x === 480 || x === 1440), [true, true, false, false, true], "60 frames of words, from 18");
+});
+
+test("in a script, a change of background is anchored to a word, and given its time it is a look before the next row", async () => {
+  const rows = ["[d] narrator say: They play all day, until the sun goes down.", "scene background to=dusk @ d.word(sun)", "scene background to=night @ d.word(down)", "narrator say: Good night."];
+  // "They play all day, until the " is 32 of the 45 its letters and marks weigh, and "sun goes " 9 more: of the line's 90 frames, from 18.
+  assert.deepEqual(backdrops(await stagings([rows], 3, 1)), [[0, DAY], [18 + Math.round((32 / 45) * 90), DUSK], [18 + Math.round((41 / 45) * 90), NIGHT]]);
+  // Another voice, another frame: the words set it.
+  assert.deepEqual(backdrops(await stagings([rows], 1.5, 1)), [[0, DAY], [18 + Math.round((32 / 45) * 45), DUSK], [18 + Math.round((41 / 45) * 45), NIGHT]]);
+  // At once, the next row comes a frame and a pause later; given 2 seconds, after those, the change on the first frame of them.
+  const next = async (row: string) => {
+    const frames = await stagings([[row, "bo walk to=right"]]);
+    return [backdrops(frames)[1]![0], frames.findIndex(({ characters }) => characters[0]!.at[0] > 480) - 1];
+  };
+  assert.deepEqual(await next("scene background to=night"), [18, 18 + 1 + 12]);
+  assert.deepEqual(await next("scene background to=night takes=2s"), [18, 18 + 60 + 12]);
+  assert.deepEqual(await next("scene background to=night speed=slow"), [18, 18 + 1 + 12], "at once has no speed");
+  // In a block whose lines end together it ends with them: in the last frame of the walk.
+  assert.deepEqual(backdrops(await stagings([["ending together:", "  bo walk to=right", "  scene background to=night"]])), [[0, DAY], [18 + 90 - 1, NIGHT]]);
 });
 
 test("a blink closes the eyes towards the middle line of the whole part, and a character with no eyes part stays", () => {

@@ -132,7 +132,7 @@ test("the page draws the SVG of each of the video's frames, shows its captions, 
   assert.doesNotMatch(html, /<link\b/);
 });
 
-/** The plugin with a script's picture: the square in its scene's colour, where its slides have it, growing as it speaks. */
+/** The plugin with a script's picture: the square in its scene's colour, or the last one the scene has changed to, where its slides have it, growing as it speaks. */
 const SCRIPTED = PLUGIN.replace(
   "export default {",
   `export default {
@@ -143,11 +143,14 @@ const SCRIPTED = PLUGIN.replace(
     draw(library) {
       const { colours } = library.raw;
       return ({ setting, actions, mouths, time }, { width, height }) => {
-        let x = setting.x;
-        for (const { values, progress } of actions) x += (values.x - x) * progress;
+        let { x, colour } = setting;
+        for (const { action, values, progress } of actions) {
+          if (action === "colour") colour = values.to;
+          else x += (values.x - x) * progress;
+        }
         return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 90" width="' + width + '" height="' + height + '">' +
           '<rect width="160" height="90" fill="#ffffff"/>' +
-          '<rect x="' + x + '" y="30" width="30" height="' + (30 + 10 * (mouths.sq ?? 0)) + '" opacity="' + (time < 1 ? 1 : 0.5) + '" fill="' + colours[setting.colour] + '"/></svg>';
+          '<rect x="' + x + '" y="30" width="30" height="' + (30 + 10 * (mouths.sq ?? 0)) + '" opacity="' + (time < 1 ? 1 : 0.5) + '" fill="' + colours[colour] + '"/></svg>';
       };
     },
   },`,
@@ -169,7 +172,8 @@ test("a script's clip and its page are drawn from the compiled scenario and the 
       ...pauses,
       items: [
         { line: 5, who: "sq", action: "slide", values: { x: 120 }, channels: ["place"], length: 0.4 },
-        { line: 6, who: "sq", action: "say", text: "Here I am." },
+        // Nobody's line, a frame long, begun with the words.
+        { line: 6, order: "together" as const, items: [{ line: 6, who: "sq", action: "say", text: "Here I am." }, { line: 7, who: "scene", action: "colour", values: { to: "blue" }, channels: ["colour"], length: 0.001, takes: 0.001 }] },
       ],
     },
     { line: 8, setting: { colour: "blue", x: 60 }, ...pauses, items: [{ line: 10, who: "narrator", action: "say", text: "And </script> it stays." }] },
@@ -202,6 +206,11 @@ test("a script's clip and its page are drawn from the compiled scenario and the 
   vm.runInContext(scriptOf(html, "drawing"), context);
   const drawing = context.drawing(given) as { svgAt(frame: number): string };
   assert.deepEqual(Array.from({ length: given.frames }, (_, k) => svgHash(drawing.svgAt(k))), svgs);
+  // The line that is nobody's changes the picture on its first frame, and the page's with it, to the scene's end.
+  const change = compiled.scenes[0]!.lines.find(({ who }) => who === "scene")!;
+  const colours = Array.from({ length: compiled.scenes[0]!.frames }, (_, k) => drawing.svgAt(k).includes("#4040d0"));
+  assert.ok(change.from > 4 && change.frames === 1);
+  assert.deepEqual(colours, colours.map((_, k) => k >= change.from));
   // Sought past either end, it shows the end.
   assert.equal(svgHash(drawing.svgAt(-5)), svgs[0]);
   assert.equal(svgHash(drawing.svgAt(400)), svgs.at(-1));

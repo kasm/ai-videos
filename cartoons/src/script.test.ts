@@ -132,7 +132,7 @@ test("a compiled scenario holds nothing but numbers, texts and file names, and t
     const voices = said.map((_, n) => voiced(`${String(n).padStart(20, "0")}.wav`, 1 + n / 7));
     const compiled = compile(checked.scenes, voices, SETTINGS, "../../videos/a-cartoon.yaml");
     const cast = Object.keys(parse(text).cast ?? {});
-    const names = new Set([NARRATOR, SAY, ...cast, ...Object.keys(plugin.script.actions), ...Object.keys(library.raw.characters), ...Object.keys(library.raw.backgrounds)]);
+    const names = new Set([NARRATOR, "scene", SAY, ...cast, ...Object.keys(plugin.script.actions), ...Object.keys(library.raw.characters), ...Object.keys(library.raw.backgrounds)]);
     const texts = new Set(said.map((line) => line.text));
     const files = new Set(["../../videos/a-cartoon.yaml", ...voices.map((voice) => voice.file)]);
     for (const [at, value] of leaves(compiled)) {
@@ -219,12 +219,12 @@ test("a walk is drawn in a script as it is in a beat: the same way, as far throu
   }
 });
 
-test("a turn, a wave, a hop, a point and an arm that hangs again are drawn in a script as they are in beats", async () => {
+test("a turn, a wave, a hop, a point, an arm that hangs again and another background are drawn in a script as they are in beats", async () => {
   const beats = { scenes: [{ background: "meadow", places: { pip: "left", mo: "right" }, faces: { mo: "left" }, beats: [
     { name: "turns", turn: { who: "pip" } },
     { name: "waves", takes: 1, pose: { pip: "wave" } },
     { name: "hops", jump: { who: "pip", times: 2 } },
-    { name: "points", takes: 1, pose: { pip: "point", mo: "wave" } },
+    { name: "points", takes: 1, pose: { pip: "point", mo: "wave" }, background: "night" },
     { name: "stands", takes: 1, pose: { pip: "stand" } },
   ] }] };
   const scenario = plugin.check(beats, "beats", library);
@@ -241,13 +241,14 @@ test("a turn, a wave, a hop, a point and an arm that hangs again are drawn in a 
     "      pip jump times=2 @ w.start + 1s",
     "      [p] pip point",
     "      & mo wave",
+    "      & scene background to=night",
     "      pip stand @ p.start + 1s",
     "",
   ].join("\n");
   const compiled = await compiledOf(script, []);
   const frames = pictures(compiled);
   const spans = [["turns", 0, 15], ["waves", 15, 30], ["hops", 45, 36], ["points", 81, 30], ["stands", 111, 30]] as const;
-  assert.deepEqual(compiled.scenes[0]!.lines.map((line) => [line.action, line.from, line.frames]), [["turn", 0, 15], ["wave", 15, 9], ["jump", 45, 36], ["point", 81, 9], ["wave", 81, 9], ["stand", 111, 9]]);
+  assert.deepEqual(compiled.scenes[0]!.lines.map((line) => [line.action, line.from, line.frames]), [["turn", 0, 15], ["wave", 15, 9], ["jump", 45, 36], ["point", 81, 9], ["wave", 81, 9], ["background", 81, 1], ["stand", 111, 9]]);
   for (const [span, [, from, length]] of spans.entries()) {
     for (let frame = from; frame < from + length; frame++) {
       const moves = span === 0 || span === 2;
@@ -258,7 +259,7 @@ test("a turn, a wave, a hop, a point and an arm that hangs again are drawn in a 
 });
 
 /** all-at-once's lines, spoken: each as long as it is in its own voice, in hundredths of a second. */
-const AT_ONCE_VOICES = [210, 98, 124, 200, 86, 204, 197, 237, 167, 118, 108, 116, 196, 252, 294, 115, 236, 82, 148, 189, 235, 157, 150].map((hundredths, n) => voiced(`${n}.wav`, hundredths / 100));
+const AT_ONCE_VOICES = [210, 98, 124, 200, 86, 204, 197, 237, 167, 118, 108, 116, 196, 252, 294, 115, 236, 82, 148, 189, 235, 157, 235].map((hundredths, n) => voiced(`${n}.wav`, hundredths / 100));
 
 test("all-at-once: a walk under words, a chorus, an interruption at a word, a radio that is waited for, words that end with a walk, and a murmur cut where the talk over it ends", async () => {
   const compiled = await compiledOf(AT_ONCE, AT_ONCE_VOICES);
@@ -312,7 +313,7 @@ test("all-at-once: a walk under words, a chorus, an interruption at a word, a ra
   assert.equal(pictures(compiled).length, compiled.frames);
 });
 
-test("all-at-once's third scene: one walks in while another hops and a third turns a second later, and one walks up waving and talking", async () => {
+test("all-at-once's third scene: one walks in while another hops and a third turns a second later, one walks up waving and talking, and the day breaks at a word as one walks off", async () => {
   const compiled = await compiledOf(AT_ONCE, AT_ONCE_VOICES);
   const scene = compiled.scenes[2]!;
   const told = scene.lines.map((line) => [line.who, line.action, line.from - scene.from, line.frames]);
@@ -331,6 +332,15 @@ test("all-at-once's third scene: one walks in while another hops and a third tur
   assert.deepEqual([at(87 + 71).pip!.at, at(87 + 71).badger!.at], [[1440 - 312, 880], [1440, 880]]);
   const end = at(scene.frames - 1);
   assert.deepEqual([end.badger!.at, end.badger!.facing, end.mo!.arm, end.pip!.at], [[2170, 880], 1, 0, [1128, 880]]);
+  // "And as the day " is 15 of the 46 the last line weighs: there the night is over, to the end, and the badger is on its way.
+  const [last, change] = [scene.lines.find((line) => "text" in line && line.text.startsWith("And as the day"))!, scene.lines.at(-1)!];
+  assert.deepEqual([change.who, change.action, change.from, change.frames], ["scene", "background", last.from + Math.round((15 / 46) * last.frames), 1]);
+  const fills = Array.from({ length: compiled.frames }, (_, frame) => stagingOf(compiled, frame).background.fill);
+  const { morning, sundown, night } = library.raw.backgrounds;
+  assert.deepEqual(fills.flatMap((fill, frame) => (fill === fills[frame - 1] ? [] : [[frame, fill]])), [[0, morning.fill], [compiled.scenes[1]!.from, sundown.fill], [scene.from, night.fill], [change.from, morning.fill]]);
+  const [before, then] = [at(change.from - scene.from - 1), at(change.from - scene.from)];
+  assert.ok(before.badger!.at[0] > 1500 && then.badger!.at[0] > before.badger!.at[0] && then.badger!.at[0] < 1800, "it walks on, on the stage");
+  for (const who of ["pip", "mo", "tuk"]) assert.deepEqual(then[who]!.at, before[who]!.at);
 });
 
 test("all-at-once, with one value changed, has another timing and nothing else of it", async () => {
@@ -407,7 +417,7 @@ test("a character's line opens its mouth as the voice goes, and nobody else's; t
 });
 
 test("the check refuses an unknown action, a wrong value and an unknown name, each with its line and a hint", async () => {
-  assert.deepEqual(await issuesOf(["pip wlak to=middle"]), [{ line: 6, message: 'no action is named "wlak"', hint: "the actions are say, walk, jump, turn, wave, point and stand: did you mean walk?" }]);
+  assert.deepEqual(await issuesOf(["pip wlak to=middle"]), [{ line: 6, message: 'no action is named "wlak"', hint: "the actions are say, walk, jump, turn, wave, point, stand and background: did you mean walk?" }]);
   assert.deepEqual(await issuesOf(["narrator say: Here is Pip.", "pip walk to=centre"]), [
     { line: 7, message: '"pip" walks to centre: no place is called "centre"', hint: "a place is a mark (off-left, left, middle, right and off-right), a character of the scene (pip and mo), or a point that values set (values: { centre: 300 })" },
   ]);
@@ -453,6 +463,7 @@ test("an action is worked out from how the lines above on its channel left the c
     ["wave", "arm", false],
     ["point", "arm", false],
     ["stand", "arm", false],
+    ["background", "background", false],
   ]);
   // In two blocks at once, one character's are still one after another, as they are written.
   assert.deepEqual((await acted(["together:", "  in order:", "    pip wave", "    mo say: One.", "    pip stand", "  in order:", "    mo turn", "    pip point"])).map(([, values]) => values), [
@@ -501,6 +512,74 @@ test("the check refuses an action by nobody on the stage, hops that are none, an
   const { crab: _crab, ...fish } = armless.raw.characters;
   const none = waving("fish", "wave", { ...armless, raw: { ...armless.raw, characters: fish as typeof armless.raw.characters } });
   assert.deepEqual("issues" in none && none.issues[0]!.hint, "the library draws nobody with an arm");
+});
+
+test("a change of background is the scene's line, worked out as the background's name, at once; a scene begins with its own again", async () => {
+  assert.deepEqual(await acted(["scene background to=night", "pip wave", "scene background to=meadow", "scene background to=sundown takes=2s"]), [
+    ["background", { to: "night" }, 0.001],
+    ["wave", { from: "stand", to: "wave" }, 0.3],
+    ["background", { to: "meadow" }, 0.001],
+    ["background", { to: "sundown" }, 0.001],
+  ]);
+  // A name of the writer's, and a value set on a level, as any action's.
+  assert.deepEqual((await acted(["scene background to=late"], ["values: { late: night }", ...SCENE])).map(([, values]) => values), [{ to: "night" }]);
+  assert.deepEqual((await acted(["in order scene.to=night:", "  scene background", "  pip walk to=middle"])).map(([, values]) => values), [{ to: "night" }, { from: [-250, 880], to: [960, 880] }]);
+  const two = await check([...SCENE, "      scene background to=night", ...SCENE.slice(1), "      scene background to=night", ""].join("\n"));
+  assert.ok("scenes" in two, JSON.stringify(two));
+  assert.deepEqual(two.scenes.map((one) => [(one.setting as unknown as Setting).background, linesIn(one.items).map((line) => "values" in line && line.values)]), Array(2).fill(["meadow", [{ to: "night" }]]));
+  // On a channel of its own: it goes on beside all a character does, and beside what is said.
+  assert.equal((await acted(["together:", "  pip walk to=middle", "  pip wave", "  pip turn", "  mo jump", "  scene background to=night", "  narrator say: All at once."])).length, 5);
+});
+
+test("the check refuses two changes of background at once, a name the library lacks, and the background that is there already", async () => {
+  const hint = "write the two one after the other, in an in order: there, or begin this one by the end of the other (@ prev.end, or its label)";
+  const message = "scene's background is busy with line 7, and the two would begin at once";
+  assert.deepEqual(await issuesOf(["together:", "  scene background to=night", "  narrator say: Night falls.", "  scene background to=sundown"]), [{ line: 9, also: [6, 7], message, hint }]);
+  assert.deepEqual(await issuesOf(["narrator say: It is late.", "scene background to=night", "& scene background to=sundown"]), [{ line: 8, also: [7], message, hint }]);
+  assert.deepEqual((await issuesOf(["ending together:", "  scene background to=night", "  pip walk to=middle", "  scene background to=sundown"])).map((i) => [i.line, i.also, i.message]), [
+    [9, [6, 7], "scene's background is busy with line 7, which ends when this does: the block of line 6 ends its lines together"],
+  ]);
+  // One after the other, by order or by a moment of its own, they are two.
+  for (const second of ["scene background to=sundown", "& scene background to=sundown @ prev.end + 1s", "scene background to=sundown @ w.word(falls)"]) {
+    assert.equal((await acted(["[w] narrator say: The night falls.", "scene background to=night @ w.word(night)", second])).length, 2, second);
+  }
+
+  assert.deepEqual(await issuesOf(["scene background to=nigth"]), [
+    { line: 6, message: 'no background is named "nigth"', hint: `the library has the backgrounds ${Object.keys(library.raw.backgrounds).slice(0, -1).join(", ")} and ${Object.keys(library.raw.backgrounds).at(-1)}: did you mean night?` },
+  ]);
+  // What every table has is none of the library's, and a mistake is said once of each line.
+  assert.deepEqual((await issuesOf(["scene background to=constructor", "scene background to=constructor", "scene background to=meadow"])).map((i) => [i.line, i.message]), [
+    [6, 'no background is named "constructor"'],
+    [7, 'no background is named "constructor"'],
+  ]);
+
+  const already = "change it to another, or leave the line out";
+  assert.deepEqual(await issuesOf(["scene background to=meadow"]), [{ line: 6, also: [2], message: "the background is meadow already", hint: already }]);
+  assert.deepEqual(await issuesOf(["scene background to=night", "pip wave", "scene background to=night", "scene background to=night"]), [
+    { line: 8, also: [6], message: "the background is night already", hint: already },
+    { line: 9, also: [6], message: "the background is night already", hint: already },
+  ]);
+  // In two blocks at once they are one after another, as they are written: the second finds what the first left.
+  const blocks = (to: string) => ["together:", "  in order:", "    pip wave", "    scene background to=night", "  in order:", `    scene background to=${to}`];
+  assert.deepEqual((await issuesOf(blocks("night"))).map((i) => [i.line, i.also, i.message]), [[11, [9], "the background is night already"]]);
+  assert.equal((await acted(blocks("meadow"))).length, 3);
+});
+
+test("the check refuses a change of background by anybody else, one with no name, and whatever else the scene would do", async () => {
+  for (const who of ["pip", "tuk", "pop", NARRATOR, "stage"]) {
+    assert.deepEqual(await issuesOf([`${who} background to=night`]), [{ line: 6, message: `the background is the scene's to change, and not ${who}'s`, hint: "as in: scene background to=night" }]);
+  }
+  for (const action of ["walk to=left", "jump", "turn", "wave", "point", "stand"]) {
+    assert.deepEqual(await issuesOf([`scene ${action}`]), [{ line: 6, message: `the scene is nobody on the stage: only a character ${action.split(" ")[0]}s`, hint: "name a character the scene places: pip and mo" }]);
+  }
+  assert.deepEqual((await issuesOf(["scene say: Hello."])).map((i) => i.message), ['"scene" is neither the narrator nor a character with a voice']);
+  const what = "it is the name of one of the library's backgrounds";
+  for (const [given, shown] of [["", ""], [" to=300", "=300"], [" to=left-of(pip, near)", "=left-of(pip, 0.3)"]]) {
+    assert.deepEqual(await issuesOf([`scene background${given}`]), [{ line: 6, message: `background, to${shown}: ${what}`, hint: "as in: scene background to=night" }]);
+  }
+  assert.match((await issuesOf(["scene background to=night from=meadow"]))[0]!.message, /^background: Unrecognized key: "from"$/);
+  assert.deepEqual((await issuesOf(["scene background to=night: Night falls."])).map((i) => i.message), ["background takes no words after a colon: only say does"]);
+  assert.deepEqual((await issuesOf(["in order:", "  under:", "    scene background to=night", "  narrator say: It is late."])).map((i) => [i.line, i.also]), [[8, [7]]]);
 });
 
 test("the check follows who stands where: a walk by someone the scene does not place, to its own mark, or to another's", async () => {
@@ -833,7 +912,7 @@ test("each construction is described, and its example is one of it", async () =>
 });
 
 test("each action is described, and its example is a line of a script that passes its schema", async () => {
-  assert.deepEqual(Object.keys(plugin.script.actions), ["walk", "jump", "turn", "wave", "point", "stand"]);
+  assert.deepEqual(Object.keys(plugin.script.actions), ["walk", "jump", "turn", "wave", "point", "stand", "background"]);
   for (const [name, { description, example, values }] of Object.entries(plugin.script.actions)) {
     assert.ok(description.length > 20, `${name} says what it does`);
     const read = readScript(example);
@@ -898,6 +977,10 @@ test("the guide's example is a cartoon the plugin takes as a script, against the
   assert.deepEqual(checked.scenes.map((scene) => scene.pause), [0.4, 0.6]);
   const said = lines.filter((line) => "text" in line).length;
   const compiled = compile(checked.scenes, Array.from({ length: said }, (_, n) => voiced(`${n}.wav`, 2)), SETTINGS, "example.yaml");
+  // It changes to the night at the word, as Pip walks up to Mo.
+  const [walk, told, change] = compiled.scenes[1]!.lines;
+  assert.deepEqual([change!.who, change!.action, "values" in change! && change.values], ["scene", "background", { to: "night" }]);
+  assert.ok("text" in told! && told.text.includes("the night falls") && change!.from > told.from && change!.from < walk!.from + walk!.frames);
   assert.equal(pictures(compiled).length, compiled.frames);
   // The second scene begins on the frame the first ends on.
   assert.equal(compiled.scenes[1]!.from, compiled.scenes[0]!.frames);

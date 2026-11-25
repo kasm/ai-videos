@@ -6,15 +6,19 @@
 import { NARRATOR, listed, nearest, type Action, type ActionLine, type Issue, type Library as LibraryFile, type SceneActions, type SceneChecked } from "ai-videos/plugin";
 import { z } from "zod";
 import { NEAR, place, stageOf } from "./places.ts";
-import { ARM, GROUND, MARKS, PACE, name, readLibrary, type Pose } from "./scenario.ts";
+import { ARM, GROUND, MARKS, PACE, SCENE, name, readLibrary, type Pose } from "./scenario.ts";
 
 /** An action on the arm: it changes the pose, and takes as long as the arm does. */
 const onArm = (pose: Pose, description: string) => ({ description: `${description} The arm gets there in ${PACE.arm} seconds.`, example: `pip ${pose}`, values: z.strictObject({}), channels: ["arm"] });
 
+/** What happens at once has no length of its own, and the least there is: a frame. */
+const AT_ONCE = 0.001;
+
 /**
  * What a line of a script may do, besides the tool's `say`, each described once: what it does, a
  * line that uses it, the values it takes, the channel of the character it keeps busy, and whether it
- * is fitted to words. The tool's check and the guide come from these.
+ * is fitted to words. All but `background` are a character's. The tool's check and the guide come
+ * from these.
  */
 export const ACTIONS = {
   walk: {
@@ -39,6 +43,12 @@ export const ACTIONS = {
   wave: onArm("wave", "The character raises its arm and waves it, and goes on waving until it points or stands."),
   point: onArm("point", "The character holds its arm straight forward, the way it faces, until it waves or stands."),
   stand: onArm("stand", "The character lets its arm hang again, as everyone's does when a scene begins."),
+  background: {
+    description: `The background changes to \`to\`, another of the library's, at once as the row begins, and stays so until a row changes it again. Everyone stays where they are, and goes on with what they do. Nobody does it, so its row is the \`${SCENE}\`'s, which does nothing else.`,
+    example: `${SCENE} background to=night`,
+    values: z.strictObject({ to: z.string({ error: "it is the name of one of the library's backgrounds" }) }),
+    channels: ["background"],
+  },
 } satisfies Record<string, Action>;
 
 /** Names for numbers, which any value of a script may use: how fast an action goes, as times its own speed, and how far beside somebody. */
@@ -63,7 +73,9 @@ export type Did =
   /** Which way it faces, before and after. */
   | { action: "turn"; values: { from: 1 | -1; to: 1 | -1 } }
   /** The pose its arm was in, and is in then. */
-  | { action: Pose; values: { from: Pose; to: Pose } };
+  | { action: Pose; values: { from: Pose; to: Pose } }
+  /** The background from its first frame on: the scene's line, and no character's. */
+  | { action: "background"; values: { to: string } };
 
 /** A scene's own keys, beside its script: what it begins with. */
 const Keys = z.strictObject({
@@ -92,7 +104,8 @@ const has = (what: string, names: string[], meant: string) => {
  * is its background and each character it places, at its point and facing 1 (right, as drawn) or -1.
  * An action is worked out from where, and how, the lines above on its channel left the character: a
  * walk is its way, from point to point, a turn which way it faced and faces, an arm's action the pose
- * it was in and is in. Its own length is the scenario's pace (PACE). Every mistake comes with its line
+ * it was in and is in. Its own length is the scenario's pace (PACE). A change of background is another
+ * than the one there by then, and the least there is long (AT_ONCE). Every mistake comes with its line
  * and a hint.
  */
 export function checkScript(scenes: SceneActions[], library: LibraryFile | undefined): { scenes: SceneChecked[] } | { issues: Issue[] } {
@@ -106,7 +119,12 @@ export function checkScript(scenes: SceneActions[], library: LibraryFile | undef
       return { setting: {}, actions: [] };
     }
     const { background, places, faces } = keys.data;
-    if (!(background in backgrounds)) issue(scene.line, `no background is named "${background}"`, has("backgrounds", Object.keys(backgrounds), background));
+    const drawn = (line: number, called: string) => {
+      if (Object.hasOwn(backgrounds, called)) return true;
+      issue(line, `no background is named "${called}"`, has("backgrounds", Object.keys(backgrounds), called));
+      return false;
+    };
+    drawn(scene.line, background);
     const placed = Object.keys(places);
     const give = (who: string) => `give it one, in the scene's places: places: { ${who}: off-left }`;
     for (const who of placed) {
@@ -119,6 +137,8 @@ export function checkScript(scenes: SceneActions[], library: LibraryFile | undef
     const facing = new Map(placed.map((who) => [who, faces[who] === "left" ? -1 : 1] as const));
     const begins = Object.fromEntries([...stage.begins].map(([who, x]) => [who, { at: [x, GROUND] as Point, facing: facing.get(who)! } as const]));
     const poses = new Map<string, Pose>();
+    /** The background by now, and the line that has it so. */
+    let backdrop = { name: background, line: scene.line };
     /** What an action comes to, and its own length: none for a walk with a mistake. */
     const did = (action: string, { line, who, values, begun }: ActionLine): { values: Did["values"]; length: number } | undefined => {
       if (action === "walk") {
@@ -135,6 +155,12 @@ export function checkScript(scenes: SceneActions[], library: LibraryFile | undef
         facing.set(who, to);
         return { values: { from, to }, length: PACE.turn };
       }
+      if (action === "background") {
+        const { to } = values as z.infer<typeof ACTIONS.background.values>;
+        if (drawn(line, to) && to === backdrop.name) issue(line, `the background is ${to} already`, "change it to another, or leave the line out", [backdrop.line]);
+        else backdrop = { name: to, line };
+        return { values: { to }, length: AT_ONCE };
+      }
       const [from, to] = [poses.get(who) ?? "stand", action as Pose];
       // Standing needs no arm; a wave or a point with none would show nothing.
       if (to !== "stand" && characters[who] && !(ARM in characters[who].parts)) {
@@ -146,7 +172,9 @@ export function checkScript(scenes: SceneActions[], library: LibraryFile | undef
     };
     const actions = scene.actions.map((one): SceneChecked["actions"][number] => {
       const { line, who, action } = one;
-      if (who === NARRATOR) issue(line, `the ${NARRATOR} is nobody on the stage: only a character ${action}s`, `name a character${placed.length > 0 ? ` the scene places: ${listed(placed)}` : ", and give it a place in the scene"}`);
+      if (action === "background") {
+        if (who !== SCENE) issue(line, `the background is the ${SCENE}'s to change, and not ${who}'s`, `as in: ${ACTIONS.background.example}`);
+      } else if (who === NARRATOR || who === SCENE) issue(line, `the ${who} is nobody on the stage: only a character ${action}s`, `name a character${placed.length > 0 ? ` the scene places: ${listed(placed)}` : ", and give it a place in the scene"}`);
       else if (!(who in characters)) issue(line, `no character is named "${who}"`, has("characters", Object.keys(characters), who));
       else if (!placed.includes(who)) issue(line, `"${who}" has no place in this scene`, give(who));
       return did(action, one) ?? { values: {}, length: PACE.hold };

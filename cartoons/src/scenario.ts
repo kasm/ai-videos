@@ -12,6 +12,9 @@ export const STAGE = { width: 1920, height: 1080 } as const;
 /** The speaker nobody draws. Every other speaker is one of the library's characters. */
 export const NARRATOR = "narrator";
 
+/** Whose line a script's change of background is: the scene's, as nobody does it. */
+export const SCENE = "scene";
+
 /** Where a character can stand: a mark's x on the stage, px. The two off it are out of sight. */
 export const MARKS = { "off-left": -250, left: 480, middle: 960, right: 1440, "off-right": 2170 } as const;
 export type Mark = keyof typeof MARKS;
@@ -67,6 +70,7 @@ const Library = z
   .superRefine((library, ctx) => {
     const issue = (message: string, at: (string | number)[]) => ctx.addIssue({ code: "custom", message, path: at });
     if (NARRATOR in library.characters) issue(`"${NARRATOR}" is the speaker nobody draws: name the character something else`, ["characters", NARRATOR]);
+    if (SCENE in library.characters) issue(`"${SCENE}" is whose line changes the background, and nobody on the stage: name the character something else`, ["characters", SCENE]);
     for (const [who, character] of Object.entries(library.characters)) {
       if (ARM in character.parts && !character.shoulder) {
         issue(`"${who}" has an ${ARM} and no shoulder: give the point the arm turns around`, ["characters", who, "shoulder"]);
