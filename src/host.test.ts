@@ -520,6 +520,10 @@ test("a plugin with no script takes none; an action's example is a line that nam
   await assert.rejects(broken("empty-channels", (t) => t.replace('channels: ["place"]', "channels: []")), /name one channel at least[\s\S]*script\.actions\.slide\.channels/);
   await assert.rejects(broken("named-channels", (t) => t.replace('channels: ["place"]', 'channels: ["His Place"]')), /is not a plugin[\s\S]*script\.actions\.slide\.channels/);
   await assert.rejects(broken("fits-how", (t) => t.replace("fits: true", "fits: 2")), /is not a plugin[\s\S]*script\.actions\.slide\.fits/);
+  // Or it is open, and not both.
+  assert.equal((await broken("open", (t) => t.replace("fits: true", "open: true"))).script!.actions.slide!.open, true);
+  await assert.rejects(broken("open-how", (t) => t.replace("fits: true", 'open: "yes"')), /is not a plugin[\s\S]*script\.actions\.slide\.open/);
+  await assert.rejects(broken("open-and-fitted", (t) => t.replace("fits: true", "fits: true, open: true")), /it is fitted to words \(fits\) or goes on to the end of its block \(open\), one of the two[\s\S]*script\.actions\.slide/);
   // The tool's own values are no action's, and a name for a number is no value's.
   const naming = (name: string, properties: string) => (t: string) => t.replace("names: { slow: 0.5 }", `names: { ${name}: 2 }`).replace("jsonSchema: { input: () => ({})", `jsonSchema: { input: () => ({ properties: { ${properties} } })`);
   await assert.rejects(broken("named-pause", naming("pause", "to: {}")), /"pause" is a value of the tool's, and no name for a number/);

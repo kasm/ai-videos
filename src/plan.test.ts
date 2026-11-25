@@ -10,10 +10,10 @@ import { linesIn, type ScriptItem } from "./scenario.ts";
 import { times } from "./times.ts";
 import { workOut, type WorkedLine, type WorkedScene } from "./values.ts";
 
-/** A `slide` keeps the place busy, a `nod` the head, a `turn` the facing, and a `spin` the place and the facing. */
-const ACTIONS: Channels = { slide: { channels: ["place"] }, nod: { channels: ["head"] }, turn: { channels: ["facing"] }, spin: { channels: ["place", "facing"] } };
+/** A `slide` keeps the place busy, a `nod` the head, a `turn` the facing, a `spin` the place and the facing, and a `watch`, which is open, the facing. */
+const ACTIONS: Channels = { slide: { channels: ["place"] }, nod: { channels: ["head"] }, turn: { channels: ["facing"] }, spin: { channels: ["place", "facing"] }, watch: { channels: ["facing"], open: true } };
 /** Half a second before a scene's first line, 0.3 s between lines, a second after its last; an action's value is `to`. */
-const GIVEN = { actions: { slide: { to: {} }, nod: {}, turn: {}, spin: {} }, names: {}, speakers: ["sq", "mo", "tri", "radio"], timing: { lead: 0.5, gap: 0.3, tail: 1 } };
+const GIVEN = { actions: { slide: { to: {} }, nod: {}, turn: {}, spin: {}, watch: {} }, open: ["watch"], names: {}, speakers: ["sq", "mo", "tri", "radio"], timing: { lead: 0.5, gap: 0.3, tail: 1 } };
 
 /** Scenes of these rows, their values worked out, the first row of the first on line 1. */
 function scenes(...scripts: string[][]): WorkedScene[] {
@@ -35,7 +35,8 @@ const frames = (seconds: Span) => Math.round(secondsOf(seconds, () => 0) * 10);
 /** A voice lasts a frame a letter, and an action 20 frames at its own speed, from 10 to 40, unless it is given its length. */
 const lasting = ({ action, text, lasts }: WorkedLine): Lasting => {
   if (text !== undefined) return { kind: "voice", length: text.length };
-  const { channels } = ACTIONS[action]!;
+  const { channels, open } = ACTIONS[action]!;
+  if (open) return { kind: "move", channels, length: "open" };
   if (lasts && "takes" in lasts) return { kind: "move", channels, length: frames(lasts.takes) };
   return { kind: "move", channels, length: { own: 20, least: 10, most: 40 }, arrive: lasts && "arrive" in lasts ? lasts.arrive : undefined };
 };
@@ -175,6 +176,69 @@ test("under the rest: cut where the block it is in ends, and it moves nothing", 
   assert.deepEqual(when(["under:", `  radio say: ${TWENTY}${TWENTY}`, `sq say: ${TEN}`]), { 2: [5, 25], 3: [5, 15] });
   // Beginning where it is told to.
   assert.deepEqual(when(["together:", `  [a] sq say: ${TWENTY}`, "  under @ a.50%:", `    radio say: ${TWENTY}`]), { 2: [5, 25], 4: [15, 25] });
+});
+
+test("what is open goes on to the end of its block, which does not wait for it, and neither does what follows it in order", () => {
+  assert.deepEqual(when(["sq slide to=left", `& mo say: ${TEN}4567`, "& mo watch", `sq say: ${TEN}`]), { 1: [5, 19], 2: [5, 19], 3: [5, 19], 4: [22, 32] });
+  // In order, what is below it begins as it does; at a scene's own level it goes on through the tail.
+  assert.deepEqual(when(["in order:", "  mo watch", `  sq say: ${TEN}`, `  sq say: ${TEN}`, `tri say: ${TEN}`]), { 2: [5, 28], 3: [5, 15], 4: [18, 28], 5: [31, 41] });
+  assert.deepEqual(when([`sq say: ${TEN}`, "mo watch", `sq say: ${TEN}`], [`sq say: ${TEN}`]), { 1: [5, 15], 2: [18, 38], 3: [18, 28], 4: [43, 53] });
+  // Begun where it is told to, and by its end what follows the block.
+  assert.deepEqual(when([`[a] sq say: ${TWENTY}`, "& [w] mo watch @ a.50%", "tri say @ w.end - 0.2s: 01", "sq say @ w.50%: 01"]), { 1: [5, 25], 2: [15, 25], 3: [23, 25], 4: [25, 27] });
+  // A walk is fitted to the words all the same, and the watch is no voice.
+  assert.deepEqual(when(["together:", "  sq slide to=left", "  mo watch", "  tri watch @ block.start + 0.5s", `  mo say: ${TEN}`]), { 2: [5, 15], 3: [5, 15], 4: [10, 15], 5: [5, 15] });
+  assert.deepEqual(when(["ending together:", "  sq slide to=left", "  mo watch", `  mo say: ${TEN}`]), { 2: [5, 25], 3: [5, 25], 4: [15, 25] });
+  // After its block its channel is free, and another's is free all the while.
+  assert.deepEqual(when(["sq slide to=left", "& mo watch", "mo turn", "together:", "  mo watch", "  tri turn"]), { 1: [5, 25], 2: [5, 25], 3: [28, 48], 5: [51, 71], 6: [51, 71] });
+  // Beside what it has begun by.
+  const begun = (...rows: string[]) => Object.fromEntries(begunBy(scenes(rows), ACTIONS));
+  assert.deepEqual(begun("sq slide to=left", "& mo watch", "tri nod"), { 1: [2], 2: [1], 3: [1, 2] });
+});
+
+test("refused: what follows an open action on its channel in its block, and an open action under the rest", () => {
+  assert.deepEqual(refused(["mo watch", "sq slide to=left", "mo turn", "mo nod"]), [
+    {
+      line: 3,
+      also: [1],
+      message: "mo's facing is busy with line 1, which goes on to the end of the scene",
+      hint: "have line 1 end sooner, in a block of its own: join it to what it goes with (&)",
+    },
+  ]);
+  assert.deepEqual(refused(["in order:", "  mo watch", "  sq slide to=left", "  mo turn", "mo turn"]), [
+    {
+      line: 4,
+      also: [2],
+      message: "mo's facing is busy with line 2, which goes on to the end of the block of line 1",
+      hint: "write it after that block, or have line 2 end sooner, in a block of its own: join it to what it goes with (&)",
+    },
+  ]);
+  assert.deepEqual(why(["mo watch", "sq slide to=left", "in order:", "  tri watch", "  sq nod", "  mo watch", "  sq nod"]), [[6, [1], "mo's facing is busy with line 1, which goes on to the end of the scene"]]);
+  assert.deepEqual(why(["sq slide to=left", "& mo watch", "& mo turn @ prev.start + 1s"]), [[3, [2], "mo's facing is busy with line 2, which goes on to the end of the lines joined at line 1"]]);
+  // Joined to what it goes with, it ends there.
+  assert.deepEqual(why(["sq slide to=left", "& mo watch", "mo turn", "tri slide to=left", "& mo watch"]), []);
+  // Directly in one block together, the two would begin at once.
+  assert.deepEqual(why(["together:", "  mo turn", "  mo watch", "  sq nod"]), [[3, [1, 2], "mo's facing is busy with line 2, and the two would begin at once"]]);
+
+  assert.deepEqual(refused(["in order:", "  under:", "    sq say: One.", "    in order:", "      mo watch", "      sq say: Two.", "  mo say: Three."]), [
+    { line: 5, also: [2], message: "an action is never under the rest: cut, it would leave mo where only the voices know", hint: "write it beside the under: block, not in it" },
+  ]);
+});
+
+test("refused: an open action that would never be seen, as nothing says where its block ends", () => {
+  assert.deepEqual(refused(["sq say: One.", "mo watch"]), [{ line: 2, message: "nothing comes after this in the scene, so there is nothing for it to go with", hint: "join it to what it goes with (&), or write that below it" }]);
+  assert.deepEqual(refused(["mo watch", "tri watch"]), [{ line: 1, message: "everything in the scene goes on to its end, and nothing in it says where that is", hint: "write in it too what it goes with: what is said, or an action with a length" }]);
+  assert.deepEqual(why(["sq say: One.", "& together:", "    mo watch", "    tri watch"]), [[2, [], "everything in the block of line 2 goes on to its end, and nothing in it says where that is"]]);
+  assert.deepEqual(why(["mo watch", "& under:", "    radio say: One.", "sq say: Two."]), [[1, [], "everything in the lines joined at line 1 goes on to its end, and nothing in it says where that is"]]);
+  // Of several at the end of a block in order, each is said.
+  assert.deepEqual(why(["sq say: One.", "mo watch", "under:", "  radio say: Two.", "tri watch"]).map(([line, , message]) => [line, message]), [
+    [2, "nothing comes after this in the scene, so there is nothing for it to go with"],
+    [3, "nothing comes after this in the scene, so there is nothing for it to be under"],
+    [5, "nothing comes after this in the scene, so there is nothing for it to go with"],
+  ]);
+  // Together, or with a start of its own, it may be seen wherever it is written.
+  assert.deepEqual(why(["together:", "  sq say: One.", "  mo watch", "[a] sq say: Two.", "tri watch @ a.50%"]), []);
+  // Its own block ends with it: in it, nothing waits for its end.
+  assert.deepEqual(why(["sq say: One.", "& [w] mo watch", "& tri say @ w.end: Two."]), [[3, [1, 2], "it goes round: the lines joined at line 1 wait for line 3, line 3 waits for line 2 and line 2 ends with the lines joined at line 1"]]);
 });
 
 test("ending together: a voice ends with a longer walk, two voices at once, and one that waits for its channel ends them all later", () => {

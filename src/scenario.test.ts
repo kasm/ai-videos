@@ -144,6 +144,30 @@ test("what the plugin's check gives is held to the contract: a scene and an acti
   await assert.rejects(check(script, { ...scripted(), check: () => ({ issues: [] }) }), /refused it with no mistake named/);
 });
 
+test("an action that is open has no length of its own: the plugin's check gives it none, and any other one", async () => {
+  const { slide } = scripted().actions;
+  const opened: ScriptPlugin = {
+    ...scripted(),
+    actions: { slide: slide!, watch: { ...slide!, example: "sq watch to=right", channels: ["head"], open: true } },
+    check: (scenes) => ({ scenes: scenes.map(({ actions }) => ({ setting: {}, actions: actions.map(({ action }) => ({ values: { x: 20 }, ...(action === "watch" ? {} : { length: 1.5 }) })) })) }),
+  };
+  const checked = await check("sq slide to=right\n& sq watch to=left", opened);
+  assert.ok("scenes" in checked);
+  assert.deepEqual(checked.scenes[0]!.items, [
+    {
+      line: 5,
+      order: "together",
+      joined: true,
+      items: [
+        { line: 5, who: "sq", action: "slide", values: { x: 20 }, channels: ["place"], length: 1.5 },
+        { line: 6, who: "sq", action: "watch", values: { x: 20 }, channels: ["head"], length: "open" },
+      ],
+    },
+  ]);
+  const none: ScriptPlugin = { ...opened, check: (scenes) => ({ scenes: scenes.map(({ actions }) => ({ setting: {}, actions: actions.map(() => ({ values: {} })) })) }) };
+  await assert.rejects(check("sq slide to=right\n& sq watch to=left", none), /line 5 the length NaN: an action's own length is seconds, above 0/);
+});
+
 test("mistakes are shown in the file's order, each with the file, its line as written, the other lines it is between, and the hint", () => {
   const text = "use: square\nscenes:\n  - colour: red\n    script: |\n      sq slid to=right\n";
   const issues = [

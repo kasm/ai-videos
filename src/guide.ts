@@ -10,7 +10,7 @@ import { SAY } from "./read.ts";
 
 /** The tool's part, in Markdown. Each `script` block in it is a script the tool takes, and each `yaml` block a file's, its characters, `go` and `nod` made up (guide.test.ts). */
 export const SCRIPT = `
-A scene's \`script\` says what happens in it, a row for each thing. It is written as a block: \`script: |\`, then its rows under it. A row is a line, or the header of a block of lines. The characters in the examples here are made up, and so are two actions, \`go\` and \`nod\`: yours are the library's, and the actions below.
+A scene's \`script\` says what happens in it, a row for each thing. It is written as a block: \`script: |\`, then its rows under it. A row is a line, or the header of a block of lines. The characters in the examples here are made up, and so are three actions, \`go\`, \`nod\` and \`watch\`: yours are the library's, and the actions below.
 
 ### Lines
 
@@ -91,6 +91,15 @@ narrator ${SAY}: They had both heard it.
 
 An action that is fitted (the actions below say which are), joined to words or in a \`together:\` with words, is hurried or slowed to end when they do, so somebody goes somewhere while somebody talks. Any other action keeps its own pace, whatever is said beside it.
 
+An action that is open (the actions below say which are) has no length: it goes on to the end of the block it is in, and nothing waits for it. So join it to what it goes with, and it ends where that does. Here \`watch\` is open, and Ben watches as long as the cat is on its way and the narrator talks:
+
+\`\`\`script
+cat go to=pond
+& narrator ${SAY}: The cat goes by, and looks at nobody.
+& ben watch at=cat
+ben ${SAY}: Good morning to you too.
+\`\`\`
+
 ### Channels
 
 What a character says is on its channel \`voice\`, and what it does on the channels that the actions below name. Different channels go on at once, and so do different characters. One channel does one thing at a time. Here \`go\` is on a character's \`place\`, and is fitted, and \`nod\` is on its \`head\`. So Ann goes, nods and talks at once, and Ben nods a second later:
@@ -105,6 +114,7 @@ ben ${SAY}: Good morning.
 \`\`\`
 
 - Two rows that would begin at once, directly in one \`together:\` or joined by \`&\`, are never on one channel of one character. Write the two one after the other, in an \`in order:\` there, or begin the later by the end of the first: \`@ prev.end\`.
+- An open action keeps its channel busy to the end of its block, so what comes next on that channel is written after the block.
 - In blocks of their own, the one written below waits for the one above: in a \`together:\` of two \`in order:\` blocks, what Ann says in the second waits for what she says in the first.
 
 ### Where a row begins
@@ -164,9 +174,9 @@ Use your own names for numbers the story repeats, and these, which are the tool'
   - \`speed=0.5\`, so many times its own speed: 0.5 is half as fast, 2 twice;
   - \`arrive=a.end - 0.5s\`, a moment of something above, written as after an \`@\`: it is hurried or slowed, within reason, to end then.
 
-An action given its seconds or its speed keeps them, whatever is said beside it. Given none of the three, it goes at its own speed, or, one that is fitted, takes as long as the words it is joined to. A voice lasts as long as its words: it takes none of them.
+An action given its seconds or its speed keeps them, whatever is said beside it. Given none of the three, it goes at its own speed, or, one that is fitted, takes as long as the words it is joined to. A voice lasts as long as its words, and an open action to the end of its block: they take none of the three.
 
-\`a.length\` is how long a line above lasts, if that line is said, or is an action given its seconds or its speed, or one that is never fitted. It is read by \`takes\`, by \`pause\` and after an anchor's moment. \`pause=5s - a.length\` is what is left of 5 seconds, and none when the line is longer:
+\`a.length\` is how long a line above lasts, if that line is said, or is an action given its seconds or its speed, or one that is neither fitted nor open. It is read by \`takes\`, by \`pause\` and after an anchor's moment. \`pause=5s - a.length\` is what is left of 5 seconds, and none when the line is longer:
 
 \`\`\`script
 [a] ann ${SAY}: It is a long way to the pond.
@@ -183,11 +193,12 @@ narrator ${SAY} @ prev.end + 1s: Nobody waited.
 - A row that waits for what waits for it: \`@ block.end\` in a block that waits for the row, or the end of a line that is \`under:\` in the same block. Begin it by a start, a share or a word.
 - An action in an \`under:\`. Only what is said may be cut.
 - A line by somebody who is \`under:\` in the same block: they are busy until it ends. Give it to another, or write it after the block.
-- An \`under:\` with nothing to be under: last in a block in order, or alone in its block.
+- An \`under:\` with nothing to be under, and an open action with nothing to go with: last in a block in order, or alone in its block.
+- A row on a channel that an open action above it keeps busy, in the same block. Write it after the block, or join the open action to what it goes with, so that it ends sooner.
 - Two rows on one channel of one character, directly in one \`together:\` or joined by \`&\`, the later with no start of its own.
 - In an \`ending together:\`, a row that has a time of its own, by an \`@\` or by \`arrive\`; a block, or a row joined by \`&\`; and two rows on one channel of one character. Anchor the whole block, and write a block beside it, in a \`together:\` around both.
 - A value that nothing reads, values that read each other in a circle, and two of \`takes\`, \`speed\` and \`arrive\` set for one action on one level.
-- The length of a block, or of an action that is fitted to words: those are known only once everything has its place.
+- The length of a block, or of an action that is fitted to words or open: those are known only once everything has its place.
 
 A channel does one thing at a time: two lines of one character, or two of its actions on one channel, never overlap, whatever blocks they are in. The second waits for the first.
 `;
@@ -199,8 +210,8 @@ const CONSTRUCTED = "A value may be worked out from others by a construction: it
 export function guideOf(script: NonNullable<Described["script"]>): string {
   const names = Object.entries(script.names).map(([name, number]) => `\`${name}\` is ${number}`);
   const forExample = (example: string) => `For example: \`${example}\``;
-  const onChannels = (channels: string[], fits = false) => `${channels.length > 1 ? "Channels" : "Channel"}: ${listed(channels.map((channel) => `\`${channel}\``))}${fits ? "; it is fitted" : ""}.`;
-  const actions = Object.entries(script.actions).map(([name, { description, example, channels, fits }]) => `- **${name}**: ${description} ${onChannels(channels, fits)} ${forExample(example)}`);
+  const onChannels = (channels: string[], how = "") => `${channels.length > 1 ? "Channels" : "Channel"}: ${listed(channels.map((channel) => `\`${channel}\``))}${how}.`;
+  const actions = Object.entries(script.actions).map(([name, { description, example, channels, fits, open }]) => `- **${name}**: ${description} ${onChannels(channels, fits ? "; it is fitted" : open ? "; it is open" : "")} ${forExample(example)}`);
   const constructions = Object.entries(script.constructions).map(([name, { description, example }]) => `- **${name}**: ${description} ${forExample(example)}`);
   return [
     "## A script",

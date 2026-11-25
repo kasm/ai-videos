@@ -22,6 +22,9 @@ const JUMP = 120;
 /** How narrow a turning character gets halfway, as a share of its width: a paper cut-out seen edge-on. */
 const THIN = 0.04;
 
+/** Within what distance one who passes by turns the character that looks at it, px from middle to middle: about a turn's time, at a walk's own pace. */
+const PASS = 120;
+
 /**
  * The arm's angle in each pose, degrees from hanging down as written, for a character facing right:
  * a negative angle lifts it forward, then up. A wave swings SWING to each side, WAVES times a second.
@@ -105,6 +108,24 @@ function turnAt(from: number, p: number): number {
   return from * (Math.abs(width) < THIN ? (p < 0.5 ? THIN : -THIN) : width);
 }
 
+/** A facing, never to nothing. */
+const thin = (facing: number) => (Math.abs(facing) < THIN ? (facing < 0 ? -THIN : THIN) : facing);
+
+/**
+ * Which way a character faces who looks at one `dx` px to its right, `into` seconds into a look that lasts
+ * `length`, having faced `facing` before: as a turn goes, an angle round from 0, facing right, to π. It
+ * turns to the other's side in a turn's time, and is as far round as that one is past while it passes
+ * within `near`: edge-on as it is in front. When the look is over, `dx` being what it was then, it turns
+ * the rest of the way to that side.
+ */
+function lookAt(facing: number, dx: number, near: number, { into, length }: Pick<ShownAction, "into" | "length">): number {
+  const from = Math.acos(facing);
+  const towards = (Math.PI / 2) * (1 - Math.max(-1, Math.min(1, dx / near)));
+  const looked = from + (towards - from) * Math.min(1, Math.min(into, length) / PACE.turn);
+  const side = dx < 0 ? Math.PI : 0;
+  return Math.cos(looked + (side - looked) * Math.min(1, Math.max(0, into - length) / PACE.turn));
+}
+
 /** How high a jump of so many hops has a character, `p` of the way through it: whole hops, so it ends with the feet down. */
 function hopAt(times: number, p: number): number {
   const hop = (p * times) % 1;
@@ -175,31 +196,52 @@ function backgroundOf(library: Pick<Library, "backgrounds">, name: string): Back
   return background;
 }
 
+/** One of a scene's actions that has begun, as a frame shows it. */
+type Acted = Omit<ShownAction, "action" | "values"> & Did;
+
+/** Where a character's walks had it, `ago` seconds before the frame that shows these actions: those begun by then, each as far through as it was. */
+function placeIn(actions: Acted[], who: string, begins: Point, ago: number): Point {
+  let at = begins;
+  for (const one of actions) {
+    if (one.who === who && one.action === "walk" && one.into >= ago) at = walkAt(one.values.from, one.values.to, ago === 0 ? one.progress : (one.into - ago) / one.length);
+  }
+  return at;
+}
+
 /**
  * What a frame of a compiled scenario shows (the tool's AGENTS.md, "A script"), as a staging: the
  * scene's characters as it begins, and then as their actions have them by now, each on its own channel,
- * whose actions are one after another: where a walk has it, how far round a turn, how high a jump over
- * that, and where its arm is. The background is the last one it has changed to, or the one it begins with.
+ * whose actions are one after another: where a walk has it, how far round a turn or a look, how high a
+ * jump over that, and where its arm is. Places depend on no facing, so they come first: a look goes by
+ * where the two are, or were as it ended. The background is the last one it has changed to, or the one it
+ * begins with.
  */
 export function scriptStaging(library: Library, shown: Shown): Staging {
   const { background, characters } = shown.setting as unknown as Setting;
   const { time } = shown;
+  const actions = shown.actions as unknown as Acted[];
   let backdrop = background;
-  const cast = new Map(Object.entries(characters).map(([name, { at, facing }]) => [name, { at, facing: facing as number, high: 0, arm: armAt("stand", time) }]));
-  for (const { who, progress, ...did } of shown.actions as unknown as (Pick<ShownAction, "who" | "progress"> & Did)[]) {
+  const placeOf = (who: string, ago = 0) => placeIn(actions, who, characters[who]!.at, ago);
+  const cast = new Map(Object.entries(characters).map(([name, { facing }]) => [name, { at: placeOf(name), facing: facing as number, high: 0, arm: armAt("stand", time) }]));
+  for (const did of actions) {
+    const { who, progress, into, length } = did;
     if (did.action === "background") {
       backdrop = did.values.to;
       continue;
     }
     const one = cast.get(who)!;
-    if (did.action === "walk") one.at = walkAt(did.values.from, did.values.to, progress);
-    else if (did.action === "turn") one.facing = turnAt(did.values.from, progress);
-    else if (did.action === "jump") one.high = hopAt(did.values.times, progress);
+    if (did.action === "walk") continue;
+    if (did.action === "turn") one.facing = turnAt(one.facing, progress);
+    else if (did.action === "look-at") {
+      const { target, apart } = did.values;
+      const ago = Math.max(0, into - length);
+      one.facing = lookAt(one.facing, placeOf(target, ago)[0] - placeOf(who, ago)[0], Math.max(1, Math.min(PASS, apart)), did);
+    } else if (did.action === "jump") one.high = hopAt(did.values.times, progress);
     else one.arm = armBetween(did.values.from, did.values.to, progress, time);
   }
   return {
     background: backgroundOf(library, backdrop),
-    characters: [...cast].map(([name, { at: [x, y], facing, high, arm }]) => ({ name, at: [x, y - high], facing, arm, eyes: eyesAt(name, time) })),
+    characters: [...cast].map(([name, { at: [x, y], facing, high, arm }]) => ({ name, at: [x, y - high], facing: thin(facing), arm, eyes: eyesAt(name, time) })),
   };
 }
 

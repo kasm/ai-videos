@@ -12,6 +12,7 @@ import { compile, compiledText, type Compiled } from "./compile.ts";
 import { sceneCaptions } from "./compose.ts";
 import { loadPlugin, runJob, svgHash } from "./host.ts";
 import { compiledPage, pageVideo, writePage } from "./page.ts";
+import type { CheckedScene } from "./scenario.ts";
 import type { Timeline } from "./timeline.ts";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
@@ -132,7 +133,11 @@ test("the page draws the SVG of each of the video's frames, shows its captions, 
   assert.doesNotMatch(html, /<link\b/);
 });
 
-/** The plugin with a script's picture: the square in its scene's colour, or the last one the scene has changed to, where its slides have it, growing as it speaks. */
+/**
+ * The plugin with a script's picture: the square in its scene's colour, or the last one the scene has changed
+ * to, where its slides have it, growing as it speaks; and who watches it, a dot on the side that it is on, and
+ * was on as the watch ended.
+ */
 const SCRIPTED = PLUGIN.replace(
   "export default {",
   `export default {
@@ -146,11 +151,14 @@ const SCRIPTED = PLUGIN.replace(
         let { x, colour } = setting;
         for (const { action, values, progress } of actions) {
           if (action === "colour") colour = values.to;
-          else x += (values.x - x) * progress;
+          else if (action === "slide") x += (values.x - x) * progress;
         }
+        // Where the square was so long ago: the same slides, as far through as each was then.
+        const at = (ago) => actions.filter(({ action, into }) => action === "slide" && into >= ago).reduce((from, { values, into, length }) => from + (values.x - from) * Math.min(1, (into - ago) / length), setting.x);
+        const dot = actions.filter(({ action }) => action === "watch").map(({ into, length }) => '<circle cx="' + (at(Math.max(0, into - length)) < 70 ? 74 : 86) + '" cy="10" r="4"/>').join("");
         return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 90" width="' + width + '" height="' + height + '">' +
           '<rect width="160" height="90" fill="#ffffff"/>' +
-          '<rect x="' + x + '" y="30" width="30" height="' + (30 + 10 * (mouths.sq ?? 0)) + '" opacity="' + (time < 1 ? 1 : 0.5) + '" fill="' + colours[colour] + '"/></svg>';
+          '<rect x="' + x + '" y="30" width="30" height="' + (30 + 10 * (mouths.sq ?? 0)) + '" opacity="' + (time < 1 ? 1 : 0.5) + '" fill="' + colours[colour] + '"/>' + dot + '</svg>';
       };
     },
   },`,
@@ -165,18 +173,20 @@ test("a script's clip and its page are drawn from the compiled scenario and the 
   const cache = path.join(root, ".cache", "sq");
   await mkdir(cache, { recursive: true });
   const pauses = { lead: 0.2, pause: 0.2, tail: 0.2 };
-  const scenes = [
+  const scenes: CheckedScene[] = [
     {
       line: 3,
       setting: { colour: "red", x: 20 },
       ...pauses,
       items: [
-        { line: 5, who: "sq", action: "slide", values: { x: 120 }, channels: ["place"], length: 0.4 },
+        // Who watches the slide is done as it is, and the square slides on.
+        { line: 4, order: "together", items: [{ line: 4, who: "sq", action: "slide", values: { x: 80 }, channels: ["place"], length: 0.4 }, { line: 5, who: "dot", action: "watch", values: {}, channels: ["facing"], length: "open" }] },
+        { line: 6, who: "sq", action: "slide", values: { x: 20 }, channels: ["place"], length: 0.4 },
         // Nobody's line, a frame long, begun with the words.
-        { line: 6, order: "together" as const, items: [{ line: 6, who: "sq", action: "say", text: "Here I am." }, { line: 7, who: "scene", action: "colour", values: { to: "blue" }, channels: ["colour"], length: 0.001, takes: 0.001 }] },
+        { line: 7, order: "together", items: [{ line: 7, who: "sq", action: "say", text: "Here I am." }, { line: 8, who: "scene", action: "colour", values: { to: "blue" }, channels: ["colour"], length: 0.001, takes: 0.001 }] },
       ],
     },
-    { line: 8, setting: { colour: "blue", x: 60 }, ...pauses, items: [{ line: 10, who: "narrator", action: "say", text: "And </script> it stays." }] },
+    { line: 9, setting: { colour: "blue", x: 60 }, ...pauses, items: [{ line: 11, who: "narrator", action: "say", text: "And </script> it stays." }] },
   ];
   const voices = [
     { file: "aa.wav", duration: 0.3, mouth: [0.5, 1, 0] },
@@ -191,8 +201,8 @@ test("a script's clip and its page are drawn from the compiled scenario and the 
   await runJob(await loadPlugin(pluginFile), pluginFile, { call: { step: "play", format: "landscape", ...size, compiled: path.join(cache, "compiled.json"), clip }, library });
   const svgs = (await readFile(`${clip}.svgs`, "utf8")).trim().split("\n");
   assert.equal(svgs.length, compiled.frames);
-  assert.equal(compiled.frames, 19);
-  assert.ok(new Set(svgs).size > 8, "the slide, the mouth, the next scene: not one picture held");
+  assert.equal(compiled.frames, 25);
+  assert.ok(new Set(svgs).size > 12, "the slides, the mouth, the next scene: not one picture held");
 
   const sound = path.join(root, "sound.m4a");
   await writeFile(sound, Buffer.from("not really a sound"));
@@ -211,6 +221,12 @@ test("a script's clip and its page are drawn from the compiled scenario and the 
   const colours = Array.from({ length: compiled.scenes[0]!.frames }, (_, k) => drawing.svgAt(k).includes("#4040d0"));
   assert.ok(change.from > 4 && change.frames === 1);
   assert.deepEqual(colours, colours.map((_, k) => k >= change.from));
+  // The one that is open is as long as the slide it is together with: past the middle the square is watched on the
+  // other side, and stays so when it has slid back, in the page's frames as in the video's.
+  const watch = compiled.scenes[0]!.lines.find(({ action }) => action === "watch")!;
+  assert.deepEqual([watch.from, watch.frames], [2, 4]);
+  const side = (frame: number) => /<circle cx="(\d+)"/.exec(drawing.svgAt(frame))?.[1];
+  assert.deepEqual([1, 2, 5, 6, 12, 16].map(side), [undefined, "74", "74", "86", "86", "86"]);
   // Sought past either end, it shows the end.
   assert.equal(svgHash(drawing.svgAt(-5)), svgs[0]);
   assert.equal(svgHash(drawing.svgAt(400)), svgs.at(-1));

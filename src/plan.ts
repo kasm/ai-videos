@@ -22,14 +22,17 @@ interface PlanScene<L extends PlanLine> {
   items: ScriptItem<L>[];
 }
 
-/** What a line is to the plan, and how long it lasts, frames: a move, on its action's channels, that is given no length is fitted where something fits it, or to the moment it arrives at. */
-export type Lasting = { kind: "voice"; length: number } | { kind: "move"; channels: string[]; length: number } | { kind: "move"; channels: string[]; length: Omit<Fitted, "arrive">; arrive?: Anchor | undefined };
+/** What a line is to the plan, and how long it lasts, frames: a move, on its action's channels, that is given no length is open, or fitted where something fits it, or to the moment it arrives at. */
+export type Lasting = { kind: "voice"; length: number } | { kind: "move"; channels: string[]; length: number | "open" } | { kind: "move"; channels: string[]; length: Omit<Fitted, "arrive">; arrive?: Anchor | undefined };
 
 /** The channel of what a character says: the tool's own. Any other is the plugin's. */
 export const VOICE = "voice";
 
 /** A plugin's actions, by name, as a plan's shape reads them. */
-export type Channels = Record<string, Pick<Action, "channels">>;
+export type Channels = Record<string, Pick<Action, "channels" | "open">>;
+
+/** Whether an action is open: it goes on to the end of its block. */
+const isOpen = (action: string, actions: Channels) => Object.hasOwn(actions, action) && actions[action]!.open === true;
 
 /**
  * The plan of a scenario: the video, a block in order, of its scenes, each a block in order too.
@@ -88,19 +91,23 @@ function nameIssues(all: Place<WorkedLine>[][], n: number): Issue[] {
 }
 
 /**
- * What is under the rest with nothing to be under, so that it is never heard: a block whose lines
- * are all under, which waits for nothing, and what is under last in a block in order, which would
- * begin when the block ends.
+ * What goes on to the end of its block with nothing to say where that is, so that it is never there: a
+ * block in which all is under the rest, or open, which waits for nothing, and what is so last in a block
+ * in order, which would begin when the block ends.
  */
-function underIssues(scene: WorkedScene): Issue[] {
+function leftIssues(scene: WorkedScene, actions: Channels): Issue[] {
   const issues: Issue[] = [];
   const isUnder = (item: ScriptItem<WorkedLine>) => isBlock(item) && item.under === true;
+  const isLeft = (item: ScriptItem<WorkedLine>) => isUnder(item) || (!isBlock(item) && isOpen(item.action, actions));
   const look = (items: ScriptItem<WorkedLine>[], order: ScriptBlock["order"], block: string, line: number) => {
-    const rest = items.findLastIndex((item) => !isUnder(item));
-    if (items.length > 0 && rest < 0) issues.push({ line, message: `everything in ${block} is under the rest, and there is no rest`, hint: "write the lines they are under in it too, or leave out under:" });
-    else if (order === "in order") {
+    const rest = items.findLastIndex((item) => !isLeft(item));
+    if (items.length > 0 && rest < 0) {
+      if (items.every(isUnder)) issues.push({ line, message: `everything in ${block} is under the rest, and there is no rest`, hint: "write the lines they are under in it too, or leave out under:" });
+      else issues.push({ line, message: `everything in ${block} goes on to its end, and nothing in it says where that is`, hint: "write in it too what it goes with: what is said, or an action with a length" });
+    } else if (order === "in order") {
       for (const item of items.slice(rest + 1).filter(({ anchor }) => !anchor)) {
-        issues.push({ line: item.line, message: `nothing comes after this in ${block}, so there is nothing for it to be under`, hint: "write the lines it is under below it, at its own margin, or join it to the line above with &" });
+        if (isUnder(item)) issues.push({ line: item.line, message: `nothing comes after this in ${block}, so there is nothing for it to be under`, hint: "write the lines it is under below it, at its own margin, or join it to the line above with &" });
+        else issues.push({ line: item.line, message: `nothing comes after this in ${block}, so there is nothing for it to go with`, hint: "join it to what it goes with (&), or write that below it" });
       }
     }
     for (const item of items) if (isBlock(item)) look(item.items, item.order, nameOf(item), item.line);
@@ -118,13 +125,14 @@ const shapeOf = (scenes: WorkedScene[], actions: Channels) =>
   planOf(scenes, () => 0, ({ action, lasts }): Lasting => {
     if (action === SAY) return { kind: "voice", length: 1 };
     const { channels } = Object.hasOwn(actions, action) ? actions[action]! : { channels: [] };
+    if (isOpen(action, actions)) return { kind: "move", channels, length: "open" };
     if (lasts && !("arrive" in lasts)) return { kind: "move", channels, length: 1 };
     return { kind: "move", channels, length: { own: 1, least: 1, most: 1 }, arrive: lasts?.arrive };
   });
 
 /**
  * For each action of a script with a timing, by its line: the lines of its scene's other actions that
- * have surely begun before it ends, however long the voices turn out to be (times.ts, surelyBegun).
+ * have surely begun before it ends, or by then, however long the voices turn out to be (times.ts, surelyBegun).
  */
 export function begunBy(scenes: WorkedScene[], actions: Channels): Map<number, number[]> {
   const { video, items } = shapeOf(scenes, actions);
@@ -156,12 +164,11 @@ function refusalIssues(scenes: WorkedScene[], actions: Channels): Issue[] {
   const issueOf = (refusal: Refusal): Issue => {
     if (refusal.why === "held") {
       const [own, by] = [written.get(refusal.item) as WorkedLine, told(refusal.by)];
-      return {
-        line: own.line,
-        also: [by.line],
-        message: `${busy(refusal.channel)} ${by.name}, which goes on under the rest to the end of the block both are in`,
-        hint: "write it after that block, or in the same under:, below that line",
-      };
+      const issue = (message: string, hint: string) => ({ line: own.line, also: [by.line], message: `${busy(refusal.channel)} ${by.name}, which goes on ${message}`, hint });
+      if (refusal.by.length !== "open") return issue("under the rest to the end of the block both are in", "write it after that block, or in the same under:, below that line");
+      const block = around.get(refusal.by)!;
+      const after = blocks.includes(block) ? "" : "write it after that block, or ";
+      return issue(`to the end of ${told(block).name}`, `${after}have ${by.name} end sooner, in a block of its own: join it to what it goes with (&)`);
     }
     if (refusal.why === "cut") {
       const own = written.get(refusal.item) as WorkedLine;
@@ -187,7 +194,7 @@ function refusalIssues(scenes: WorkedScene[], actions: Channels): Issue[] {
     const chain = refusal.items.map(told);
     const round = refusal.items.map((item, i, all) => {
       const next = all[(i + 1) % all.length]!;
-      const ends = around.get(item) === next && next.order === "ending together";
+      const ends = around.get(item) === next && (next.order === "ending together" || (item.kind !== "block" && item.length === "open"));
       return `${told(item).name} ${ends ? "ends with" : `${told(item).waits} for`} ${told(next).name}`;
     });
     // The one to mend is the one with a moment of its own, the last written of them.
@@ -204,5 +211,5 @@ export function timeIssues(scenes: WorkedScene[], actions: Channels): Issue[] {
   const all = scenes.map(placesOf<WorkedLine>);
   const names = scenes.flatMap((_, n) => nameIssues(all, n));
   // With an anchor that names nothing there is no plan to try.
-  return [...names, ...scenes.flatMap(underIssues), ...(names.length > 0 ? [] : refusalIssues(scenes, actions))];
+  return [...names, ...scenes.flatMap((scene) => leftIssues(scene, actions)), ...(names.length > 0 ? [] : refusalIssues(scenes, actions))];
 }

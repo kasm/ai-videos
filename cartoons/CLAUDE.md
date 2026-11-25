@@ -138,8 +138,11 @@ move or a pose, and `picture.ts` holds its numbers.
 
 A turn mirrors the character, left to right, like a paper cut-out turned
 round: it gets narrow, is seen edge-on halfway, and widens again facing
-the other way (`THIN`). A jump is hops in place, each up and down as a
-thrown ball goes (`JUMP`), and ends on the ground.
+the other way (`THIN`). A look (a script's alone) turns a character so to
+the one it looks at, in a turn's time, and turns it on as that one goes
+past it, by how far past it is (`PASS`): edge-on as it is in front. A jump
+is hops in place, each up and down as a thrown ball goes (`JUMP`), and ends
+on the ground.
 
 A pose is where the arm is: the part named `arm` turns around the
 character's `shoulder`. It hangs as drawn (`stand`), is held straight
@@ -287,8 +290,8 @@ block of lines, in place of `beats:`. `videos/hello-script.yaml` is
 once: a chorus, an interruption, a radio, words that end with a walk, a
 murmur under a talk, its pauses all of one named value, its second
 scene's places worked out from others, and in its third, several who act
-at once, one who walks, waves and talks, and a background that changes
-at a word. The plan
+at once, one who walks, waves and talks, two who look at it all the way
+past them, and a background that changes at a word. The plan
 `docs/plans/compiled-scenario.md` builds this step by step, and the
 seven cartoons stay in beats until its end.
 `make` checks and compiles it (`.cache/<name>/compiled.json`; `--fit`
@@ -325,19 +328,28 @@ scenes:
   and at least half (`timing.moves`), if it is given no length of its
   own; in an `ending together:` it keeps its own pace, and the words
   wait. No other action is fitted: a hop, a turn and an arm keep their
-  pace. An action is never under the rest.
+  pace, and a look goes on to the end of its block. An action is never under
+  the rest.
 - **The actions** (`ACTIONS`, `script.ts`), each on one channel of its
   character, which does one thing at a time (its voice is the tool's). So
   one character walks, hops, turns, waves and talks at once, each a row of
   its own; two on one channel that would begin at once are refused. Each
-  looks as it does in beats, and is refused for a character the scene does
-  not place.
+  but `look-at` is drawn as it is in beats, and all are refused for a
+  character the scene does not place.
   - `walk to=<place>`, on `place`: the character goes from where the lines
     above left it to the place, at `PACE.walk`. It is refused to where it
     stands, or to a spot where another stands. A walk turns nobody.
   - `jump times=2`, on `hop`: so many hops (1 when left out), `PACE.hop`
     each, where it stands or on its way.
   - `turn`, on `facing`: it faces the other way from then on (`PACE.turn`).
+  - `look-at target=pip`, on `facing` too: it faces another character of the
+    scene wherever that one goes, to the end of the look's block (it is
+    open; the tool's "What happens at once"), and then stays facing the side
+    where that one was as the look ended. So it is joined to the walk it
+    watches, or the words it goes with; in its block its character neither
+    turns nor looks at anybody else. It takes no `takes`, `speed` or
+    `arrive`. One who goes along with another has a walk of its own:
+    `mo walk to=right`, `& pip walk to=left-of(mo, near)`.
   - `wave`, `point` and `stand`, on `arm`: the arm takes `PACE.arm` to get
     there, and stays so until another of the three, through the lines after
     it; a scene begins with every arm hanging. `wave` and `point` need the
@@ -397,13 +409,18 @@ scenes:
   character it places at its place's point, facing 1 (right, as drawn) or
   -1, and each action with its own length, worked out from how the lines
   above on its channel left the character, in the order written, as that
-  is their order in time: a walk as its two points, a turn as the facing
-  before it and after, an arm's action as the poses, a jump as its hops, a
-  change of background as its name. A mistake comes with its line and a
-  hint: the library's names, and the nearest. Nothing is mended in a script.
+  is their order in time: a walk as its two points, an arm's action as the
+  poses, a jump as its hops, a change of background as its name. A turn says
+  only that it turns, and a look whom it is at and how near the two may
+  stand: which way a look leaves its character, the voices may say. A
+  mistake comes with its line and a hint: the library's names, and the
+  nearest. Nothing is mended in a script.
 - **The picture** (`drawScript`, `picture.ts`) is drawn from what the
   tool says a frame shows: the scene as it began, each action as far
-  through as it is, and whose mouth is open.
+  through as it is, and whose mouth is open. Places depend on no
+  facing, so they come first: a look goes by where the two are in that
+  frame, and, when it is over, by where they were as it ended (an action's
+  `into` and `length`). So two may look at each other.
 - **The guide** to a cartoon as a script is `SCRIPT_GUIDE` in `guide.ts`,
   the plugin's part; the tool adds how a line is written, the actions and
   the constructions. It teaches what a script has so far. `GUIDE`, the prompt's,

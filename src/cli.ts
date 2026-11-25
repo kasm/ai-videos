@@ -216,11 +216,11 @@ async function playScript(video: VideoFile, fit: boolean, plugin: () => Promise<
   log(`Narration (${voice})`);
   const provider = new KokoroProvider(MODELS);
   const voices: Voiced[] = [];
-  /** How long each line lasts by itself, seconds, by its line in the file. */
+  /** How long each line lasts by itself, seconds, by its line in the file: none for an open one. */
   const own = new Map<number, number>();
   for (const line of lines) {
     if (!("text" in line)) {
-      own.set(line.line, line.length);
+      if (line.length !== "open") own.set(line.line, line.length);
       continue;
     }
     const spokenIn = voiceOf(video.settings, line.who === NARRATOR ? {} : { speaker: line.who });
@@ -245,15 +245,15 @@ async function playScript(video: VideoFile, fit: boolean, plugin: () => Promise<
       const what = `    line ${String(line.line).padEnd(3)} ${written.length > 40 ? `${written.slice(0, 37)}...` : written.padEnd(40)}`;
       const on = scene.lines.find((compiled) => compiled.line === line.line);
       if (!on) {
-        log(`${what}  not there: what it is under ends before it begins`);
+        log(`${what}  not there: ${own.has(line.line) ? "what it is under ends" : "its block ends"} before it begins`);
         continue;
       }
       // A voice with fewer frames than it needs is cut, and a fitted action has another length than its own.
-      // An action that is over at once, in less than a frame, has no speed.
-      const needs = own.get(line.line)! * compiled.fps;
+      // An action that is over at once, in less than a frame, has no speed, and an open one has none either.
+      const needs = (own.get(line.line) ?? 0) * compiled.fps;
       const cut = "text" in line && Math.ceil(needs - 1e-6) > on.frames;
       const fitted = !("text" in line) && Math.round(needs) > 0 && Math.round(needs) !== on.frames;
-      const how = cut ? ", cut" : fitted ? `, ${(needs / on.frames).toFixed(2)} times its own speed` : "";
+      const how = !own.has(line.line) ? ", to the end of its block" : cut ? ", cut" : fitted ? `, ${(needs / on.frames).toFixed(2)} times its own speed` : "";
       log(`${what}  at ${seconds(on.from).padStart(7)} for ${seconds(on.frames).padStart(6)}, frames ${on.from} to ${on.from + on.frames - 1}${how}`);
     }
   });

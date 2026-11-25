@@ -13,7 +13,7 @@ import { compile, compiledText, type Compiled, type CompiledLine } from "./compi
 import { secondsOf, shownAs, type Span, type Worked } from "./formula.ts";
 import { different, random, type Random } from "./random.ts";
 import { isBlock } from "./read.ts";
-import { checkScenario, linesIn, type Anchor, type CheckedLine, type CheckedScene, type Default, type Issue, type ScriptBlock, type ScriptItem, type ScriptPlugin } from "./scenario.ts";
+import { checkScenario, linesIn, type Anchor, type CheckedLine, type CheckedScene, type Default, type Issue, type SceneChecked, type ScriptBlock, type ScriptItem, type ScriptPlugin } from "./scenario.ts";
 import { pictureOf, shownAt } from "./shown.ts";
 import { writtenScript } from "./video-file.ts";
 import { sharesOf } from "./words.ts";
@@ -34,7 +34,7 @@ const xOf = (where: Worked): number | string => {
 };
 /**
  * `walk` goes `to` a place, takes longer the `far`ther it is, and is fitted to words; `hop` hops so many
- * `times`, and `spin` is on the walk's channel and another. A scene's `spots` are places. An action's
+ * `times`, `spin` is on the walk's channel and another, and `watch` is open. A scene's `spots` are places. An action's
  * values say which others have surely begun before its end.
  */
 const PLUGIN: ScriptPlugin = {
@@ -42,6 +42,7 @@ const PLUGIN: ScriptPlugin = {
     walk: { description: "It walks.", example: "pip walk to=left", values: z.strictObject({ to: place, far: z.number().positive().max(5000).default(100) }), channels: ["place"], fits: true },
     hop: { description: "It hops.", example: "pip hop", values: z.strictObject({ times: z.number().int().positive().max(20).default(1) }), channels: ["hop"] },
     spin: { description: "It spins.", example: "pip spin", values: z.strictObject({}), channels: ["facing", "place"] },
+    watch: { description: "It watches.", example: "pip watch", values: z.strictObject({ far: z.number().positive().max(5000).default(100) }), channels: ["head"], open: true },
   },
   names: { slow: 0.5, fast: 2 },
   constructions: { beside: { description: "Beside a place.", example: "beside(left, 2)" }, between: { description: "Between two.", example: "between(left, right)" } },
@@ -54,10 +55,11 @@ const PLUGIN: ScriptPlugin = {
       if (typeof x === "string") issues.push({ line, message: `${shownAs(where)} is no place: ${x}`, hint: "a place is left, middle or right, or worked out" });
       return typeof x === "string" ? 0 : x;
     };
-    const worked = scenes.map(({ line, setting, actions }) => ({
+    const worked = scenes.map(({ line, setting, actions }): SceneChecked => ({
       setting: { at: [0, 1], spots: Object.fromEntries(Object.entries((setting.spots ?? {}) as Record<string, Worked>).map(([who, where]) => [who, at(line, where)])) },
-      actions: actions.map(({ line, values: taken, begun }) => {
+      actions: actions.map(({ line, action, values: taken, begun }) => {
         const values = taken as { times: number } | { to: Worked; far: number } | object;
+        if (action === "watch") return { values: { ...(taken as { far: number }), begun } };
         if ("times" in values) return { values: { ...values, begun }, length: values.times * 0.4 };
         if ("to" in values) return { values: { ...values, to: at(line, values.to), begun }, length: 0.5 + values.far / 200 };
         return { values: { begun }, length: 0.7 };
@@ -78,6 +80,7 @@ const WORDS = ["one", "two", "three", "four", "five", "six", "seven", "eight", "
 
 /** Rows with a mistake in them, formulas that are a mistake in some places or in all, and names that are none of a value. */
 const WRONG_ROWS = [
+  ...["pip watch takes=1s", "pip watch speed=slow", "pip watch arrive=prev.end", "pip watch far=0"],
   ...["pip", "pip walk left", "Pip say: Hi.", "pip say", "pip dance to=left", "nobody say: Hi.", "nobody walk to=left", "pip walk to=left: Whee!", "pip say loud=2: Hi.", "pip Walk to=left"],
   ...["pip walk to=left to=right", "pip walk to=", "pip walk pause=1s", "pip walk nobody=1", "pip walk pip.to=left", "pip walk to=up", "pip hop times=0", "pip walk far=2px", "pip walk far=1 takes=1s speed=2"],
   ...["together", "in order: pip say: Hi.", "par:", "under:", "  pip say: Hi.", "\tpip say: Hi.", "& & pip say: Hi.", "[prev] pip say: Hi.", "[A] pip say: Hi.", "[c] & pip say: Hi.", "[a] pip say: One, two and one.", "pip say @ prev.end beat: Hi."],
@@ -87,7 +90,7 @@ const WRONG = [
   ...["a.end", "prev.word(one)", "a.length", "prev.length", "block.length", "2s / a.length", "a.length / 2s", "(a.length / 2s) * (a.length / 1s)"],
   ...["beside(left, 2)", "beside(left, 1) * 2", "beside(left, beside(right, 1))", "besid(left, 2)", "beside()", "beside(left)", "beside(left, 2", "beside(left 2)", "beside(left, 2s)", "between(left, a.length)", "between(a.end, left)", "between(nobody, left)", "left, right"],
 ];
-const WRONG_NAMES = ["puase", "nobody.speed", "say.speed", "pip.pause", "lead", "Near", "pip.walk.far", "say.far", "narrator.beat", "walk.say"];
+const WRONG_NAMES = ["puase", "nobody.speed", "say.speed", "pip.pause", "lead", "Near", "pip.walk.far", "say.far", "narrator.beat", "walk.say", "watch.takes", "watch.speed"];
 
 /** What has a label: a line that is said, its words; an action given its length; a block, and whether a row is in it still. */
 interface Above {
@@ -148,7 +151,7 @@ function randomFile({ int, chance, pick }: Random): string {
     const values = new Map<string, string>();
     const told = new Set<string>();
     for (let k = 0; k < count; k++) {
-      const whose = pick(["", "", "pip.", "mo.", "walk.", "hop.", "spin."]);
+      const whose = pick(["", "", "pip.", "mo.", "walk.", "hop.", "spin.", ...(chance(0.2) ? ["watch."] : [])]);
       const name = pick(["beat", "lag", "near", "much", "far", "to", "times", "pause", "pause", "takes", "speed", "arrive", ...(level === "block" ? [] : ["lead", "tail"])]);
       const key = ["pause", "lead", "tail"].includes(name) && !wrong(0.1) ? name : `${whose}${name}`;
       if (wrong(0.08)) {
@@ -156,6 +159,8 @@ function randomFile({ int, chance, pick }: Random): string {
         continue;
       }
       if (["takes", "speed", "arrive"].includes(name)) {
+        // What is open takes none of them.
+        if (whose === "watch." && !wrong(0.1)) continue;
         // One of the three for one on a level.
         if (told.has(whose) && !wild) continue;
         told.add(whose);
@@ -183,6 +188,15 @@ function randomFile({ int, chance, pick }: Random): string {
   const rows: string[] = [];
   let labels = 0;
   let unders = 0;
+  /** Who watches, in each of the blocks that are being written, the outer first: to the ends of those. */
+  const watching: Set<string>[] = [];
+  /** The row of one who watches from here on, in the block that is being written: none of those who do already. */
+  const aWatch = (): string | undefined => {
+    const who = pick(["pip", "mo", "tuk"]);
+    if (watching.some((block) => block.has(who)) && !wrong(0.1)) return undefined;
+    watching.at(-1)!.add(who);
+    return `${who} watch${chance(0.7) ? "" : ` far=${number(["near", "much"])}`}`;
+  };
   const labelled = (): Above | undefined => (chance(0.5) ? { label: wrong(0.1) ? pick(["a", "b", "z"]) : `${"abcdefgh"[labels % 8]}${labels++ < 8 ? "" : labels}` } : undefined);
   const saying = (): string[] => WORDS.slice(int(WORDS.length)).slice(0, 1 + int(chance(0.2) ? 20 : 5));
   const spoken = (words: string[]) => `${words.map((word, i) => `${word}${i < words.length - 1 && chance(0.2) ? pick([",", ".", ":", "!"]) : ""}`).join(" ")}.`;
@@ -199,7 +213,15 @@ function randomFile({ int, chance, pick }: Random): string {
   /** The rows of a block that ends its lines together: lines alone, one that is said and one that is done by each, with no time of their own. */
   const writeEnding = (margin: string, under?: string) => {
     const busy = new Set<string>();
+    let waited = false;
     for (let k = 0, count = 1 + int(4); k < count; k++) {
+      // Beside something that the block waits for, and in nothing that is under the rest.
+      if ((waited && under === undefined && chance(0.15)) || wrong(0.02)) {
+        const row = aWatch();
+        if (row) rows.push(`${margin}${row}`);
+        continue;
+      }
+      waited = true;
       const label = labelled();
       const own = `${k > 0 && wrong(0.05) ? "& " : ""}${label ? `[${label.label}] ` : ""}`;
       const anchor = wrong(0.05) ? ` @ ${moment(k === 0)}` : "";
@@ -210,7 +232,10 @@ function randomFile({ int, chance, pick }: Random): string {
       const says = under !== undefined || chance(0.55);
       const who = under !== undefined && chance(0.7) ? under : says ? pick([...(under === undefined ? ["pip", "mo", "tuk"] : ["radio", "bird", "crowd"]), "narrator"]) : pick(["pip", "mo", "tuk"]);
       const action = says ? "say" : anAction();
-      if (taken(busy, channelsOf(who, action))) continue;
+      if (taken(busy, channelsOf(who, action))) {
+        waited = k > 0;
+        continue;
+      }
       if (says) {
         const words = saying();
         rows.push(`${margin}${own}${who} say${anchor}: ${spoken(words)}`);
@@ -228,6 +253,9 @@ function randomFile({ int, chance, pick }: Random): string {
     let afterUnder = false;
     /** What is busy with the rows that begin at once: all of a block together, or those that are joined. */
     let busy = new Set<string>();
+    /** Whether something is in the block that it waits for; and rows of those who watch that nothing has come after. */
+    let waited = false;
+    let unwatched: string[] = [];
     for (let k = 0; k < count; k++) {
       if (chance(0.05)) rows.push(pick(["", `${margin}# a note`]));
       if (wrong(0.03)) {
@@ -235,20 +263,36 @@ function randomFile({ int, chance, pick }: Random): string {
         continue;
       }
       const last = k === count - 1;
-      const joined = k > 0 && (!afterUnder || wild) && chance(0.25) ? "& " : "";
+      const joined: string = k > 0 && (!afterUnder || wild) && chance(0.25) ? "& " : "";
       if (!joined && !atOnce) busy = new Set();
       const label = labelled();
       const own = label ? `[${label.label}] ` : "";
       const anchor = chance(0.2) && (k > 0 || chance(0.2)) ? ` @ ${moment(k === 0)}` : "";
+      // One who watches: joined to what its block waits for, beside that, or above it; nobody under the rest does.
+      const beside: boolean = waited && (atOnce || joined !== "");
+      if ((under === undefined && chance(0.12) && (beside || (!last && !joined))) || wrong(0.02)) {
+        const row = aWatch();
+        if (!row) continue;
+        rows.push(`${margin}${joined}${own}${row}${beside ? anchor : ""}`);
+        if (label) above.push(Object.assign(label, { open: true }));
+        if (!beside) unwatched.push(rows.at(-1)!);
+        // What is joined to it would be in a block with it.
+        afterUnder = !beside;
+        continue;
+      }
       afterUnder = false;
+      waited = true;
+      unwatched = [];
       if (deep > 0 && chance(0.35)) {
         const kind = pick(["in order", "together", "ending together", ...(last && !wild ? [] : ["under"])]);
         const set = settings(int(3), "block", k === 0);
         rows.push(`${margin}${joined}${own}${kind}${[...set].map(([name, text]) => ` ${name}=${text}`).join("")}${anchor}:`);
         if (label) above.push(Object.assign(label, { open: true }));
         const inner = `${margin}${" ".repeat(1 + int(4))}`;
+        watching.push(new Set());
         if (kind === "ending together") writeEnding(inner, under);
         else write(inner, deep - 1, kind === "together", kind === "under" ? ["radio", "bird", "crowd"][unders++ % 3] : under);
+        watching.pop();
         if (label) label.open = false;
         afterUnder = kind === "under";
         continue;
@@ -267,12 +311,19 @@ function randomFile({ int, chance, pick }: Random): string {
       rows.push(`${margin}${joined}${own}${who} ${action}${takenBy(action)}${given}${anchor}`);
       if (label) above.push(Object.assign(label, { given: given !== "" ? !given.startsWith(" arrive") : action !== "walk" }));
     }
+    // One that nothing has come after would never be seen, unless a slip has it be.
+    while (unwatched.length > 0 && rows.at(-1) === unwatched.at(-1) && !wrong(0.1)) {
+      rows.pop();
+      unwatched.pop();
+      above = above.filter((one) => !one.open || rows.some((row) => row.includes(`[${one.label}]`)));
+    }
   };
 
   const scenes = Array.from({ length: 1 + int(3) }, (_, n) => {
     rows.length = 0;
     above = [];
     labels = 0;
+    watching.splice(0, Infinity, new Set());
     write("      ", 3, false);
     const set = chance(0.5) ? [] : [...settings(1 + int(3), "scene")];
     // Between braces a comma ends a value: one with a comma is in quotes there, if it is not a mistake.
@@ -382,7 +433,8 @@ function laid({ scenes, fps }: Pick<Taken, "scenes" | "fps">, compiled: Compiled
     const isScene = (one: Item | CheckedScene): one is CheckedScene => one === scene;
     const inOrder = (block: Block | CheckedScene) => isScene(block) || block.order === "in order";
     const ending = (block: Block | CheckedScene) => !isScene(block) && block.order === "ending together";
-    const left = (item: Item) => isBlock(item) && item.under === true;
+    const open = (item: Item) => !isBlock(item) && "length" in item && item.length === "open";
+    const left = (item: Item) => (isBlock(item) && item.under === true) || open(item);
     /** `x` and the blocks it is in, the inner first, up to the scene's own. */
     const withBlocks = (x: Item): Item[] => {
       const list = [x];
@@ -397,8 +449,11 @@ function laid({ scenes, fps }: Pick<Taken, "scenes" | "fps">, compiled: Compiled
     const waited = (item: Item): CheckedLine[] => (left(item) ? [] : isBlock(item) ? item.items.flatMap(waited) : [item]);
     /** The line as compiled; none when its block ended before it began. */
     const there = (line: CheckedLine): CompiledLine | undefined => at.get(line.line);
-    /** A block that ends its lines together fits none of them: an action given no length takes its own. */
-    const lasts = (line: CheckedLine) => known.get(line.line) ?? ("length" in line && ending(parent.get(line)!) ? Math.max(1, Math.round(line.length * fps)) : there(line)!.frames);
+    /** A block that ends its lines together fits none of them: an action given no length takes its own. One that is open lasts as its block does. */
+    const lasts = (line: CheckedLine): number => {
+      if (open(line)) return Math.max(0, uncutOf(parent.get(line)!) - startOf(line));
+      return known.get(line.line) ?? ("length" in line && ending(parent.get(line)!) ? Math.max(1, Math.round((line.length as number) * fps)) : there(line)!.frames);
+    };
     /** The blocks at whose ends `x` is cut, the inner first; as `y` sees it, not for what `y` is in too. */
     const cutBy = (x: Item, y?: Item) => withBlocks(x).filter((z) => left(z) && !(y && withBlocks(y).includes(z))).map((z) => parent.get(z)!);
 
@@ -418,7 +473,7 @@ function laid({ scenes, fps }: Pick<Taken, "scenes" | "fps">, compiled: Compiled
     const uncutOf = (x: Item | CheckedScene): number => {
       if (isScene(x)) return from + frames;
       // Each line of one that ends them together is taken to begin as soon as it can: the last to end is the end of all.
-      if (isBlock(x) && ending(x)) return Math.max(startOf(x), ...linesIn([x]).map((line) => Math.max(startOf(x), ...freeOf(line)) + lasts(line)));
+      if (isBlock(x) && ending(x)) return Math.max(startOf(x), ...linesIn([x]).filter((line) => !left(line)).map((line) => Math.max(startOf(x), ...freeOf(line)) + lasts(line)));
       if (isBlock(x)) return Math.max(startOf(x), ...x.items.filter((item) => !left(item)).map(uncutOf));
       return there(x) ? startOf(x) + lasts(x) : NaN;
     };
@@ -443,13 +498,13 @@ function laid({ scenes, fps }: Pick<Taken, "scenes" | "fps">, compiled: Compiled
       const block = parent.get(x)!;
       const start = startOf(block);
       if (x.anchor) return [start, momentOf(x.anchor, x)];
-      if (ending(block)) return [start, uncutOf(block) - lasts(x as CheckedLine)];
+      if (ending(block)) return left(x) ? [start] : [start, uncutOf(block) - lasts(x as CheckedLine)];
       if (!inOrder(block)) return [start];
       const waits = aboveIn(x).filter((item) => !left(item));
       if (waits.length === 0) return [start + (isScene(block) ? pauseOf(scene.lead) : 0)];
       return [start, ...waits.map((item) => uncutOf(item) + pauseOf(block.pause))];
     };
-    return { scene, from, frames, order, parent, isScene, inOrder, ending, left, withBlocks, aboveIn, waited, there, lasts, cutBy, named, startOf, uncutOf, freeOf, momentOf, beginsBy, pauseOf };
+    return { scene, from, frames, order, parent, isScene, inOrder, ending, open, left, withBlocks, aboveIn, waited, there, lasts, cutBy, named, startOf, uncutOf, freeOf, momentOf, beginsBy, pauseOf };
   });
 }
 type Laid = ReturnType<typeof laid>[number];
@@ -476,7 +531,7 @@ test("random scripts: none throws, and a mistake is told once, at lines of its f
 });
 
 test("random scripts: there are many with no mistake, and everything a script can have is in them", (t) => {
-  const count = { placedInLine: 0, placedInSpots: 0, scenes: 0, lines: 0, onTwoChannels: 0, twoThingsAtOnce: 0, neverFitted: 0, surelyBegun: 0, joined: 0, under: 0, anchored: 0, byWord: 0, byPrev: 0, byBlock: 0, takes: 0, arrives: 0, hurried: 0, slowed: 0, fastest: 0, slowest: 0, lengthsRead: 0, pauseOfLengths: 0, cutShort: 0, notThere: 0, waitedForItsChannel: 0, endingTogether: 0, begunLater: 0, endingLater: 0, setOnScene: 0, setOnBlock: 0, setOnLine: 0, forOne: 0, forAnAction: 0, defaults: 0 };
+  const count = { placedInLine: 0, placedInSpots: 0, scenes: 0, lines: 0, onTwoChannels: 0, twoThingsAtOnce: 0, neverFitted: 0, surelyBegun: 0, open: 0, openInOrder: 0, openBeside: 0, openAnchored: 0, openEnding: 0, openNamed: 0, joined: 0, under: 0, anchored: 0, byWord: 0, byPrev: 0, byBlock: 0, takes: 0, arrives: 0, hurried: 0, slowed: 0, fastest: 0, slowest: 0, lengthsRead: 0, pauseOfLengths: 0, cutShort: 0, notThere: 0, waitedForItsChannel: 0, endingTogether: 0, begunLater: 0, endingLater: 0, setOnScene: 0, setOnBlock: 0, setOnLine: 0, forOne: 0, forAnAction: 0, defaults: 0 };
   tried(t, (taken) => {
     const compiled = compiledOf(taken);
     count.placedInLine += /walk.* to=(beside|between)\(/.test(taken.text) ? 1 : 0;
@@ -505,6 +560,16 @@ test("random scripts: there are many with no mistake, and everything a script ca
           if (typeof at === "object" && "word" in at) count.byWord++;
         }
         if (item.anchor) count.anchored++;
+        if (one.open(item)) {
+          const block = one.parent.get(item)!;
+          count.open++;
+          if (one.inOrder(block)) count.openInOrder++;
+          else if (one.ending(block)) count.openEnding++;
+          else count.openBeside++;
+          if (item.anchor) count.openAnchored++;
+          if (item.label && one.order.some((other) => anchorsOf(other).some(({ of }) => of === item.label))) count.openNamed++;
+          if (!one.there(item as CheckedLine)) continue;
+        }
         if (spansOf(item).some((span) => typeof span === "object")) count.lengthsRead++;
         if (isBlock(item)) continue;
         count.lines++;
@@ -520,7 +585,7 @@ test("random scripts: there are many with no mistake, and everything a script ca
         if ((item.values as { begun: number[] }).begun.length > 0) count.surelyBegun++;
         if (item.takes !== undefined) count.takes++;
         if (item.arrive) count.arrives++;
-        if (item.takes !== undefined || !there) continue;
+        if (item.takes !== undefined || !there || item.length === "open") continue;
         const own = Math.max(1, Math.round(item.length * taken.fps));
         if (there.frames < own) count.hurried++;
         if (there.frames > own) count.slowed++;
@@ -573,6 +638,28 @@ test("random scripts: each compiles to a whole scenario, of plain values, with s
       for (const { progress, into } of shownAt(picture, frame).actions) assert.ok(progress >= 0 && progress <= 1 && into >= 0, `frame ${frame} shows an action ${progress} through`);
     }
   });
+});
+
+test("random scripts: without what is open, all the rest is where it was, but what waits for its channel", (t) => {
+  let without = 0;
+  tried(t, (taken) => {
+    const scenes = laid(taken, compiledOf(taken), taken.voices);
+    for (const [n, { scene, order, open }] of scenes.entries()) {
+      for (const z of order.filter(open) as CheckedLine[]) {
+        const below = order.slice(order.indexOf(z) + 1);
+        const free = !below.some((item) => !isBlock(item) && channelsOf(item.who, item.action).some((channel) => channelsOf(z.who, z.action).includes(channel)));
+        // `prev` may be it, and what is joined to it, or it to that, is another block without it.
+        const named = order.some((item) => anchorsOf(item).some(({ of }) => of === z.label || of === "prev")) || order.some((item) => isBlock(item) && item.joined && item.items.includes(z));
+        if (!free || named) continue;
+        const drop = (items: Item[]): Item[] => items.filter((item) => item !== z).map((item) => (isBlock(item) ? { ...item, items: drop(item.items) } : item));
+        const rest = { ...taken, scenes: taken.scenes.map((one, k) => (k === n ? { ...scene, items: drop(scene.items) } : one)) };
+        const lines = ({ scenes }: Compiled) => scenes.map(({ from, frames, lines }) => [from, frames, lines.filter(({ line }) => line !== z.line).map(({ line, from, frames }) => [line, from, frames])]);
+        assert.deepEqual(lines(compiledOf(rest)), lines(compiledOf(taken)), `line ${z.line}, which is open, moves something`);
+        without++;
+      }
+    }
+  });
+  assert.ok(without >= FILES.length / 20, `${without}`);
 });
 
 /** The scenes of a script with its voices as they are, with others, and with each a frame long: whatever the lengths, it has one timing. */
@@ -637,7 +724,7 @@ test("random scripts: the lines of a block that ends them together do, but where
     for (const one of timings(taken)) {
       for (const block of one.order) {
         if (!isBlock(block) || !one.ending(block)) continue;
-        const ends = linesIn([block]).flatMap((line) => {
+        const ends = linesIn([block]).filter((line) => !one.left(line)).flatMap((line) => {
           const placed = one.there(line);
           assert.ok(placed || one.cutBy(line).length > 0, `line ${line.line} is not there, and nothing cuts it`);
           return placed ? [placed.from + one.lasts(line)] : [];
@@ -674,7 +761,7 @@ test("random scripts: the length of what is cut moves nothing but what names it"
     const said = saidIn(taken.scenes);
     const before = compiledOf(taken);
     for (const { order, left } of laid(taken, before, taken.voices)) {
-      for (const z of order.filter(left)) {
+      for (const z of order.filter((item) => left(item) && isBlock(item))) {
         const inside = new Set<Item>();
         const add = (item: Item) => void (inside.add(item), isBlock(item) && item.items.forEach(add));
         add(z);
@@ -732,10 +819,13 @@ test("random scripts: what an action's check is told has surely begun before its
     for (const one of timings(taken)) {
       for (const line of linesOf(one)) {
         if (!("values" in line)) continue;
-        const placed = one.there(line)!;
+        const placed = one.there(line);
         for (const begun of (line.values as { begun: number[] }).begun) {
           const other = linesOf(one).find((one) => one.line === begun)!;
-          assert.ok(other !== line && "values" in other && one.there(other)!.from < placed.from + placed.frames, `line ${begun} has not begun when line ${line.line} ends`);
+          assert.ok(other !== line && "values" in other);
+          // One that is open may end as it begins, and is not there then: by its end is what it is told of.
+          if (!placed || !one.there(other)) assert.ok(one.open(placed ? other : line), `line ${line.line} or ${begun} is not there`);
+          else assert.ok(one.there(other)!.from < placed.from + placed.frames + (one.open(line) ? 1 : 0), `line ${begun} has not begun when line ${line.line} ends`);
           told++;
         }
       }
@@ -760,6 +850,11 @@ test("random scripts: every line is where the laws have it, and no later", (t) =
           assert.equal(from, Math.max(...known), `line ${line.line} begins`);
           exact++;
         }
+        if (one.open(line)) {
+          assert.deepEqual(cutBy(line), [parent.get(line)], `line ${line.line} is an action, and under the rest`);
+          const end = uncutOf(parent.get(line)!);
+          return void (Number.isNaN(end) || assert.equal(from + frames, end, `line ${line.line} goes on to the end of its block`));
+        }
         if ("text" in line) {
           const stops = cutBy(line).map(uncutOf);
           if (!stops.some(Number.isNaN)) assert.equal(frames, Math.min(lasts(line), ...stops.map((stop) => stop - from)), `line ${line.line} lasts`);
@@ -767,7 +862,7 @@ test("random scripts: every line is where the laws have it, and no later", (t) =
         }
         assert.equal(cutBy(line).length, 0, `line ${line.line} is an action, and under the rest`);
         if (line.takes !== undefined) return void assert.equal(frames, lasts(line), `line ${line.line} lasts`);
-        const own = Math.max(1, Math.round(line.length * taken.fps));
+        const own = Math.max(1, Math.round((line.length as number) * taken.fps));
         const block = parent.get(line)!;
         const fits = isScene(block) || block.order !== "together" || line.anchor ? [] : block.items.flatMap(waited).filter((other) => "text" in other);
         const until = line.arrive ? momentOf(line.arrive, line) : fits.length > 0 ? Math.max(...fits.map(uncutOf)) : undefined;

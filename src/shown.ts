@@ -31,6 +31,8 @@ export interface ShownAction {
   progress: number;
   /** Seconds since it began. */
   into: number;
+  /** Seconds it lasts: with `into`, how far through it was at any moment before. */
+  length: number;
 }
 
 /** What one frame shows. */
@@ -74,7 +76,7 @@ export function shownAt({ fps, scenes }: CompiledPicture, frame: number): Shown 
     setting: scene.setting,
     actions: scene.actions
       .filter(({ from }) => from <= frame)
-      .map(({ who, action, values, from, frames }) => ({ who, action, values, progress: Math.min(1, (frame - from) / frames), into: (frame - from) / fps })),
+      .map(({ who, action, values, from, frames }) => ({ who, action, values, progress: Math.min(1, (frame - from) / frames), into: (frame - from) / fps, length: frames / fps })),
     mouths,
   };
 }

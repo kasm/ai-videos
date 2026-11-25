@@ -108,7 +108,7 @@ A background the library lacks is drawn under library: backgrounds:, when no bac
  * with it.
  */
 export const SCRIPT_GUIDE = `
-A cartoon is drawn on one stage, 1920 by 1080 pixels, with characters made of flat rectangles and ellipses. They stand on the ground in front of a background, which can change, as a cut; they walk, turn round, hop, wave, point, blink and talk, several of them at once where the story has it so, and one of them several things at once. A cartoon has no props, no faces that change, and nobody who sits, lies down, climbs, flies or swims: what the story has besides, the narrator says in a few words, or it is left out. Never invent a key, a mark or an action: the tool refuses it.
+A cartoon is drawn on one stage, 1920 by 1080 pixels, with characters made of flat rectangles and ellipses. They stand on the ground in front of a background, which can change, as a cut; they walk, turn round, look at one another, hop, wave, point, blink and talk, several of them at once where the story has it so, and one of them several things at once. A cartoon has no props, no faces that change, and nobody who sits, lies down, climbs, flies or swims: what the story has besides, the narrator says in a few words, or it is left out. Never invent a key, a mark or an action: the tool refuses it.
 
 ### An episode
 
@@ -157,6 +157,7 @@ scenes:
       together:
         pip walk to=off-right speed=slow
         pip wave
+        mo look-at target=pip
         narrator say: And Pip goes home.
 \`\`\`
 
@@ -171,7 +172,7 @@ scenes:
 - Use a mark unless the story says more: who comes up to somebody goes to left-of(mo, near) or right-of(mo, near), whichever side it comes from, and who steps between two to midpoint(pip, mo).
 - Two characters never stand on one spot of the stage, as a scene begins or after a walk: a character may cover at most 0.3 of another, of the smaller one's width. So nobody goes to=mo, where Mo stands: they go beside Mo.
 - Who goes where another stands is refused, unless that other has surely left by then, however long the voices turn out to be. Write the row that takes the other away above, or join the two by &.
-- Everyone faces right, as drawn, unless the scene's faces says left, or a turn. A walk turns nobody: a character walks the way it faces. To go back the way it came, it turns first; who comes in from the right begins the scene facing left. Two who talk face each other. Work out each character's facing row by row.
+- Everyone faces right, as drawn, unless the scene's faces says left, or a turn or a look. A walk turns nobody: a character walks the way it faces. To go back the way it came, it turns first; who comes in from the right begins the scene facing left. Two who talk face each other. Work out each character's facing row by row: after a look, it is the side where the one looked at was as it ended, and a turn goes the other way from there.
 - A character the scene does not place may speak too: it is a voice off stage. So may a name the file's cast gives a voice: cast: { radio: am_michael }, on top, beside use. Nobody else is drawn for it.
 - A walk is over before the next row, unless it is joined to words or together with them: then it lasts as long as they do, within reason. Join a walk to the line that tells of it. To have the words end as somebody arrives, write the two in an ending together: the walk keeps its own pace, and the words wait. That is for a walk that ends on the stage: one that leaves it is out of sight before it ends.
 - Leave a walk's speed and time out, unless the story has somebody hurry or dawdle: a walk that is given one keeps it, and the next row waits. Set pip.speed on a scene for somebody who is slow all through it, or walk.speed for everybody.
@@ -183,6 +184,9 @@ scenes:
 - Who does something a little later begins by a moment: @ block.start + 1s, or at a word, @ hello.word(news).
 - A wave or a point goes on until the character's arm does something else, through the rows after it. Put it back with stand when its moment is over, or a wave goes on waving; a new scene begins with everyone's arm hanging.
 - A point goes straight ahead, so the pointer faces what it points at. It and a wave need the character's arm.
+- Who watches somebody walk past, or turns to whoever comes, has a look: mo look-at target=pip. It is open, so join it to the walk it watches, or put it in that walk's together. On a row of its own, not joined, it goes on to the end of the scene, or of the block it is in. All that while its character neither turns nor looks at anybody else.
+- A look is for one who stands: somebody who walks away from the one it looks at would go backwards. It is at a character of the scene, and not at a place.
+- Two who go somewhere together are two walks, joined: mo walk to=right, and below it & pip walk to=left-of(mo, near). Pip keeps beside Mo all the way, if it stands there as they set out.
 
 ### Lines
 

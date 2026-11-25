@@ -61,7 +61,7 @@ export interface Described {
   guide: string;
   /** Each command's description and example (its schema stays in the plugin's process). */
   commands: Record<string, { description: string; example: unknown }>;
-  /** Its part of a script, when its videos may be written as one: its guide, each action's description, example, channels and whether it is fitted, each construction's description and example, and its names for numbers. */
+  /** Its part of a script, when its videos may be written as one: its guide, each action's description, example, channels and whether it is fitted or open, each construction's description and example, and its names for numbers. */
   script?: { guide: string; actions: Record<string, Omit<Action, "values">>; names: Record<string, number>; constructions: Record<string, ConstructionOf> };
 }
 
@@ -117,13 +117,16 @@ const PluginShape = z
       .object({
         actions: z.record(
           slug,
-          z.object({
-            description: z.string().min(1),
-            example: z.string().min(1),
-            values: z.custom<Schema>(isSchema, "give a schema with ~standard.validate and ~standard.jsonSchema (as zod 4's have)"),
-            channels: z.array(slug, "give what of its character it keeps busy: its channels, as [\"place\"]").min(1, "name one channel at least"),
-            fits: z.boolean().optional(),
-          }),
+          z
+            .object({
+              description: z.string().min(1),
+              example: z.string().min(1),
+              values: z.custom<Schema>(isSchema, "give a schema with ~standard.validate and ~standard.jsonSchema (as zod 4's have)"),
+              channels: z.array(slug, "give what of its character it keeps busy: its channels, as [\"place\"]").min(1, "name one channel at least"),
+              fits: z.boolean().optional(),
+              open: z.boolean().optional(),
+            })
+            .refine(({ fits, open }) => !(fits && open), "it is fitted to words (fits) or goes on to the end of its block (open), one of the two"),
         ),
         names: z.record(slug, z.number()).optional(),
         constructions: z.record(slug, z.object({ description: z.string().min(1), example: z.string().min(1) })).optional(),

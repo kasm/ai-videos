@@ -42,7 +42,8 @@ cuts(x)))`. A line is **there** when `stop(x) > s(x)`.
 The lengths, `pause`, `lead`, `tail` and `plus` are whole frames, a length 1 or more and the pauses 0
 or more; `least <= own <= most`; `0 <= p <= 1`. One that is worked out from the lengths of lines above
 is a number by then too (`compile.ts`). A plan is **accepted** when it has none of the six refusals: a
-name that nothing above has, a channel held, a cut move, a loop; a channel twice, directly in a closing
+name that nothing above has, a channel held, a move that is cut or in what is cut, an open one too, a loop;
+a channel twice, directly in a closing
 block, or in one together, the later line with no anchor; and in a closing block, what has its times in
 itself (a block, an anchor, an arrival). So all that is directly in a closing block is lines, with no
 moment of their own, no two on one channel.

@@ -112,7 +112,8 @@ function caption(lines: CompiledLine[], lasts: (line: CompiledLine) => number, e
  * `voices` are its said lines' voices, in the order written. A voice lasts the frames it sounds in. An
  * action given its length lasts that to the nearest frame, worked out from the lengths of lines above
  * where it reads them; any other its own, or what it is fitted to or arrives at takes, within the
- * video's `moves`. Each lasts at least one frame. What is under the rest stops where its block does.
+ * video's `moves`. Each lasts at least one frame. An open one goes on to the end of its block, and what
+ * is under the rest stops where its block does.
  * `from` names the video file, for the compiled scenario to say what it is made from.
  */
 export function compile(scenes: CheckedScene[], voices: Voiced[], settings: CompileSettings, from: string): Compiled {
@@ -131,6 +132,7 @@ export function compile(scenes: CheckedScene[], voices: Voiced[], settings: Comp
     const length = given.get(line.line);
     if ("text" in line) return { kind: "voice", length: length! };
     const { channels } = line;
+    if (line.length === "open") return { kind: "move", channels, length: "open" };
     if (length !== undefined) return { kind: "move", channels, length };
     const own = Math.max(1, Math.round(line.length * fps));
     return { kind: "move", channels, length: { own, least: Math.ceil(own / moves.fastest - EPS), most: Math.floor(own / moves.slowest + EPS) }, arrive: line.arrive };

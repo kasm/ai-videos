@@ -3,9 +3,10 @@
 # murmur of two lines under three others, cut where they end. All its pauses are one beat, and the
 # radio's two: beat changed times all of it anew. In the second scene Mo stands beside the reeds, a
 # point of the scene's own, and Tuk comes between Pip and Mo, then up to Pip. In the third, the badger
-# walks in while Tuk hops and Mo, a second later, turns to look and points, Pip walks up waving and
-# talking, and at a word, as the badger walks off, the day breaks. The format is in CLAUDE.md ("The
-# script"); the characters and the backgrounds are drawn in library.yaml, and the radio is only heard.
+# walks in while Tuk hops and Mo, a second later, turns round and points, Pip walks up waving and
+# talking, Tuk and Mo looking at Pip all the way past them, and at a word, as the badger walks off, the
+# day breaks. The format is in CLAUDE.md ("The script"); the characters and the backgrounds are drawn in
+# library.yaml, and the radio is only heard.
 use: cartoon
 outputs: { web: true } # its page too, beside the video
 cast: { radio: am_michael }
@@ -68,6 +69,8 @@ scenes:
         pip wave
         pip say: Good evening, badger! It was me who saw you!
         mo stand
+        tuk look-at target=pip
+        mo look-at target=pip
       badger say: I asked to be left alone.
       & pip stand
       badger turn

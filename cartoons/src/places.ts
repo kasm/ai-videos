@@ -147,6 +147,8 @@ export function stageOf(scene: number, places: Record<string, Worked>, { charact
   return {
     /** Where each stands as the scene begins: those whose place is no mistake. */
     begins: new Map(stands),
+    /** How near two may stand, whole px from middle to middle. */
+    apart: (one: string, other: string) => apart(width(one), width(other)),
     /** A walk by a character of the scene: from where it stands, to a place, where it stands then. None when one of the two is a mistake, which is said. */
     walk(walk: WalkLine, where: Worked): { from: number; to: number } | undefined {
       const { line, who } = walk;

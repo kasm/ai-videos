@@ -28,7 +28,7 @@ export interface WorkedLine extends Placed<Anchor> {
   text?: string;
   /** What its action is given, by name, and the line of the file that sets it; none when one of them has no answer. */
   values?: Record<string, { value: Worked; line: number }>;
-  /** None for what is said, and for an action that is given no length and is fitted. */
+  /** None for what is said, for an action that is open, and for one that is given no length and is fitted. */
   lasts?: Lasts;
 }
 
@@ -49,6 +49,8 @@ export interface Given {
   actions: Record<string, Record<string, { default?: unknown }>>;
   /** The actions that are fitted to words when they are given no length: each is, when they are not given. Any other takes its own. */
   fits?: string[];
+  /** The actions that are open: each lasts to the end of its block, whatever the levels say. */
+  open?: string[];
   /** The plugin's names for numbers. */
   names: Record<string, number>;
   /** The plugin's constructions, by name, each with its example: any is taken when they are not given. */
@@ -112,6 +114,9 @@ class Refused extends Error {
     this.issue = issue;
   }
 }
+
+/** Why an open action is given no length: by its line, or by a level for it. */
+const noLength = (action: string, name: string) => `${action} takes no ${name}: it lasts to the end of its block`;
 
 /** What is written after an anchor's moment has no name: this in its place. */
 const AFTER = "@";
@@ -214,6 +219,7 @@ export function workOut(script: WrittenScript, given: Given): { scenes: WorkedSc
 
   /** Whether an action that is given no length may be fitted to the words it is together with. */
   const fits = (action: string) => given.fits?.includes(action) ?? true;
+  const isOpen = (action: string) => given.open?.includes(action) ?? false;
 
   /** How many times a cell has the length of what `of` names: a line that is said, or an action whose length does not wait for what is beside it. */
   const lengthOf = (of: string, found: Found, { place }: Cell): Amount => {
@@ -228,6 +234,7 @@ export function workOut(script: WrittenScript, given: Given): { scenes: WorkedSc
     const label = "a line that is said, or an action given its length (takes, speed) or never fitted, has a length that is known before everything has its place: label one of those";
     if (target === "scene" || isBlock(target.item)) throw refused(found, `${valueOf(found)}: how long ${whose} lasts is known only once all in it has its place`, label, target === "scene" ? [] : [target.item.line]);
     const { line, action } = target.item;
+    if (isOpen(action)) throw refused(found, `${valueOf(found)}: ${whose} lasts to the end of its block, and where that is, is known only once all in it has its place`, label, [line]);
     const told = lengthsOf(cellOf.get(target.item)!);
     const own = told.length === 0 && !fits(action);
     if (action !== SAY && !own && !told.some(({ key }) => !key.endsWith("arrive"))) {
@@ -355,6 +362,12 @@ export function workOut(script: WrittenScript, given: Given): { scenes: WorkedSc
 
   /** How long an action lasts, when it is given. */
   const lastsOf = (line: ScriptLine, cell: Cell): Pick<WorkedLine, "lasts"> => {
+    if (isOpen(line.action)) {
+      for (const name of LENGTHS.filter((name) => Object.hasOwn(line.values, name))) {
+        report({ line: line.line, message: noLength(line.action, name), hint: `leave ${name} out, and have its block end where it does: join it to what it goes with (&)` });
+      }
+      return {};
+    }
     const told = lengthsOf(cell);
     const [found, another] = told;
     if (!found) {
@@ -491,6 +504,7 @@ function setIssues(script: WrittenScript, given: Given, base: Level, worthOf: (n
 
   const taken = Object.values(given.actions).flatMap((values) => Object.keys(values));
   const actions = [SAY, ...Object.keys(given.actions)];
+  const isOpen = (whose: string) => given.open?.includes(whose) ?? false;
   const people = peopleOf(script, given);
   /** Where a scene says how a character begins, for a hint: it may be written as a value of that character's. */
   const begins = (key: string, text: string) => {
@@ -511,9 +525,10 @@ function setIssues(script: WrittenScript, given: Given, base: Level, worthOf: (n
       const ours = OWN.includes(name);
       if (whose !== undefined && !people.includes(whose) && !actions.includes(whose)) {
         const near = nearest(whose, [...new Set([...people, ...actions])]);
-        issue(`"${whose}" is neither a character nor an action`, `a value is for everything (${name}), for a character (pip.${name}) or an action (${actions.at(-1)}.${name})${near ? `: did you mean ${near}?` : ""}`);
+        issue(`"${whose}" is neither a character nor an action`, `a value is for everything (${name}), for a character (pip.${name}) or an action (${actions.findLast((one) => !isOpen(one))}.${name})${near ? `: did you mean ${near}?` : ""}`);
       } else if (whose !== undefined && (PAUSES as readonly string[]).includes(name)) issue(`${name} is nobody's own: it is the same for everyone`, `write ${name}`);
       else if (whose === SAY && ours) issue(`${SAY} takes no ${name}: a voice lasts as long as its words`, `${name} is an action's: leave it out`);
+      else if (whose !== undefined && isOpen(whose) && ours) issue(noLength(whose, name), `${name} is another action's: leave it out`);
       else if (level === "block" && (name === "lead" || name === "tail")) issue(`${name} is a scene's, and not a block's`, "set it on the scene or the cartoon; a block has a pause");
       else if (people.includes(name)) issue(`${name} is a character's name, and no value's`, `call it something else: in a formula, ${name} is the character${begins(name, value.text)}`);
       else if (!ours && !taken.includes(name) && !read.has(name)) {

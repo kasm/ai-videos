@@ -117,7 +117,8 @@ A project's plugin draws its videos: a module the tool runs in a child process o
       level (see Values); one with a name of the tool's own is refused. It names its `channels`, one
       at least: what of its character it keeps busy (`["place"]`; `voice` is what is said with), each
       of which does one thing at a time (see What happens at once). With `fits: true` it is fitted
-      to the words it is together with, when it is given no length; any other takes its own.
+      to the words it is together with, when it is given no length; with `open: true` it goes on to
+      the end of its block; any other takes its own.
     - `names`, optional: its names for numbers (`slow: 0.6`), which any value may use. One that is a
       value's name is refused.
     - `constructions`, optional: the values it works out from others (`left-of(pip, near)`), by name,
@@ -134,8 +135,8 @@ A project's plugin draws its videos: a module the tool runs in a child process o
       plugin's actions, in order, each with its line, its values, worked out, as the action's
       schema gave them, and `begun`, the lines of the scene's other actions that have surely begun before
       its end (see What happens at once). It gives each scene's `setting` (how it begins) and each action's `values` and own
-      `length`, seconds, all in plain numbers: numbers and names, in lists and tables. Or it gives
-      `issues`, each `{ line, message, hint }`.
+      `length`, seconds, which an open one has not, all in plain numbers: numbers and names, in lists
+      and tables. Or it gives `issues`, each `{ line, message, hint }`.
     - `draw(library)`: its picture. It gives a function, `(shown, size)` to SVG, that draws what a
       frame shows (see A script) as `frame` draws a moment: the whole stage, `width` × `height`
       pixels. A script's picture is drawn, never recorded.
@@ -254,8 +255,8 @@ scenes:
      with no words or by someone with no voice; and, when every row reads, a value with no answer (see
      Values), and what has no time (`timeIssues`, `src/plan.ts`): an anchor to something below it, in another scene or not there, or
      to a word that is not one place of its line; what the laws refuse (What happens at once); and an
-     `under:` that would never be heard, last in a block in order with no anchor, or with nothing else
-     in its block;
+     `under:` that would never be heard, or an open action never seen, last in a block in order with no
+     anchor, or with nothing else in its block;
   2. what the plugin's `script.check` refuses (a name the library lacks), run only on a script
      with no mistake so far, as it follows the lines in order;
   3. a speaker's voice that is not one of the tool's.
@@ -276,7 +277,8 @@ scenes:
   They are laid by the laws of What happens at once, each scene in order, with the `lead`, `pause` and
   `tail` that Values gives it, and each block's `pause`. A voice lasts the frames it sounds in, and an
   action the length it is given, its own (the plugin's) when it is given none, to the nearest frame, or,
-  one that is fitted, what it is fitted to takes, within `timing.moves`. A cut voice has the frames it
+  one that is fitted, what it is fitted to takes, within `timing.moves`; an open one goes on to its
+  block's end. A cut voice has the frames it
   sounds in, and so its mouth, its captions and the voice itself stop there; a line whose block ends
   before it begins is not there (`make` says so).
 - **A said line** holds all of itself: its `text`, its voice's `file`, its `mouth` (how open, a
@@ -314,13 +316,15 @@ scenes:
   the web page: the scene's `setting`, its `actions` that have begun by the frame, in the order
   written, the `mouths` (as a moment's, but with the narrator's too) and the `time` since the video
   began, seconds. An action has its `who`, `action` and `values`, its `progress`, evenly from 0 on
-  its first frame to 1 on the frame after its last, where it stays, and `into`, the seconds since it
-  began. A plugin's `script.draw` draws that, and counts no frames of its own.
+  its first frame to 1 on the frame after its last, where it stays, `into`, the seconds since it
+  began, and `length`, the seconds it lasts. A plugin's `script.draw` draws that, and counts no frames of
+  its own: `into` and `length` say how far through each was at any moment before, such as the end of
+  another (what a cartoon's look leaves is how it was then).
 - **The build** (see make) has the clip and the captions, each on its own frames, and no voices: the
   video's sound is the tool's one track (see How loud), silent when nobody speaks.
 - **The guide** to writing a script (`guideOf`, `src/guide.ts`) is the tool's part (a line's form,
   `say`, blocks, joining, channels, anchors, values, what is refused), the plugin's `script.guide`, the actions
-  and the constructions, each with its description and example, an action with its channels and whether it is fitted, and the plugin's names for numbers. Each part's examples are compiled by a test. The prompt for
+  and the constructions, each with its description and example, an action with its channels and whether it is fitted or open, and the plugin's names for numbers. Each part's examples are compiled by a test. The prompt for
   a web chat does not teach scripts yet.
 
 `src/read.test.ts`, `src/formula.test.ts`, `src/values.test.ts`, `src/scenario.test.ts`,
@@ -381,12 +385,13 @@ The laws:
    | `arrive` | any level | the moment above that it ends at, as an anchor's, within `timing.moves` |
 
    Given `takes` or `speed`, wherever they are set, an action keeps it and is fitted to nothing; one whose
-   plugin says it is never fitted has its own speed, as if given `speed=1`. A voice
-   takes none of them, and an action in an `ending together:` no `arrive`. Beside these, what an action
+   plugin says it is never fitted has its own speed, as if given `speed=1`. A voice and an open action
+   take none of the three, and those set on a level are not for them; an action in an `ending together:`
+   takes no `arrive`. Beside these, what an action
    takes (`to`) may be set on any level, and any name of the writer's that a formula reads.
 8. **`a.length`** is how long a line above lasts: one that is said, or an action given `takes` or
-   `speed`, or never fitted. How long a fitted action lasts, or a block, is known only once everything has its place, and
-   is not read. A length is read by a time alone (`takes`, `pause`, an anchor's), and what that comes to
+   `speed`, or never fitted. How long a fitted action lasts, an open one or a block, is known only once everything has
+   its place, and is not read. A length is read by a time alone (`takes`, `pause`, an anchor's), and what that comes to
    is kept in bounds: `5s - a.length` is a frame at least for an action, and none at least for a pause.
 9. **Said:** the defaults taken, with their lines, by `check` and `make`. **Refused,** each at the line
    that sets it, with those that read it: a value of the wrong kind, a name nothing reads, that is a
@@ -428,7 +433,7 @@ The laws:
      `slowest`. In order, ending together, with a start of its own, or with no voice to fit to, it takes
      its own length. Any other move given no length does, anywhere. Told when to arrive, either is fitted
      to that moment instead.
-   - Open (a look, a loop): until its block ends.
+   - Open (a move whose action is `open`, as a look; a loop): until its block ends.
 5. **A block** ends with the last of what it waits for: all but the cut and the open. One ending
    together ends when the last of these would, if each began as soon as the block has and its own
    channels are free: so they all end then. A scene ends its `tail` after that.
@@ -439,8 +444,8 @@ The laws:
      holds its channels until the block ends.
    - A cut block cuts all that is in it. Inside it, everything is timed as if nothing cut it.
    - What has not begun when it is cut is not there.
-   - Only voices and sounds are cut, never a move: where a move leaves its character must be known
-     before the voices.
+   - Only voices and sounds are cut, never a move, an open one neither: where a move leaves its
+     character must be known before the voices.
 7. **Refused**, for any lengths, and so before the voices: an anchor to something that is not above;
    what follows a cut or open thing on its channel, in that thing's block; a cut move; two lines on one
    channel, directly in one block together, the later with no start of its own, or in one ending together;

@@ -198,7 +198,32 @@
   within a frame.
 - Left by step 7a: of two changes anchored to one moment the second waits a
   frame, so the first shows for one.
-- **Next: step 8, look at someone who moves.**
+- **Step 8 done 2026-11-25**, `all-at-once`'s looks accepted by the user
+  that day. The user's picks: `follow` is left out, with its refusal (a walk
+  joined to another's, to beside where that ends, keeps beside it: 276 px on
+  every frame, tried); a second look, or a turn, in a look's block stays
+  refused; a look leaves its character facing the side where the other was
+  as it ended, worked out as it is drawn, so nothing more is refused, and
+  the compiled scenario says of a `turn` only that it turns. A plugin's
+  action may be `open` now, and the picture is told how long each lasts;
+  the laws' text is made clearer alone, and an open move under the rest is
+  refused, as law 6 has it. Checked: `npm test` and `npm run typecheck` here
+  and in `cartoons/`; RayCraft's media typecheck and `test:libs`, no file of
+  it changed; `make --fit` of the ten gives requests equal to the baseline,
+  byte for byte, and the seven cartoons draw the same 6,942 frames;
+  `hello-script` compiles to the same bytes as before, and `all-at-once` too,
+  but for its looks, its turns and its line numbers; `all-at-once` made whole
+  has the frames compiled (1,346), 48 of them other than before, the page's
+  own drawing gives the video's `.svgs`, and its 23 voices are in its sound at
+  their compiled times; 40,000 different random scripts, 20,556 of them with
+  no mistake, neither throw nor break a compiled scenario; of 60,000 with the
+  cartoon plugin, 42,690 are taken, and each facing in each frame of them is
+  what a plain re-telling says (and of 4,000 more, after the picture's last
+  edit); each of 111 rules broken on purpose fails a test. Not tried: the
+  guide on a fresh `claude -p`.
+- Left by step 8: a look is at a character alone, and not at a place; a second
+  look in one block may be taken later, and no script breaks by it.
+- **Next: step 9, mix voices at their volumes.**
 
 
 ## Goal
@@ -547,12 +572,11 @@ there already are refused by `check`; the page's frames are the same;
 
 ### 8. Look at someone who moves (the tool, cartoons)
 
-`look-at` and `follow` hold for as long as their block: the value is
-worked out in each frame from the other character's place, in an order
-the compiled scenario fixes. **Done when:** a test shows one character
-facing another all through her walk past it, the same in the page's
-frames; two who follow each other are refused by `check`; `all-at-once`
-has it and the user accepts it.
+`look-at` holds for as long as its block: which way its character faces
+is worked out in each frame from the other character's place, and places
+are worked out first. **Done when:** a test shows one character facing
+another all through her walk past it, the same in the page's frames;
+`all-at-once` has it and the user accepts it.
 
 ### 9. Mix voices at their volumes (the tool)
 

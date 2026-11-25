@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { checkScenario as checkScript, compile, pictureOf, readScript, shownAt, type Shown } from "ai-videos/plugin";
+import { checkScenario as checkScript, compile, pictureOf, readScript, shownAt, type CompiledPicture, type Shown } from "ai-videos/plugin";
 import { drawScript, frameSvg, scriptStaging, stagingAt, type Actor, type Staging } from "./picture.ts";
 import plugin from "./plugin.ts";
 import { checkScenario, readLibrary } from "./scenario.ts";
@@ -280,18 +280,20 @@ const puppet = { shoulder: [40, -150], parts: { body: [{ shape: "rect", at: [0, 
 const puppets = { file: "library", raw: { characters: { bo: puppet, pip: puppet, mo: puppet }, backgrounds: { day: { fill: "#bfe3ff" }, dusk: { fill: "#f7a072" }, night: { fill: "#101030" } } } };
 
 /**
- * What each frame of a video shows, at 30 a second, its scenes' rows laid as the tool lays them. Each scene
- * begins by day, Bo at the left, Pip at 700 and Mo at 900; its lines last these seconds.
+ * What a video's pictures are drawn from, at 30 a second, its scenes' rows laid as the tool lays them. Each
+ * scene begins by day, Bo at the left, Pip at 700 and Mo at 900; its lines last these seconds.
  */
-async function shownIn(scenes: string[][], ...voices: number[]): Promise<Shown[]> {
+async function pictureIn(scenes: string[][], ...voices: number[]): Promise<CompiledPicture> {
   const read = scenes.map((rows, n) => readScript(rows.join("\n"), 100 * n + 1));
   const script = { scenes: read.map(({ items }, n) => ({ line: 100 * n + 99, setting: { background: "day", places: { bo: "left", pip: 700, mo: 900 } }, items })), issues: read.flatMap(({ issues }) => issues) };
   const checked = await checkScript(plugin.script, script, puppets, ["bo", "pip", "mo"], { lead: 0.6, gap: 0.4, tail: 1 });
   assert.ok("scenes" in checked, JSON.stringify(checked));
   const voiced = voices.map((duration, n) => ({ file: `${n}.wav`, duration, mouth: [] }));
-  const picture = pictureOf(compile(checked.scenes, voiced, { fps: 30, loudness: -14, moves: { slowest: 0.5, fastest: 2 } }, "x.yaml"));
-  return Array.from({ length: picture.frames }, (_, frame) => shownAt(picture, frame));
+  return pictureOf(compile(checked.scenes, voiced, { fps: 30, loudness: -14, moves: { slowest: 0.5, fastest: 2 } }, "x.yaml"));
 }
+/** What each frame of it shows. */
+const framesOf = (picture: CompiledPicture): Shown[] => Array.from({ length: picture.frames }, (_, frame) => shownAt(picture, frame));
+const shownIn = async (scenes: string[][], ...voices: number[]): Promise<Shown[]> => framesOf(await pictureIn(scenes, ...voices));
 /** Such scenes' frames as they are staged. */
 const stagings = async (scenes: string[][], ...voices: number[]): Promise<Staging[]> => (await shownIn(scenes, ...voices)).map((shown) => scriptStaging(readLibrary(puppets), shown));
 /** Everyone of one such scene in each of its frames, by name. */
@@ -423,6 +425,134 @@ test("in a script, a change of background is anchored to a word, and given its t
   assert.deepEqual(await next("scene background to=night speed=slow"), [18, 18 + 1 + 12], "at once has no speed");
   // In a block whose lines end together it ends with them: in the last frame of the walk.
   assert.deepEqual(backdrops(await stagings([["ending together:", "  bo walk to=right", "  scene background to=night"]])), [[0, DAY], [18 + 90 - 1, NIGHT]]);
+});
+
+/** How far round one faces who looks at one `dx` px to its right, as wide as it is seen: these two may stand 70 px apart, and pass within that. */
+const towards = (dx: number) => Math.max(-1, Math.min(1, Math.sin((Math.PI / 2) * Math.max(-1, Math.min(1, dx / 70)))));
+/** The facings of somebody in these frames. */
+const facings = (frames: Record<string, Actor>[], who: string, from: number, to: number) => frames.slice(from, to).map((one) => one[who]!.facing);
+/** An angle round, from a facing. */
+const round = (facing: number) => Math.acos(Math.max(-1, Math.min(1, facing)));
+
+test("in a script, one faces another all through its walk past it, and stays facing where it went: the same in the page's frames", async () => {
+  // Bo walks from 480 to 1440, past Pip at 700 and Mo at 900, in 90 frames from 18; then it walks back.
+  const rows = ["bo walk to=right", "& pip look-at target=bo", "& mo look-at target=bo", "& narrator say: Bo goes by.", "bo turn", "bo walk to=left"];
+  const frames = await staged(rows, 3);
+  assert.deepEqual(moves(frames, "bo", X)[0], 18);
+  for (const who of ["pip", "mo"] as const) {
+    const past = (frame: number) => X(frames[frame]!.bo!) - X(frames[frame]![who]!);
+    // As drawn until the look; then it turns to Bo, who is on its left, as a turn goes.
+    assert.deepEqual(new Set(facings(frames, who, 0, 19)), new Set([1]), who);
+    for (let frame = 18; frame <= 33; frame++) near(frames[frame]![who]!.facing, Math.cos((Math.PI * (frame - 18)) / 15), `${who} in frame ${frame}`);
+    // From there on it faces Bo in every frame: wholly, but while Bo passes it, edge-on as Bo is in front.
+    const widths: number[] = [];
+    for (let frame = 33; frame <= 108; frame++) {
+      const { facing } = frames[frame]![who]!;
+      assert.ok(past(frame) === 0 || Math.sign(facing) === Math.sign(past(frame)), `${who} faces ${facing} in frame ${frame}, and Bo is ${past(frame)} px past it`);
+      const seen = towards(past(frame));
+      near(facing, Math.abs(seen) < 0.04 ? Math.sign(seen) * 0.04 : seen, `${who} in frame ${frame}`);
+      widths.push(facing);
+    }
+    assert.ok(widths.every((facing, k) => k === 0 || facing >= widths[k - 1]!), "it turns one way, and once");
+    assert.ok(widths.filter((facing) => Math.abs(facing) < 1).length > 5, "and not at a stroke");
+    // The look is over with the walk, and it stays so as Bo goes back past it.
+    assert.ok(past(frames.length - 1) < 0);
+    assert.deepEqual(new Set(facings(frames, who, 108, frames.length)), new Set([1]), who);
+  }
+  // Bo itself looks at nobody, and nobody else moves.
+  assert.deepEqual(new Set(facings(frames, "bo", 0, 109)), new Set([1]));
+  assert.ok(frames.every(({ pip, mo }) => X(pip!) === 700 && X(mo!) === 900 && pip!.arm === 0 && HIGH(mo!) === 0));
+
+  // The page has the picture as text, and draws a frame by itself, any of them first.
+  const picture = await pictureIn([rows], 3);
+  const page = JSON.parse(JSON.stringify(picture)) as CompiledPicture;
+  const size = { width: 960, height: 540 };
+  const video = framesOf(picture).map((shown) => drawScript(puppets)(shown, size));
+  for (let frame = picture.frames - 1; frame >= 0; frame--) assert.equal(drawScript(puppets)(shownAt(page, frame), size), video[frame], `frame ${frame}`);
+  assert.ok(new Set(video).size > 150);
+});
+
+test("in a script, a look that ends as another is still on its way leaves its character facing the side that one was on, and a turn goes the other way from there", async () => {
+  // Mo, at 900, looks at Bo as long as it speaks; Bo is level with it in 41.4 frames of its 90, from 18.
+  const rows = ["together:", "  bo walk to=right takes=3s", "  in order:", "    mo say: There goes Bo.", "    & mo look-at target=bo", "mo turn"];
+  const ended = async (seconds: number) => {
+    const frames = await staged(rows, seconds);
+    const end = 18 + Math.ceil(seconds * 30 - 1e-6);
+    const facing = facings(frames, "mo", 0, frames.length);
+    // It never jumps: from frame to frame it goes no further round than as Bo passes it fastest.
+    for (let frame = 1; frame < facing.length; frame++) assert.ok(Math.abs(round(facing[frame]!) - round(facing[frame - 1]!)) < 0.45, `frame ${frame}, of ${seconds} s: ${facing[frame - 1]} to ${facing[frame]}`);
+    return { facing, end, past: X(frames[end]!.bo!) - 900, turned: frames.length - 30 - 15 };
+  };
+  // Over before Bo comes by, or after: it stays, and Bo goes by it.
+  for (const [seconds, side] of [[1, -1], [2, 1]] as const) {
+    const { facing, end, turned } = await ended(seconds);
+    assert.deepEqual(new Set(facing.slice(end, turned + 1)), new Set([side]), `${seconds} s`);
+    for (let frame = turned; frame <= turned + 15; frame++) near(facing[frame]!, side * Math.max(-1, Math.cos((Math.PI * (frame - turned)) / 15)), `the turn in frame ${frame}`);
+    assert.deepEqual(facing.at(-1), -side);
+  }
+  // Over as Bo is in front of it: it turns on, to the side where Bo is, in a turn's time at most.
+  for (const [seconds, side] of [[1.3, -1], [1.4, 1]] as const) {
+    const { facing, end, past } = await ended(seconds);
+    assert.equal(Math.sign(past), side);
+    assert.ok(Math.abs(facing[end]!) < 0.95 && Math.abs(past) < 70, `${facing[end]}`);
+    near(facing[end]!, towards(past), "as the look ends");
+    for (let frame = end; frame <= end + 15; frame++) near(round(facing[frame]!), round(facing[end]!) + (round(side) - round(facing[end]!)) * ((frame - end) / 15), `frame ${frame}`);
+    assert.equal(facing[end + 15], side);
+  }
+  // Shorter than a turn: it turns on to Bo all the same.
+  const { facing, end } = await ended(0.2);
+  assert.equal(end, 24);
+  near(facing[end]!, Math.cos((Math.PI * 6) / 15), "six frames of the turn");
+  for (let frame = end; frame <= end + 15; frame++) near(round(facing[frame]!), (Math.PI * 6) / 15 + (Math.PI * 9 * (frame - end)) / 15 / 15, `frame ${frame}`);
+  assert.equal(facing[end + 15], -1);
+
+  // What either of them does when it is over changes nothing: the one looked at walks past, long after, and so does the one that looked.
+  const after = async (row: string) => {
+    const frames = await staged(["narrator say: One.", "& mo look-at target=bo", "narrator say: Two.", row], 1, 3);
+    assert.ok(X(frames.at(-1)!.bo!) > X(frames.at(-1)!.mo!), row);
+    assert.deepEqual(new Set(facings(frames, "mo", 33, frames.length)), new Set([-1]), row);
+  };
+  await after("bo walk to=right");
+  await after("mo walk to=200");
+});
+
+test("in a script, one who looks is never seen narrower than a turning one: edge-on as the other is in front of it, or a pixel to either side", async () => {
+  // Bo is half-way in frame 63: 480 and as far again as Mo, at 900, is, or a pixel less or more.
+  const front = async (to: number) => {
+    const { bo, mo } = (await staged([`bo walk to=${to} takes=3s`, "& mo look-at target=bo"]))[63]!;
+    return [Math.round(X(bo!) * 100) / 100, mo!.facing];
+  };
+  assert.deepEqual(await front(1318), [899, -0.04]);
+  assert.deepEqual(await front(1322), [901, 0.04]);
+  const [x, facing] = await front(1320);
+  assert.deepEqual([x, Math.abs(facing!)], [900, 0.04]);
+});
+
+test("in a script, two look at each other, one who walks looks at one who stands, and a look is wherever the other has got to by then", async () => {
+  // Each works out the other's place, and neither its facing: nothing goes round.
+  const frames = await staged(["bo walk to=right", "& bo look-at target=mo", "& mo look-at target=bo", "& narrator say: They look."], 3);
+  for (let frame = 33; frame < frames.length; frame++) {
+    const { bo, mo } = frames[frame]!;
+    const past = frame <= 108 ? X(bo!) - X(mo!) : 540;
+    const seen = (facing: number) => (Math.abs(facing) < 0.04 ? Math.sign(facing) * 0.04 : facing);
+    near(mo!.facing, seen(towards(past)), `Mo in frame ${frame}`);
+    near(bo!.facing, seen(towards(-past)), `Bo in frame ${frame}`);
+  }
+  // A walk is as it is without them, and so is an arm, a hop and where everyone stands.
+  const without = await staged(["bo walk to=right", "& narrator say: They look."], 3);
+  assert.deepEqual(frames.map(({ bo, mo }) => [bo!.at, bo!.arm, mo!.at]), without.map(({ bo, mo }) => [bo!.at, bo!.arm, mo!.at]));
+  // Two looks one after another: from the one's side to the other's. Bo is at 480 and Mo at 900, and Pip between them.
+  const both = await staged(["narrator say: One.", "& pip look-at target=bo", "narrator say: Two.", "& pip look-at target=mo"], 1, 1);
+  assert.deepEqual([18, 33, 48, 60, 75, both.length - 1].map((frame) => both[frame]!.pip!.facing), [1, -1, -1, -1, 1, 1]);
+  near(both[65]!.pip!.facing, Math.cos(Math.PI - Math.PI / 3), "five frames of fifteen");
+  // At the nearest that two may stand, 70 px from middle to middle, one faces the other wholly; a hop by either turns nobody.
+  const close = await staged(["bo walk to=left-of(pip, -0.3)", "pip look-at target=bo", "bo jump", "pip jump", "narrator say: Near."], 1);
+  const last = close.at(-1)!;
+  assert.deepEqual([X(last.pip!) - X(last.bo!), last.pip!.facing], [70, -1]);
+  // Until a look begins, its character faces as it did, and one set in its scene too; a new scene begins anew.
+  const [one, two] = [["narrator say: One.", "& mo look-at target=bo"], ["narrator say: Two."]];
+  const scenes = (await stagings([one, two], 1, 1)).map(({ characters }) => characters.find(({ name }) => name === "mo")!.facing);
+  assert.deepEqual([scenes[18], scenes[33], scenes[77], scenes[78], scenes.at(-1)], [1, -1, -1, 1, 1]);
 });
 
 test("a blink closes the eyes towards the middle line of the whole part, and a character with no eyes part stays", () => {

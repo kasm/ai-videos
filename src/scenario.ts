@@ -114,6 +114,8 @@ export interface Action {
   channels: string[];
   /** Whether one that is given no length lasts as long as the words it is together with, within the video's limits: any other takes its own. */
   fits?: boolean;
+  /** Whether it is open: it goes on to the end of its block, which does not wait for it, and nothing else says how long it lasts. */
+  open?: boolean;
 }
 
 /** One of a plugin's constructions, described once: a value worked out from others, `left-of(pip, near)`. */
@@ -130,7 +132,7 @@ export interface ActionLine {
   who: string;
   action: string;
   values: unknown;
-  /** The lines of its scene's other actions that have surely begun before it ends, however long the voices turn out to be. */
+  /** The lines of its scene's other actions that have surely begun before it ends (by then, for an open one), however long the voices turn out to be. */
   begun: number[];
 }
 
@@ -146,11 +148,12 @@ export type Plain = number | string | Plain[] | { [key: string]: Plain };
 
 /**
  * A scene as the plugin's check gives it back, worked out: how it begins, and each of its actions,
- * in the order given, in plain numbers (a place as a point), with the action's own length, seconds.
+ * in the order given, in plain numbers (a place as a point), with the action's own length, seconds,
+ * which an open one has not.
  */
 export interface SceneChecked {
   setting: Plain;
-  actions: { values: Plain; length: number }[];
+  actions: { values: Plain; length?: number }[];
 }
 
 /** A plugin's part of a script (plugin.ts, `script`): its actions, its guide, its check and its picture. */
@@ -191,10 +194,10 @@ export interface ScriptPlugin {
 
 /**
  * A line checked: what is said, or one of the plugin's actions in plain numbers with its own length,
- * seconds, on its channels. An action that is given how long it lasts, or is never fitted, has that
- * (`takes`), or the moment it arrives at.
+ * seconds, on its channels, or `open`. An action that is given how long it lasts, or is never fitted,
+ * has that (`takes`), or the moment it arrives at.
  */
-export type CheckedLine = Placed<Anchor> & { who: string; action: string } & ({ text: string } | { values: Plain; channels: string[]; length: number; takes?: Span; arrive?: Anchor });
+export type CheckedLine = Placed<Anchor> & { who: string; action: string } & ({ text: string } | { values: Plain; channels: string[]; length: number | "open"; takes?: Span; arrive?: Anchor });
 
 /** A scene checked: how it begins, in plain numbers, its pauses (AGENTS.md, "Values"), and its lines and blocks. */
 export interface CheckedScene {
@@ -262,8 +265,8 @@ export async function checkScenario(plugin: ScriptPlugin, script: WrittenScript,
   const issues = [...script.issues];
   const actions = [SAY, ...Object.keys(plugin.actions)];
   const { names = {}, constructions = {}, tables = [] } = plugin;
-  const fits = Object.keys(plugin.actions).filter((name) => plugin.actions[name]!.fits);
-  const worked = workOut(script, { actions: valuesTaken(plugin.actions), fits, names, constructions, tables, speakers, timing });
+  const those = (how: "fits" | "open") => Object.keys(plugin.actions).filter((name) => plugin.actions[name]![how]);
+  const worked = workOut(script, { actions: valuesTaken(plugin.actions), fits: those("fits"), open: those("open"), names, constructions, tables, speakers, timing });
   const workedLines = new Map(worked.scenes.flatMap((scene) => linesIn(scene.items)).map((line) => [line.line, line]));
   const taken: Omit<ActionLine, "begun">[][] = [];
   for (const [n, scene] of script.scenes.entries()) {
@@ -332,12 +335,14 @@ export async function checkScenario(plugin: ScriptPlugin, script: WrittenScript,
       const { values: _values, text, lasts, ...rest } = item;
       const { line, action } = item;
       if (action === SAY) return { ...rest, text: text! };
-      const { values, length } = did[next++]!;
+      const { values, length = NaN } = did[next++]!;
+      const { channels, open } = plugin.actions[action]!;
       if (!isPlain(values)) throw wrong(`line ${line} values that are not numbers and names alone`);
+      if (open) return { ...rest, values, channels, length: "open" };
       if (!(Number.isFinite(length) && length > 0)) throw wrong(`line ${line} the length ${length}: an action's own length is seconds, above 0`);
       // A speed is so many times its own, so it says how long it lasts too.
       const how = lasts && ("speed" in lasts ? { takes: length / lasts.speed } : lasts);
-      return { ...rest, values, channels: plugin.actions[action]!.channels, length, ...how };
+      return { ...rest, values, channels, length, ...how };
     };
     return { ...scene, setting, items: items.map(check) };
   });

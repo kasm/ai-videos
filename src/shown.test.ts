@@ -35,18 +35,28 @@ const picture = pictureOf(compiled);
 test("a frame shows its scene's setting and the actions begun by it, each as far through as it is", () => {
   assert.deepEqual(compiled.scenes.map((s) => [s.from, s.frames]), [[0, 32], [32, 10]]);
   assert.deepEqual(shownAt(picture, 4), { time: 0.4, setting: { colour: "#d04040" }, actions: [], mouths: {} });
-  assert.deepEqual(shownAt(picture, 5).actions, [{ who: "sq", action: "slide", values: { x: 120 }, progress: 0, into: 0 }]);
-  assert.deepEqual(shownAt(picture, 12).actions, [{ who: "sq", action: "slide", values: { x: 120 }, progress: 0.7, into: 0.7 }]);
+  assert.deepEqual(shownAt(picture, 5).actions, [{ who: "sq", action: "slide", values: { x: 120 }, progress: 0, into: 0, length: 1 }]);
+  assert.deepEqual(shownAt(picture, 12).actions, [{ who: "sq", action: "slide", values: { x: 120 }, progress: 0.7, into: 0.7, length: 1 }]);
   // Its last frame is 14: from 15 on it is done, and stays so, under the one that follows it.
   assert.equal(shownAt(picture, 14).actions[0]!.progress, 0.9);
   assert.equal(shownAt(picture, 15).actions[0]!.progress, 1);
   assert.deepEqual(shownAt(picture, 27).actions, [
-    { who: "sq", action: "slide", values: { x: 120 }, progress: 1, into: 2.2 },
-    { who: "sq", action: "slide", values: { x: 20 }, progress: 0.4, into: 0.2 },
+    { who: "sq", action: "slide", values: { x: 120 }, progress: 1, into: 2.2, length: 1 },
+    { who: "sq", action: "slide", values: { x: 20 }, progress: 0.4, into: 0.2, length: 0.5 },
   ]);
   // The next scene begins anew.
   assert.equal(shownAt(picture, 31).actions.length, 2);
   assert.deepEqual(shownAt(picture, 32), { time: 3.2, setting: { colour: "#4040d0" }, actions: [], mouths: {} });
+});
+
+test("how far through an action was at any moment before a frame is worked out from how long ago it began, and how long it lasts", () => {
+  // The slide's 10 frames are 5 to 14, and the slide back's 5 are 25 to 29.
+  const [late] = shownAt(picture, 27).actions;
+  for (const frame of [5, 9, 14, 15, 20]) {
+    const ago = (27 - frame) / 10;
+    const [then] = shownAt(picture, frame).actions;
+    assert.ok(Math.abs(Math.min(1, (late!.into - ago) / late!.length) - then!.progress) < 1e-9, `frame ${frame}`);
+  }
 });
 
 test("a speaker's mouth is open as its line's track has it in that frame, and closed in every other", () => {

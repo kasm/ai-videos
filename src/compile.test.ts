@@ -173,6 +173,38 @@ test("actions on other channels go on at once, each as long as it is, and two on
   assert.deepEqual(Object.keys(scenes[0]!.lines[0]!), ["line", "who", "action", "from", "frames", "values"]);
 });
 
+test("an open action goes on to the end of its block, which waits for none of it; one whose block ends as it begins is not there", () => {
+  const watch = (line: number, who: string, more: object = {}) => ({ line, who, action: "watch", values: { at: "sq" }, channels: ["head"], length: "open" as const, ...more });
+  const slide = { line: 3, who: "sq", action: "slide", values: {}, channels: ["place"], length: 2 };
+  const items: CheckedScene["items"] = [
+    { line: 2, order: "together", items: [slide, watch(4, "mo"), say(5, "mo", "Go.")] },
+    { line: 6, order: "in order", pause: 0.3, items: [watch(7, "mo"), say(8, "sq", "One."), watch(9, "tri"), say(10, "sq", "Two."), watch(11, "pip", { anchor: { of: "prev", at: "end", plus: 1 } })] },
+    watch(12, "mo"),
+    say(13, "sq", "Three."),
+  ];
+  const { scenes: [scene], frames } = compile([{ line: 1, setting: {}, ...PAUSES, items }], [voiced("go.wav", 30), voiced("one.wav", 8), voiced("two.wav", 6), voiced("three.wav", 4)], SETTINGS, "sq.yaml");
+  assert.deepEqual(scene!.lines.map((line) => [line.line, line.from, line.frames]), [
+    // The slide is fitted to the words, and the first watch is there as long as they are.
+    [3, 5, 30],
+    [4, 5, 30],
+    [5, 5, 30],
+    // In order, what follows one begins with it: the two end with the block, at 55. The last would begin a second after that.
+    [7, 38, 17],
+    [8, 38, 8],
+    [9, 49, 6],
+    [10, 49, 6],
+    // At the scene's own level it goes on through the tail.
+    [12, 58, 14],
+    [13, 58, 4],
+  ]);
+  assert.equal(frames, 72);
+  // It is compiled as any action is.
+  assert.deepEqual(scene!.lines[1], { line: 4, who: "mo", action: "watch", from: 5, frames: 30, values: { at: "sq" } });
+  // In a block whose lines end together it begins with the block.
+  const ending: CheckedScene["items"] = [{ line: 2, order: "ending together", items: [slide, watch(4, "mo"), say(5, "mo", "Go.")] }];
+  assert.deepEqual(compile([{ line: 1, setting: {}, ...PAUSES, items: ending }], [voiced("go.wav", 8)], SETTINGS, "sq.yaml").scenes[0]!.lines.map((line) => [line.line, line.from, line.frames]), [[3, 5, 20], [4, 5, 20], [5, 17, 8]]);
+});
+
 test("captions of what is said at once: one shows, the line's begun last, and a cut line's goes with its voice", () => {
   const captions = (items: CheckedScene["items"], voices: ReturnType<typeof voiced>[]) =>
     saidLines(compile([{ line: 1, setting: {}, ...PAUSES, tail: 2, items }], voices, SETTINGS, "sq.yaml").scenes).map((line) => line.captions.map((c) => [c.from, c.frames]));

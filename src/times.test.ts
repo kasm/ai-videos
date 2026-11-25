@@ -345,7 +345,10 @@ test("what is refused, with who is in it, for any lengths", () => {
   assert.deepEqual(why(scene(together("both", [murmur({ cut: true }), talk()]))), []);
 
   assert.deepEqual(why(scene(move("walk", "pip", 40, { cut: true }), voice("one", "mo", 30))), ["cut: walk"]);
-  assert.deepEqual(why(scene(inOrder("murmur", [voice("murmur-1", "mo", 30), move("walk", "mo", 30), look("looks", "mo")], { cut: true }), voice("one", "pip", 30))), ["cut: walk"]);
+  // An open one too, though its own block's end is where it always stops: a sound may be both.
+  assert.deepEqual(why(scene(inOrder("murmur", [voice("murmur-1", "mo", 30), move("walk", "mo", 30), look("looks", "mo")], { cut: true }), voice("one", "pip", 30))), ["cut: walk", "cut: looks"]);
+  assert.deepEqual(why(scene(look("looks", "mo", { cut: true }), voice("one", "pip", 30))), ["cut: looks"]);
+  assert.deepEqual(why(scene(inOrder("murmur", [sound("music", "open"), voice("murmur-1", "mo", 30)], { cut: true }), look("looks", "mo"), voice("one", "pip", 30))), []);
 
   // Loops, whole. Two in one plan are both found.
   const waits = (name: string) => together(`${name}-block`, [move(name, `${name}-who`, 40), voice(`${name}-words`, "narrator", 50), voice(`${name}-hi`, name, 20, { at: at(name, "end") })]);
@@ -377,10 +380,10 @@ function randomPlan({ int, chance, pick }: Random): Block {
     const own = placed();
     const kind = int(100);
     const cut = chance(0.15) ? { cut: true } : {};
-    if (kind < 55) return { kind: "voice", ...own, on: [`${who} voice`], length: between(1, 40), ...cut };
+    if (kind < 55 || (inCut && kind >= 65)) return { kind: "voice", ...own, on: [`${who} voice`], length: between(1, 40), ...cut };
     if (kind < 65) return { kind: "sound", ...own, on: [pick(["bell", "music"])], length: chance(0.3) ? "open" : between(1, 40), ...cut };
     const on = chance(0.1) ? [`${who} place`, `${who} arm`] : [`${who} ${pick(["place", "arm"])}`];
-    if (inCut || kind < 72) return { kind: "move", ...own, on, length: "open" };
+    if (kind < 72) return { kind: "move", ...own, on, length: "open" };
     const length = kind < 80 ? between(1, 40) : { ...fitted(between(4, 40)), ...(arrive ? { arrive } : {}) };
     return { kind: "move", ...own, on, length };
   };

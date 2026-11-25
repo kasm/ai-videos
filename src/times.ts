@@ -77,7 +77,7 @@ export type Refusal =
   | { why: "below"; item: Item; name: string }
   /** `item` follows `by` on a channel that `by`, cut or open, holds until the block both are in ends. */
   | { why: "held"; item: Line; by: Line; channel: string }
-  /** A move that would be cut: it would leave its character where only the voices know. */
+  /** A move that would be cut, an open one too: it would leave its character where only the voices know. */
   | { why: "cut"; item: Line }
   /** `item` and `by`, above it, do two things on one channel in a block whose lines end at once, or begin at once and `item` has no start of its own. */
   | { why: "twice"; item: Line; by: Line; channel: string }
@@ -240,8 +240,8 @@ function graphOf(plan: Block) {
 
   /** A line's end: its length after its start, or where what it is fitted to ends, within its limits, or its block's end. */
   const endOfLine = (x: Line, block: Block): Term => {
+    if (x.kind === "move" && withBlocks(x).some(({ cut }) => cut)) refused.push({ why: "cut", item: x });
     if (x.length === "open") return latest([when(start(x)), when(end(block))]);
-    if (x.kind === "move" && cutBy(x).length > 0) refused.push({ why: "cut", item: x });
     const lasting = (frames: number) => later(when(start(x)), frames);
     if (typeof x.length === "number") return lasting(x.length);
     const { own, least, most, arrive } = x.length;
