@@ -1,6 +1,6 @@
-# hello, written as a script: Pip walks onto a meadow and stops there, and a narrator speaks. The
-# smallest script. Its lines happen in order, so Pip has stopped before the narrator begins. The
-# format is in CLAUDE.md ("The script"); Pip and the meadow are drawn in library.yaml.
+# hello, written as a script: Pip walks onto a meadow and stops there, while a narrator speaks. The
+# smallest script: the narrator's first line is joined to the walk, so Pip walks as long as it is said.
+# The format is in CLAUDE.md ("The script"); Pip and the meadow are drawn in library.yaml.
 use: cartoon
 outputs: { web: true } # its page too, beside the video
 
@@ -9,5 +9,5 @@ scenes:
     places: { pip: off-left }
     script: |
       pip walk to=middle
-      narrator say: This is Pip. Pip walks into the meadow.
+      & narrator say: This is Pip. Pip walks into the meadow.
       narrator say: And here, Pip stops.

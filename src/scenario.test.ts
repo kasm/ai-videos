@@ -1,10 +1,13 @@
-// A scenario written as a script (scenario.ts): its lines read from the text, each with its line in
-// the file, and the check, which gives the scenario worked out or every mistake with its line and a
-// hint. The plugin's part here is a small one written for the test, its schema by hand.
+// A scenario written as a script (scenario.ts): the check, which gives the scenario worked out or
+// every mistake with its line and a hint. The plugin's part here is a small one written for the
+// test, its schema by hand. Reading a script's text is tried in read.test.ts, and what has no time in
+// plan.test.ts.
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { nearest } from "./names.ts";
 import type { Schema, SchemaIssue } from "./plugin.ts";
-import { checkScenario, issuesText, nearest, readScript, type Issue, type SceneActions, type ScriptPlugin, type WrittenScript } from "./scenario.ts";
+import { readScript } from "./read.ts";
+import { checkScenario, issuesText, type Issue, type SceneActions, type ScriptPlugin, type WrittenScript } from "./scenario.ts";
 
 /** What `slide` takes: `to`, a side, and nothing else. */
 const side: Schema<{ to: "left" | "right" }> = {
@@ -42,41 +45,16 @@ const scripted = (seen: SceneActions[][] = []): ScriptPlugin => ({
 const LIBRARY = { file: "library.yaml", raw: { colours: { red: "#d04040" } } };
 
 /** A scenario of one scene, its colour red, its script beginning on line 5 of the file. */
-const written = (script: string, colour = "red"): WrittenScript => ({ scenes: [{ line: 3, setting: { colour }, ...{ lines: readScript(script, 5).lines } }], issues: readScript(script, 5).issues });
+const written = (script: string, colour = "red"): WrittenScript => {
+  const { items, issues } = readScript(script, 5);
+  return { scenes: [{ line: 3, setting: { colour }, items }], issues };
+};
 const check = (script: string, plugin = scripted(), colour?: string) => checkScenario(plugin, written(script, colour), LIBRARY, ["sq"]);
 const issuesOf = async (script: string, plugin?: ScriptPlugin, colour?: string) => {
   const checked = await check(script, plugin, colour);
   assert.ok("issues" in checked, "it is refused");
   return checked.issues;
 };
-
-test("a line is who, the action, its values, and after the first colon its words, as written", () => {
-  const read = readScript("sq slide to=right times=2\n\n# a note for the reader\nsq say: Here I go: a=b, @ 50%!\nnarrator say:   Done.  \n", 7);
-  assert.deepEqual(read.issues, []);
-  assert.deepEqual(read.lines, [
-    { line: 7, who: "sq", action: "slide", values: { to: "right", times: 2 } },
-    { line: 10, who: "sq", action: "say", values: {}, text: "Here I go: a=b, @ 50%!" },
-    { line: 11, who: "narrator", action: "say", values: {}, text: "Done." },
-  ]);
-  // A file's line endings are not the script's.
-  assert.deepEqual(readScript("sq say: One.\r\nsq say: Two.\r\n").lines.map((l) => [l.line, l.text]), [[1, "One."], [2, "Two."]]);
-});
-
-test("what is not a line is refused, with its line and a hint, and the lines around it are read", () => {
-  const read = readScript(["sq", "Sq slide", "sq slide right", "sq slide to=right to=left", "sq slide to=2s", "  sq slide to=right", "sq say: Hello!", "sq Slide: x"].join("\n"), 20);
-  assert.deepEqual(read.lines.map((l) => l.line), [26]);
-  assert.deepEqual(read.issues.map((i) => [i.line, i.message]), [
-    [20, "sq does nothing: the action comes after the name"],
-    [21, '"Sq" is not a name: a line begins with who does it'],
-    [22, '"right" is not a value'],
-    [23, "to is given twice"],
-    [24, 'to=2s: "2s" is neither a number nor a name'],
-    [25, "the line is indented"],
-    [27, '"Slide" is not an action\'s name'],
-  ]);
-  for (const issue of read.issues) assert.ok(issue.hint.length > 20, issue.message);
-  assert.match(read.issues[2]!.hint, /write a value as name=value, before the colon, and what is said after it: sq say: Hello!/);
-});
 
 test("the check gives the scenario worked out: what is said, and the plugin's actions in plain numbers", async () => {
   const seen: SceneActions[][] = [];
@@ -86,7 +64,7 @@ test("the check gives the scenario worked out: what is said, and the plugin's ac
       {
         line: 3,
         setting: { colour: "#d04040", x: 20 },
-        lines: [
+        items: [
           { line: 5, who: "sq", action: "say", text: "Here I go!" },
           { line: 6, who: "sq", action: "slide", values: { x: 120 }, length: 1.5 },
           { line: 7, who: "narrator", action: "say", text: "It went." },
@@ -143,18 +121,18 @@ test("what the plugin's check gives is held to the contract: a scene and an acti
   await assert.rejects(check(script, { ...scripted(), check: () => ({ issues: [] }) }), /refused it with no mistake named/);
 });
 
-test("mistakes are shown in the file's order, each with the file, its line as written, and the hint", () => {
+test("mistakes are shown in the file's order, each with the file, its line as written, the other lines it is between, and the hint", () => {
   const text = "use: square\nscenes:\n  - colour: red\n    script: |\n      sq slid to=right\n";
   const issues = [
-    { line: 5, message: 'no action is named "slid"', hint: "the actions are say and slide: did you mean slide?" },
+    { line: 5, also: [1, 3], message: 'no action is named "slid"', hint: "the actions are say and slide: did you mean slide?" },
     { line: 3, message: 'no colour is named "red"', hint: "the library has none" },
   ];
   assert.equal(
     issuesText("videos/sq.yaml", text, issues),
     '2 mistakes in videos/sq.yaml:\n\nvideos/sq.yaml:3: - colour: red\n  no colour is named "red"\n  Hint: the library has none\n\n' +
-      'videos/sq.yaml:5: sq slid to=right\n  no action is named "slid"\n  Hint: the actions are say and slide: did you mean slide?',
+      'videos/sq.yaml:5: sq slid to=right\n  no action is named "slid"\n  videos/sq.yaml:1: use: square\n  videos/sq.yaml:3: - colour: red\n  Hint: the actions are say and slide: did you mean slide?',
   );
-  assert.equal(issuesText("sq", undefined, issues.slice(0, 1)), '1 mistake in sq:\n\nsq:5:\n  no action is named "slid"\n  Hint: the actions are say and slide: did you mean slide?');
+  assert.equal(issuesText("sq", undefined, issues.slice(0, 1)), '1 mistake in sq:\n\nsq:5:\n  no action is named "slid"\n  sq:1:\n  sq:3:\n  Hint: the actions are say and slide: did you mean slide?');
 });
 
 test("the nearest name is a slip of a letter or two, and none when none is near", () => {

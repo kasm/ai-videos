@@ -165,18 +165,18 @@ test("a script's clip and its page are drawn from the compiled scenario and the 
     {
       line: 3,
       setting: { colour: "red", x: 20 },
-      lines: [
+      items: [
         { line: 5, who: "sq", action: "slide", values: { x: 120 }, length: 0.4 },
         { line: 6, who: "sq", action: "say", text: "Here I am." },
       ],
     },
-    { line: 8, setting: { colour: "blue", x: 60 }, lines: [{ line: 10, who: "narrator", action: "say", text: "And </script> it stays." }] },
+    { line: 8, setting: { colour: "blue", x: 60 }, items: [{ line: 10, who: "narrator", action: "say", text: "And </script> it stays." }] },
   ];
   const voices = [
     { file: "aa.wav", duration: 0.3, mouth: [0.5, 1, 0] },
     { file: "bb.wav", duration: 0.2, mouth: [1, 1] },
   ];
-  await writeFile(path.join(cache, "compiled.json"), compiledText(compile(scenes, voices, { fps: 10, loudness: -14, lead: 0.2, gap: 0.2, tail: 0.2 }, "../../videos/sq.yaml")));
+  await writeFile(path.join(cache, "compiled.json"), compiledText(compile(scenes, voices, { fps: 10, loudness: -14, lead: 0.2, gap: 0.2, tail: 0.2, moves: { slowest: 0.5, fastest: 2 } }, "../../videos/sq.yaml")));
   const compiled = JSON.parse(await readFile(path.join(cache, "compiled.json"), "utf8")) as Compiled;
   const library = { file: path.join(root, "library.yaml"), raw: { colours: { red: "#d04040", blue: "#4040d0" } } };
   const size = { width: 160, height: 90 };

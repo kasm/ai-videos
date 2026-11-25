@@ -1,14 +1,14 @@
-// A scenario written as a script (AGENTS.md, "A script"): a scene's lines read from its text, and
-// the check, the pass before the voices and the only one that refuses. The grammar and `say` are
-// the tool's; every other action is the plugin's, named in its `script` with what it takes.
+// A scenario written as a script (AGENTS.md, "A script"): its lines and blocks as they are read
+// (read.ts), and the check, the pass before the voices and the only one that refuses. The grammar,
+// `say` and when things happen (plan.ts) are the tool's; every other action is the plugin's, named
+// in its `script` with what it takes.
 //
-// This file imports nothing that runs, so plugin.ts gives it to the plugins' tests, which have none
-// of the tool's packages.
+// It needs none of the tool's packages: plugin.ts gives it to the plugins' tests.
+import { listed, nearest } from "./names.ts";
+import { timeIssues } from "./plan.ts";
 import type { Library, Schema } from "./plugin.ts";
+import { SAY, isBlock } from "./read.ts";
 import type { Shown } from "./shown.ts";
-
-/** The tool's own action: a character says the line's text, in its voice. */
-export const SAY = "say";
 
 /** The speaker nobody draws: its lines are said in the video's voice. */
 export const NARRATOR = "narrator";
@@ -16,10 +16,27 @@ export const NARRATOR = "narrator";
 /** A value as a script writes it: a number or a name. */
 export type Written = number | string;
 
-/** One line of a script: one thing one character does or says. */
-export interface ScriptLine {
-  /** Its line in the video file, from 1. */
+/** A moment of something above, where a line or a block begins in place of its block's rule. */
+export interface Anchor {
+  /** A label of its scene, `prev` (the line or the block just above) or `block` (the block it is in). */
+  of: string;
+  /** Its start, its end, a share of its length, 0 to 1, or where it says a word (or several in a row). */
+  at: "start" | "end" | { share: number } | { word: string };
+  /** Seconds after that, or below 0 before it. */
+  plus: number;
+}
+
+/** What a line and a block of a script have alike. */
+export interface Placed {
+  /** Its line in the video file, from 1: a block's is its header's. */
   line: number;
+  /** What an anchor calls it, once in its scene. */
+  label?: string;
+  anchor?: Anchor;
+}
+
+/** One line of a script: one thing one character does or says. */
+export interface ScriptLine extends Placed {
   who: string;
   action: string;
   /** Its values by name, as written before the colon. */
@@ -28,18 +45,34 @@ export interface ScriptLine {
   text?: string;
 }
 
-/** A mistake in a scenario: the line of the video file it is in, what is wrong, and how to mend it. */
+/** A block of a script: lines and blocks each after those above it, or all begun together. */
+export interface ScriptBlock<L extends Placed = ScriptLine> extends Placed {
+  order: "in order" | "together";
+  /** It goes on under the rest of the block it is in, and stops where that ends. */
+  under?: true;
+  /** The lines `&` joins: it has no header, and its line is its first's. */
+  joined?: true;
+  items: ScriptItem<L>[];
+}
+
+export type ScriptItem<L extends Placed = ScriptLine> = L | ScriptBlock<L>;
+
+/** The lines of a script, in the order written, whichever blocks they are in. */
+export const linesIn = <L extends Placed>(items: ScriptItem<L>[]): L[] => items.flatMap((item) => (isBlock(item) ? linesIn(item.items) : [item]));
+
+/** A mistake in a scenario: the line of the video file it is in, the other lines it is between, what is wrong, and how to mend it. */
 export interface Issue {
   line: number;
+  also?: number[];
   message: string;
   hint: string;
 }
 
-/** A scene as written: its line in the file, its own keys (all but `script`), and its script's lines. */
+/** A scene as written: its line in the file, its own keys (all but `script`), and its script's lines and blocks. */
 export interface WrittenScene {
   line: number;
   setting: Record<string, unknown>;
-  lines: ScriptLine[];
+  items: ScriptItem[];
 }
 
 /** A scenario as written: its scenes, and what could not be read of them. */
@@ -110,92 +143,29 @@ export interface ScriptPlugin {
 }
 
 /** A line checked: what is said, or one of the plugin's actions in plain numbers with its own length, seconds. */
-export type CheckedLine = { line: number; who: string; action: string } & ({ text: string } | { values: Plain; length: number });
+export type CheckedLine = Placed & { who: string; action: string } & ({ text: string } | { values: Plain; length: number });
 
-/** A scene checked: how it begins, in plain numbers, and its lines. */
+/** A scene checked: how it begins, in plain numbers, and its lines and blocks. */
 export interface CheckedScene {
   line: number;
   setting: Plain;
-  lines: CheckedLine[];
+  items: ScriptItem<CheckedLine>[];
 }
 
 /** A scenario checked, or every mistake found in it. */
 export type Checked = { scenes: CheckedScene[] } | { issues: Issue[] };
 
-const NAME = /^[a-z][a-z0-9-]*$/;
-const NUMBER = /^-?\d+(\.\d+)?$/;
-
-/** `a, b and c`. */
-export const listed = (names: string[]) => (names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : (names[0] ?? ""));
-
-/** How many letters put in, left out or changed make `a` into `b`. */
-function distance(a: string, b: string): number {
-  const row = Array.from({ length: b.length + 1 }, (_, j) => j);
-  for (let i = 1; i <= a.length; i++) {
-    let corner = row[0]!;
-    row[0] = i;
-    for (let j = 1; j <= b.length; j++) {
-      const above = row[j]!;
-      row[j] = Math.min(above + 1, row[j - 1]! + 1, corner + (a[i - 1] === b[j - 1] ? 0 : 1));
-      corner = above;
-    }
-  }
-  return row[b.length]!;
-}
-
-/** The name of `names` that `name` was most likely meant to be: a slip of a letter or two, for a hint. None when none is near. */
-export function nearest(name: string, names: string[]): string | undefined {
-  const near = names.map((other) => [distance(name, other), other] as const).filter(([d, other]) => d <= 2 && d < Math.max(name.length, other.length));
-  return near.sort((a, b) => a[0] - b[0])[0]?.[1];
-}
-
-/**
- * A script's lines, read from its text; `first` is the line of the file its first line is on. A
- * line is `who action name=value ...: text`: what is before the first colon is read, and what is
- * after it is the text, as written. An empty line, or one that begins with `#`, is passed over.
- */
-export function readScript(script: string, first = 1): { lines: ScriptLine[]; issues: Issue[] } {
-  const lines: ScriptLine[] = [];
-  const issues: Issue[] = [];
-  script.split(/\r?\n/).forEach((raw, k) => {
-    const written = raw.trim();
-    if (written === "" || written.startsWith("#")) return;
-    const line = first + k;
-    const issue = (message: string, hint: string) => void issues.push({ line, message, hint });
-    if (/^\s/.test(raw)) return issue("the line is indented", "begin every line of a script at its left edge");
-    const colon = written.indexOf(":");
-    const [who, action, ...rest] = (colon < 0 ? written : written.slice(0, colon)).trim().split(/\s+/);
-    const text = colon < 0 ? "" : written.slice(colon + 1).trim();
-    const form = "a line is who, the action, its values, and after a colon its words: pip say: Hello!";
-    if (!who || !NAME.test(who)) return issue(`"${who ?? ""}" is not a name: a line begins with who does it`, form);
-    if (!action) return issue(`${who} does nothing: the action comes after the name`, form);
-    if (!NAME.test(action)) return issue(`"${action}" is not an action's name`, form);
-    const values: Record<string, Written> = {};
-    for (const part of rest) {
-      const equals = part.indexOf("=");
-      const [name, value] = [part.slice(0, equals), part.slice(equals + 1)];
-      if (equals < 0 || !NAME.test(name)) {
-        return issue(`"${part}" is not a value`, `write a value as name=value, before the colon, and what is said after it: ${who} say: Hello!`);
-      }
-      if (Object.hasOwn(values, name)) return issue(`${name} is given twice`, `a line gives a value once: keep one ${name}=`);
-      if (NUMBER.test(value)) values[name] = Number(value);
-      else if (NAME.test(value)) values[name] = value;
-      else return issue(`${name}=${value}: "${value}" is neither a number nor a name`, "a value is a number (2, 1.5) or a name in lowercase letters, digits and dashes (middle)");
-    }
-    lines.push({ line, who, action, values, ...(text === "" ? {} : { text }) });
-  });
-  return { lines, issues };
-}
-
 /**
  * Mistakes as they are shown, in the file's order: each with the file and its line (`file` as it is
- * to be shown), the line as written when the file's `text` is given, what is wrong, and the hint.
+ * to be shown), the line as written when the file's `text` is given, what is wrong, the other lines
+ * it is between, and the hint.
  */
 export function issuesText(file: string, text: string | undefined, issues: Issue[]): string {
   const lines = text?.split(/\r?\n/);
+  const shown = (line: number) => `${file}:${line}:${lines?.[line - 1] ? ` ${lines[line - 1]!.trim()}` : ""}`;
   const items = issues
     .toSorted((a, b) => a.line - b.line)
-    .map(({ line, message, hint }) => `${file}:${line}:${lines?.[line - 1] ? ` ${lines[line - 1]!.trim()}` : ""}\n  ${message}\n  Hint: ${hint}`);
+    .map(({ line, also = [], message, hint }) => [shown(line), `  ${message}`, ...also.map((other) => `  ${shown(other)}`), `  Hint: ${hint}`].join("\n"));
   return `${issues.length} ${issues.length === 1 ? "mistake" : "mistakes"} in ${file}:\n\n${items.join("\n\n")}`;
 }
 
@@ -212,10 +182,11 @@ const pathOf = (path: ReadonlyArray<PropertyKey | { readonly key: PropertyKey }>
 
 /**
  * The check (AGENTS.md, "A script"): every line's action known, its values what the action takes,
- * and who speaks someone with a voice (`speakers`, the cast's names, or the narrator); then the
- * plugin's own check, of the scenes' settings and its actions against the library. It gives the
- * scenario worked out, or every mistake with its line and a hint. The plugin's check runs only on
- * a script with no mistake before it: it follows the lines in order, so one missing would mislead it.
+ * who speaks someone with a voice (`speakers`, the cast's names, or the narrator), and a time for
+ * everything (plan.ts); then the plugin's own check, of the scenes' settings and its actions against
+ * the library. It gives the scenario worked out, or every mistake with its line and a hint. The times
+ * are tried on a script whose every row reads, and the plugin's check runs only on one with no mistake
+ * before it: it follows the lines in the order written, so one missing would mislead it.
  */
 export async function checkScenario(plugin: ScriptPlugin, script: WrittenScript, library: Library | undefined, speakers: string[]): Promise<Checked> {
   const issues = [...script.issues];
@@ -223,7 +194,7 @@ export async function checkScenario(plugin: ScriptPlugin, script: WrittenScript,
   const acted: SceneActions[] = [];
   for (const scene of script.scenes) {
     const own: ActionLine[] = [];
-    for (const { line, who, action, values, text } of scene.lines) {
+    for (const { line, who, action, values, text } of linesIn(scene.items)) {
       const issue = (message: string, hint: string) => void issues.push({ line, message, hint });
       if (action === SAY) {
         const named = Object.keys(values);
@@ -257,6 +228,7 @@ export async function checkScenario(plugin: ScriptPlugin, script: WrittenScript,
     }
     acted.push({ line: scene.line, setting: scene.setting, actions: own });
   }
+  if (script.issues.length === 0) issues.push(...timeIssues(script.scenes));
   if (issues.length > 0) return { issues };
 
   const worked = plugin.check(acted, library);
@@ -273,14 +245,17 @@ export async function checkScenario(plugin: ScriptPlugin, script: WrittenScript,
     if (!isPlain(setting)) throw wrong(`${where} a setting that is not numbers and names alone`);
     if (given.length !== acted[i]!.actions.length) throw wrong(`${where} ${given.length} actions for ${acted[i]!.actions.length}`);
     let next = 0;
-    const lines = scene.lines.map(({ line, who, action, text }): CheckedLine => {
-      if (action === SAY) return { line, who, action, text: text! };
+    const check = (item: ScriptItem): ScriptItem<CheckedLine> => {
+      if (isBlock(item)) return { ...item, items: item.items.map(check) };
+      const { values: _written, text, ...rest } = item;
+      const { line, action } = item;
+      if (action === SAY) return { ...rest, text: text! };
       const { values, length } = given[next++]!;
       if (!isPlain(values)) throw wrong(`line ${line} values that are not numbers and names alone`);
       if (!(Number.isFinite(length) && length > 0)) throw wrong(`line ${line} the length ${length}: an action's own length is seconds, above 0`);
-      return { line, who, action, values, length };
-    });
-    return { line: scene.line, setting, lines };
+      return { ...rest, values, length };
+    };
+    return { line: scene.line, setting, items: scene.items.map(check) };
   });
   return { scenes };
 }

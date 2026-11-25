@@ -116,6 +116,56 @@ test("check refuses an unknown action, a wrong value and an unknown name, each w
   );
 });
 
+test("check refuses a name from below, a loop, and a voice that follows a cut one in its block, each with both lines and a hint", async () => {
+  const refused = async (name: string, lines: string[]) => {
+    const file = await video(name, script(lines));
+    const { code, stdout, stderr } = await cli(["check", file]);
+    assert.equal(code, 1);
+    assert.equal(stdout, "");
+    return stderr.replaceAll(path.relative(ROOT, file), `${name}.yaml`).replaceAll(file, `${name}.yaml`);
+  };
+  assert.equal(
+    await refused("below", ["sq say @ b.end - 0.5s: One.", "[b] odd say: Two."]),
+    [
+      "1 mistake in below.yaml:",
+      "",
+      "below.yaml:5: sq say @ b.end - 0.5s: One.",
+      '  "b" is below, at line 6: a line begins by what is above it',
+      "  below.yaml:6: [b] odd say: Two.",
+      "  Hint: write line 6 above this one, or begin this one by something else",
+      "",
+    ].join("\n"),
+  );
+  assert.equal(
+    await refused("round", ["together:", "  [s] sq slide to=right", "  narrator say: It goes.", "  sq say @ s.end: Here."]),
+    [
+      "1 mistake in round.yaml:",
+      "",
+      "round.yaml:8: sq say @ s.end: Here.",
+      "  it goes round: line 6 waits for line 8 and line 8 waits for line 6",
+      "  round.yaml:6: [s] sq slide to=right",
+      "  Hint: begin it by the start, a share or a word of something above, or write it after the block",
+      "",
+    ].join("\n"),
+  );
+  assert.equal(
+    await refused("cut", ["in order:", "  under:", "    sq say: One, two, three.", "  narrator say: It counts.", "  sq say: Four."]),
+    [
+      "1 mistake in cut.yaml:",
+      "",
+      "cut.yaml:9: sq say: Four.",
+      "  sq is busy with line 7, which goes on under the rest to the end of the block both are in",
+      "  cut.yaml:7: sq say: One, two, three.",
+      "  Hint: write it after that block, or in the same under:, below that line",
+      "",
+    ].join("\n"),
+  );
+  // Blocks that have a time are taken, and their lines counted.
+  const good = await cli(["check", await video("blocks", script(["sq slide to=right", "& narrator say: It slides.", "in order:", "  under:", "    sq say: One, two, three.", "  narrator say @ prev.start + 1s: It counts."]))]);
+  assert.equal(good.code, 0, good.stderr);
+  assert.match(good.stdout, /blocks\.yaml, a script of 1 scene and 4 lines, 3 of them said\.\n$/);
+});
+
 test("check refuses a name the plugin does not find, at its scene's line, and a voice the tool does not speak in", async () => {
   const blue = await cli(["check", await video("blue", script(["sq slide to=left"], "blue"))]);
   assert.equal(blue.code, 1);

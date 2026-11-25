@@ -52,13 +52,30 @@
   scripts compile to the same bytes as before, and `hello-script`, made
   whole, has every stage from the cache; each of thirty laws broken on
   purpose fails a test.
-- Left by step 3: for step 4, the speed of a walk joined to a line, to be
-  judged on `hello-script` (1.72 times its own, `hello`'s 1.17: the limit
-  is `timing.moves.fastest`); for step 5, a length worked out from a
-  measured one must grow with it (`5s - a.length` breaks the laws); for
-  step 8, a second look in one block is refused so far, as the first holds
-  its channel.
-- **Next: step 4, say it in a script.**
+- Left by step 3: for step 5, a length worked out from a measured one must
+  grow with it (`5s - a.length` breaks the laws); for step 8, a second
+  look in one block is refused so far, as the first holds its channel.
+- **Step 4 done 2026-11-25.** The user's picks: the words `in order:`,
+  `together:` and `under:`, not Flexbox's; a moment is `a.50%`, and a word
+  is named, `a.word(mole)`; Flexbox's sharing of spare time is a step of
+  its own, 5b; the walk joined to a line in `hello-script` stays at 1.69
+  times its own speed (`hello`'s 1.17). Checked: `npm test` and `npm run typecheck` here and in
+  `cartoons/`; RayCraft's media typecheck and `test:libs`, no file of it
+  changed; `make --fit` of the ten gives requests equal to the baseline,
+  byte for byte; `all-at-once` and `hello-script` made whole: each video has
+  the frames compiled, its voices are in its sound at their compiled times
+  (within 0.2 ms), the cut one's rest is not, and the page's own drawing
+  gives the video's `.svgs`; `hello-script` has `hello`'s frames (164, the
+  narrator at 0.6 s); two fresh `claude -p`, the default model's and
+  Sonnet's, given only the guide, each wrote a cartoon with all of it that
+  passed `check` as written; 40,000 random scripts neither throw nor break a
+  compiled scenario; each of sixty rules broken on purpose fails a test.
+- Left by step 4: for step 7, each character's actions are one channel so
+  far, and places are checked in the order written; for step 9, voices at
+  once can clip (`all-at-once`'s mix peaks at 1.21, 19 samples); for step
+  11, one caption shows at a time, and in `all-at-once` six are up too
+  short to read.
+- **Next: step 5, name values and inherit them.**
 
 
 ## Goal
@@ -101,7 +118,7 @@ scenes:
         radio say: And now the news.    # a line
         in order:                       # a block in a block
           [a] pip say: Did you hear?    # a label
-          mo say @ a@50%: Hear what?    # an anchor
+          mo say @ a.50%: Hear what?    # an anchor
       tuk walk to=left                  # an action, a value
       & narrator say: Tuk comes closer. # joined to the line before
 ```
@@ -159,8 +176,8 @@ Compiling:
   plain numbers. The picture, the sound, the captions and the page are
   made from it.
 
-The words a script uses for these (`together`, `&`, `@`) are settled in
-step 4; the example shows only the kind.
+The words a script uses for these (`together:`, `under:`, `&`, `@`) are
+settled in `AGENTS.md`, "A script".
 
 
 ## The approach
@@ -206,9 +223,10 @@ script's words for each are settled in its step.
 | In order: after the line before, plus `pause` | the default | in |
 | Together: with the line before, or all of a block | `&`, `together:` | in |
 | At a moment of a line above, plus or minus seconds | `@ a.end - 0.5s` | in |
-| At a share of a line above | `@ a@50%` | in |
-| At a word of a line above | `@ a.word:3` | in, estimated |
+| At a share of a line above | `@ a.50%` | in |
+| At a word of a line above | `@ a.word(mole)` | in, estimated |
 | At a moment of a line below | | out: a loop could be written |
+| By a share of its block's spare time | `justify=end` | step 5b |
 | On a grid of beats | `every=beat` | out |
 
 | How long it lasts | Example | |
@@ -337,6 +355,19 @@ and a default taken is said; a compiled scenario holds numbers only;
 `all-at-once`, made again with one value changed, has another timing
 and no other edit; a fresh `claude -p`, given only the guide, writes a
 scene with a block's settings that passes `check`.
+
+### 5b. Share spare time (the tool)
+
+What CSS Flexbox's `justify-content` and `align-items` say, in time: a
+block in order beside a longer one lies at its start, in its middle, at its
+end, or spread over it, and a block together begins or ends its lines at
+once. It gives up "a longer voice begins nothing earlier" inside such a
+block, so its laws come first. `Effort: xhigh`. **Done when:** the user
+has accepted the laws in `AGENTS.md`, or dropped the step; the note beside
+the tests proves what is still promised; tests show a short talk at the
+end, in the middle of and spread over a long voice, and two voices that end
+together; random plans keep every property, and the plain solver gives the
+same times; `all-at-once` has one, and the user accepts it.
 
 ### 6. Work out places (cartoons)
 

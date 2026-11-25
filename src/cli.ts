@@ -4,7 +4,7 @@ import { mkdir, readFile, writeFile, copyFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { loadClip, loadDrawn, madeFiles, readClipData, type SceneClip } from "./clip.ts";
-import { compile, compiledText, saidLines, type Compiled, type Voiced } from "./compile.ts";
+import { compile, compiledText, type Compiled, type Voiced } from "./compile.ts";
 import { compose, composeCompiled } from "./compose.ts";
 import { drawnTo, fitClip, requestDocument, requestText, type Fit } from "./fit.ts";
 import { Call, pluginOf, startPlugin, type PluginHost } from "./make.ts";
@@ -14,11 +14,11 @@ import { mouthTrack } from "./mouth.ts";
 import { promptFor } from "./prompt.ts";
 import { compiledPage, writePage, pageVideo, type PagePicture, type PageVideo } from "./page.ts";
 import { hyperframes, muxSound, renderProject } from "./render.ts";
-import { NARRATOR, issuesText, type CheckedScene, type Issue } from "./scenario.ts";
+import { NARRATOR, issuesText, linesIn, type CheckedScene, type Issue } from "./scenario.ts";
 import { FORMATS, voiceOf, type EventLimitsScript, type FormatName, type LoadedVideo } from "./script.ts";
 import { cachePaths, cacheRoot, ready, setup } from "./setup.ts";
 import { pictureOf } from "./shown.ts";
-import { writeSound, type PlacedVoice } from "./sound.ts";
+import { compiledVoices, writeSound, type PlacedVoice } from "./sound.ts";
 import { PLAYING, codeKey, folderKey, inputsKey, keyOf, stagesIn, type Stages } from "./stages.ts";
 import { runStory, windowsIO } from "./story.ts";
 import { buildTimeline, narrate } from "./timeline.ts";
@@ -115,7 +115,7 @@ async function checkScript(video: VideoFile, host: PluginHost): Promise<CheckedS
   const checked = await host.checkScript(video.file, video.script!, video.library, Object.keys(video.settings.cast));
   if ("issues" in checked) throw refused(checked.issues);
   const voices = new Set((await kokoroVoices()).map((voice) => voice.name));
-  const unspoken = checked.scenes.flatMap((scene) => scene.lines).flatMap((line): Issue[] => {
+  const unspoken = checked.scenes.flatMap((scene) => linesIn(scene.items)).flatMap((line): Issue[] => {
     if (!("text" in line)) return [];
     const voice = voiceOf(video.settings, line.who === NARRATOR ? {} : { speaker: line.who });
     if (voices.has(voice)) return [];
@@ -137,7 +137,7 @@ async function checkFile(file: string): Promise<void> {
   const host = await startPlugin(video.plugin, () => {});
   try {
     if (video.script) {
-      const lines = (await checkScript(video, host)).flatMap((scene) => scene.lines);
+      const lines = (await checkScript(video, host)).flatMap((scene) => linesIn(scene.items));
       const said = lines.filter((line) => "text" in line).length;
       return log(`Checked: ${shown}, a script of ${count(video.script.scenes.length, "scene")} and ${count(lines.length, "line")}, ${said} of them said.`);
     }
@@ -197,7 +197,7 @@ async function playScript(video: VideoFile, fit: boolean, plugin: () => Promise<
   const host = await plugin();
   const format = formatOf(host.scene, host.stage);
   const scenes = await checkScript(video, host);
-  const lines = scenes.flatMap((scene) => scene.lines);
+  const lines = scenes.flatMap((scene) => linesIn(scene.items));
   log(`${count(scenes.length, "scene")}, ${count(lines.length, "line")}`);
 
   begin("the voices and the compiled scenario");
@@ -205,11 +205,17 @@ async function playScript(video: VideoFile, fit: boolean, plugin: () => Promise<
   log(`Narration (${voice})`);
   const provider = new KokoroProvider(MODELS);
   const voices: Voiced[] = [];
+  /** How long each line lasts by itself, seconds, by its line in the file. */
+  const own = new Map<number, number>();
   for (const line of lines) {
-    if (!("text" in line)) continue;
-    const own = voiceOf(video.settings, line.who === NARRATOR ? {} : { speaker: line.who });
-    const spoken = await speak(provider, TTS_CACHE, { text: line.text, voice: own, speed });
-    log(`  line ${line.line} (${line.who}, ${own}): ${spoken.duration.toFixed(2)}s ${spoken.cached ? "(cached)" : "(generated)"}`);
+    if (!("text" in line)) {
+      own.set(line.line, line.length);
+      continue;
+    }
+    const spokenIn = voiceOf(video.settings, line.who === NARRATOR ? {} : { speaker: line.who });
+    const spoken = await speak(provider, TTS_CACHE, { text: line.text, voice: spokenIn, speed });
+    log(`  line ${line.line} (${line.who}, ${spokenIn}): ${spoken.duration.toFixed(2)}s ${spoken.cached ? "(cached)" : "(generated)"}`);
+    own.set(line.line, spoken.duration);
     // A line begins on a frame, so its mouth is the same wherever it begins.
     const mouth = mouthTrack(await readWav(spoken.file), 0, fps).open;
     voices.push({ file: path.basename(spoken.file), duration: spoken.duration, mouth });
@@ -223,10 +229,20 @@ async function playScript(video: VideoFile, fit: boolean, plugin: () => Promise<
   log(`\nCompiled ${video.name}: ${seconds(compiled.frames)}, ${compiled.frames} frames at ${compiled.fps} a second`);
   compiled.scenes.forEach((scene, i) => {
     log(`  scene ${i + 1}, at ${seconds(scene.from)} for ${seconds(scene.frames)}`);
-    for (const line of scene.lines) {
+    for (const line of linesIn(scenes[i]!.items)) {
       const written = `${line.who} ${line.action}${"text" in line ? `: ${line.text}` : ""}`;
-      const what = written.length > 40 ? `${written.slice(0, 37)}...` : written.padEnd(40);
-      log(`    line ${String(line.line).padEnd(3)} ${what}  at ${seconds(line.from).padStart(7)} for ${seconds(line.frames).padStart(6)}, frames ${line.from} to ${line.from + line.frames - 1}`);
+      const what = `    line ${String(line.line).padEnd(3)} ${written.length > 40 ? `${written.slice(0, 37)}...` : written.padEnd(40)}`;
+      const on = scene.lines.find((compiled) => compiled.line === line.line);
+      if (!on) {
+        log(`${what}  not there: what it is under ends before it begins`);
+        continue;
+      }
+      // A voice with fewer frames than it needs is cut, and a fitted action has another length than its own.
+      const needs = own.get(line.line)! * compiled.fps;
+      const cut = "text" in line && Math.ceil(needs - 1e-6) > on.frames;
+      const fitted = !("text" in line) && Math.round(needs) !== on.frames;
+      const how = cut ? ", cut" : fitted ? `, ${(needs / on.frames).toFixed(2)} times its own speed` : "";
+      log(`${what}  at ${seconds(on.from).padStart(7)} for ${seconds(on.frames).padStart(6)}, frames ${on.from} to ${on.from + on.frames - 1}${how}`);
     }
   });
   log(`  ${shown(file)}`);
@@ -239,7 +255,7 @@ async function playScript(video: VideoFile, fit: boolean, plugin: () => Promise<
     fps: compiled.fps,
     duration: compiled.frames / compiled.fps,
     loudness: compiled.loudness,
-    voices: saidLines(compiled.scenes).map((line) => ({ file: path.join(TTS_CACHE, line.file), start: line.from / compiled.fps })),
+    voices: compiledVoices(compiled, TTS_CACHE),
     recorded: false,
     async draw() {
       if (stages.cached("drawing", drawKey, [clip, `${clip}.frames`, `${clip}.svgs`])) return cached(`the clip, ${shown(clip)}`);
@@ -421,7 +437,7 @@ async function makePlayed(video: VideoFile, outputs: Mode[], played: Played, { s
   begin("the sound");
   const { quality } = video.settings;
   const sound = path.join(video.cache, "sound.m4a");
-  const soundKey = keyOf("sound", voices.map(({ file, start }) => [path.basename(file), start]), duration, loudness);
+  const soundKey = keyOf("sound", voices.map(({ file, start, duration: lasts }) => [path.basename(file), start, ...(lasts === undefined ? [] : [lasts])]), duration, loudness);
   if (stages.cached("sound", soundKey, [sound])) cached(`the sound, ${shown(sound)}`);
   else {
     await stages.forget("sound");

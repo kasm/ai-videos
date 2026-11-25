@@ -209,12 +209,12 @@ test("a file written as a script: each scene's own keys, and its script's lines 
       {
         line: 4,
         setting: { background: "meadow", places: { pip: "off-left" } },
-        lines: [
+        items: [
           { line: 7, who: "pip", action: "walk", values: { to: "middle" } },
           { line: 10, who: "narrator", action: "say", values: {}, text: "This is Pip." },
         ],
       },
-      { line: 11, setting: { background: "night" }, lines: [] },
+      { line: 11, setting: { background: "night" }, items: [] },
     ],
     issues: [{ line: 12, message: '"hello" is not a value', hint: "write a value as name=value, before the colon, and what is said after it: pip say: Hello!" }],
   });
@@ -223,6 +223,37 @@ test("a file written as a script: each scene's own keys, and its script's lines 
   // A file with no script in its scenes is not one.
   assert.equal((await readVideoFile(path.join(root, "videos", "beats.yaml"))).script, undefined);
   assert.equal(writtenScript("use: cartoon\nscenes: 3\n"), undefined);
+});
+
+test("a script's blocks are in the file as they are indented, under its own margin", () => {
+  const text = ["scenes:", "  - script: |", "", "      together:", "        pip say: Hi.", "        in order:", "            mo say: Hello.", "      & tuk say: Hm?", "    background: night", ""].join("\n");
+  assert.deepEqual(writtenScript(text), {
+    scenes: [
+      {
+        line: 2,
+        setting: { background: "night" },
+        items: [
+          {
+            line: 4,
+            order: "together",
+            joined: true,
+            items: [
+              {
+                line: 4,
+                order: "together",
+                items: [
+                  { line: 5, who: "pip", action: "say", values: {}, text: "Hi." },
+                  { line: 6, order: "in order", items: [{ line: 7, who: "mo", action: "say", values: {}, text: "Hello." }] },
+                ],
+              },
+              { line: 8, who: "tuk", action: "say", values: {}, text: "Hm?" },
+            ],
+          },
+        ],
+      },
+    ],
+    issues: [],
+  });
 });
 
 test("a script is a block of lines, one in every scene", () => {

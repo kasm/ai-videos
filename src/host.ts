@@ -15,7 +15,8 @@ import { encoder, moments, writeClipData, type ClipText } from "./frames.ts";
 import type { Compiled } from "./compile.ts";
 import type { Call } from "./make.ts";
 import type { DrawingPlugin, EventLimits as Limits, Library, Plan, Plugin, RecordingPlugin, Schema } from "./plugin.ts";
-import { SAY, checkScenario, readScript, type Checked, type ScriptPlugin, type WrittenScript } from "./scenario.ts";
+import { SAY, isBlock, readScript } from "./read.ts";
+import { checkScenario, type Checked, type ScriptPlugin, type WrittenScript } from "./scenario.ts";
 import { EventLimits, FORMATS, slug } from "./script.ts";
 import { pictureOf, shownAt } from "./shown.ts";
 
@@ -186,14 +187,15 @@ export async function loadPlugin(file: string): Promise<Plugin> {
       throw new Error(`${file}: the command "${name}" has a schema that does not write itself as JSON Schema: ${message(e)}`);
     }
   }
-  // An action's example is one line of a script that names it, its values what the action takes.
+  // An action's example is one line of a script that names it, with no block, label or anchor, its values what the action takes.
   for (const [name, { example, values }] of Object.entries(plugin.script?.actions ?? {})) {
     if (name === SAY) throw new Error(`${file}: "${SAY}" is the tool's own action: give the plugin's another name`);
     const read = readScript(example);
-    const [line] = read.lines;
+    const [line] = read.items;
     let why = read.issues[0] && `  ${read.issues[0].message}`;
-    if (!why && (read.lines.length !== 1 || line!.action !== name || line!.text !== undefined)) why = `  it is one line of a script that names ${name}, with no words after a colon`;
-    why ??= issuesText((await values["~standard"].validate(line!.values)).issues ?? []);
+    const own = line && !isBlock(line) && read.items.length === 1 && line.action === name && !line.text && !line.label && !line.anchor ? line : undefined;
+    if (!why && !own) why = `  it is one line of a script that names ${name}, with no words after a colon`;
+    why ??= issuesText((await values["~standard"].validate(own!.values)).issues ?? []);
     if (why) throw new Error(`${file}: the action "${name}" fails its own example, ${example}:\n${why}`);
   }
   return plugin;

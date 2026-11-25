@@ -1,0 +1,43 @@
+# What a script can have at once, one after another: a walk while the narrator talks, a chorus, an
+# interruption at a word, a talk over a radio that is waited for, and a murmur of two lines under
+# three others, cut where they end. The format is in CLAUDE.md ("The script"); the characters and the
+# backgrounds are drawn in library.yaml, and the radio is only heard.
+use: cartoon
+outputs: { web: true } # its page too, beside the video
+cast: { radio: am_michael }
+
+scenes:
+  - background: morning
+    places: { pip: left, mo: middle, tuk: off-right }
+    faces: { mo: left, tuk: left }
+    script: |
+      tuk walk to=right
+      & narrator say: Every morning, Tuk comes for the news.
+      together:
+        pip say: Good morning, Tuk!
+        mo say: Good morning, Tuk!
+      [told] pip say: Last night I saw a badger by the pond.
+      mo say @ told.word(badger): A badger?
+      tuk say: Hush, it is beginning.
+      together:
+        in order:
+          radio say: Good morning, and here is the news.
+          [seen] radio say: A badger was seen by the pond last night.
+          radio say: It has asked to be left alone.
+        in order:
+          pip say @ seen.word(pond): That was me, I saw it!
+          mo say: They know, Pip.
+      tuk say: Poor badger.
+  - background: sundown
+    places: { pip: left, tuk: middle, mo: right }
+    faces: { tuk: left, mo: left }
+    script: |
+      narrator say: In the evening, Mo counts the reeds.
+      in order:
+        under:
+          mo say: One reed, two reeds, three reeds, four reeds.
+          mo say: Five reeds, six reeds, seven reeds, eight reeds.
+        pip say: Why is Mo counting?
+        tuk say: The badger is behind one.
+        pip say: And which one?
+      narrator say: That, only the badger knows.

@@ -11,13 +11,13 @@ const SCENES: CheckedScene[] = [
   {
     line: 3,
     setting: { colour: "#d04040" },
-    lines: [
+    items: [
       { line: 5, who: "sq", action: "slide", values: { x: 120 }, length: 1 },
       { line: 6, who: "sq", action: "say", text: "Here I am." },
       { line: 7, who: "sq", action: "slide", values: { x: 20 }, length: 0.5 },
     ],
   },
-  { line: 9, setting: { colour: "#4040d0" }, lines: [{ line: 11, who: "narrator", action: "say", text: "And it stays." }] },
+  { line: 9, setting: { colour: "#4040d0" }, items: [{ line: 11, who: "narrator", action: "say", text: "And it stays." }] },
 ];
 const VOICES = [
   { file: "aa.wav", duration: 0.4, mouth: [0.25, 1, 0, 0.5] },
@@ -27,7 +27,7 @@ const VOICES = [
  * Ten frames a second. The first scene's 32 frames: the slide from 5 for 10, the words from 18 for 4
  * and the slide back from 25 for 5, then 2 frames more. The second scene's 10: the words from 37 for 3.
  */
-const compiled = compile(SCENES, VOICES, { fps: 10, loudness: -14, lead: 0.5, gap: 0.3, tail: 0.2 }, "sq.yaml");
+const compiled = compile(SCENES, VOICES, { fps: 10, loudness: -14, lead: 0.5, gap: 0.3, tail: 0.2, moves: { slowest: 0.5, fastest: 2 } }, "sq.yaml");
 const picture = pictureOf(compiled);
 
 test("a frame shows its scene's setting and the actions begun by it, each as far through as it is", () => {

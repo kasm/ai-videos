@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
-import { NARRATOR, SAY, checkScenario, compile, pictureOf, readScript, shownAt, type Compiled, type Issue, type Voiced, type WrittenScript } from "ai-videos/plugin";
+import { NARRATOR, SAY, checkScenario, compile, isBlock, linesIn, pictureOf, readScript, shownAt, type Compiled, type Issue, type ScriptItem, type Voiced, type WrittenScript } from "ai-videos/plugin";
 import { parse } from "yaml";
 import { scriptStaging } from "./picture.ts";
 import plugin from "./plugin.ts";
@@ -22,8 +22,8 @@ const { library, speakers } = (() => {
 })();
 
 /**
- * A cartoon's file as the tool reads a script: each scene's own keys, and its script's lines, each
- * with its line in the file.
+ * A cartoon's file as the tool reads a script: each scene's own keys, and its script's lines and
+ * blocks, each with its line in the file.
  */
 function written(text: string): WrittenScript {
   const rows = text.split(/\r?\n/);
@@ -36,11 +36,12 @@ function written(text: string): WrittenScript {
     next = header + 1;
     const read = readScript(String(script), header + 2);
     issues.push(...read.issues);
-    return { line: begins + 1, setting, lines: read.lines };
+    return { line: begins + 1, setting, items: read.items };
   });
   return { scenes, issues };
 }
-const check = (text: string) => checkScenario(plugin.script, written(text), library, speakers);
+/** Checked as the tool does it: who speaks has a voice in the library, or in the file's cast. */
+const check = (text: string) => checkScenario(plugin.script, written(text), library, [...speakers, ...Object.keys(parse(text).cast ?? {})]);
 /** The mistakes the check finds in a scene of the meadow with Pip and Mo, and these lines. */
 const SCENE = ["scenes:", "  - background: meadow", "    places: { pip: off-left, mo: right }", "    faces: { mo: left }", "    script: |"];
 const issuesOf = async (lines: string[], scene = SCENE) => {
@@ -50,15 +51,16 @@ const issuesOf = async (lines: string[], scene = SCENE) => {
 };
 
 /** The tool's timing and loudness, and cartoons' 30 frames a second. */
-const SETTINGS = { fps: 30, loudness: -14, lead: 0.6, gap: 0.4, tail: 1 };
+const SETTINGS = { fps: 30, loudness: -14, lead: 0.6, gap: 0.4, tail: 1, moves: { slowest: 0.5, fastest: 2 } };
 const HELLO = readFileSync(path.join(root, "videos", "hello-script.yaml"), "utf8");
+const AT_ONCE = readFileSync(path.join(root, "videos", "all-at-once.yaml"), "utf8");
 
 /** A voice `duration` seconds long: its mouth opens wide, half and not at all, over and over. */
 const voiced = (file: string, duration: number): Voiced => ({ file, duration, mouth: Array.from({ length: Math.ceil(duration * 30 - 1e-6) }, (_, k) => [1, 0.5, 0][k % 3]!) });
 /** hello-script's two lines, spoken. */
 const VOICES = [voiced("1f0e3dad99908345f743.wav", 2.2), voiced("b7a56873cd771f2c446d.wav", 1.22)];
 
-test("hello-script compiles: each line and action on its frames, in the order written", async () => {
+test("hello-script compiles: the walk and the words joined to it, on hello's frames, and the next line after both", async () => {
   const checked = await check(HELLO);
   assert.ok("scenes" in checked, JSON.stringify(checked));
   assert.deepEqual(compile(checked.scenes, VOICES, SETTINGS, "../../videos/hello-script.yaml"), {
@@ -66,40 +68,39 @@ test("hello-script compiles: each line and action on its frames, in the order wr
     version: 1,
     made: { by: "ai-videos compile", from: "../../videos/hello-script.yaml" },
     fps: 30,
-    frames: 288,
+    frames: 163,
     loudness: -14,
     scenes: [
       {
         from: 0,
-        frames: 288,
+        frames: 163,
         // Pip begins off the stage, on the ground, facing right as drawn.
         setting: { background: "meadow", characters: { pip: { at: [-250, 880], facing: 1 } } },
         lines: [
-          // After the lead, 18 frames: 1210 px at 320 px a second, 3.781 s.
-          { line: 11, who: "pip", action: "walk", from: 18, frames: 113, values: { from: [-250, 880], to: [960, 880] } },
-          // Each line a gap, 12 frames, after the one before it: the walk is over before the narrator
-          // begins. A caption is up until the next one, or the scene's end.
+          // After the lead, 18 frames, both: 1210 px at 320 px a second are 113 frames, hurried to the words' 66.
+          { line: 11, who: "pip", action: "walk", from: 18, frames: 66, values: { from: [-250, 880], to: [960, 880] } },
+          // The next line a gap, 12 frames, after them. A caption is up until the next one, or the scene's end.
           {
             line: 12,
             who: "narrator",
             action: "say",
-            from: 143,
+            from: 18,
             frames: 66,
             text: "This is Pip. Pip walks into the meadow.",
             file: "1f0e3dad99908345f743.wav",
             mouth: VOICES[0]!.mouth,
-            captions: [{ text: "This is Pip. Pip walks into the meadow.", from: 143, frames: 78 }],
+            captions: [{ text: "This is Pip. Pip walks into the meadow.", from: 18, frames: 78 }],
           },
           {
             line: 13,
             who: "narrator",
             action: "say",
-            from: 221,
+            from: 96,
             frames: 37,
             text: "And here, Pip stops.",
             file: "b7a56873cd771f2c446d.wav",
             mouth: VOICES[1]!.mouth,
-            captions: [{ text: "And here, Pip stops.", from: 221, frames: 67 }],
+            captions: [{ text: "And here, Pip stops.", from: 96, frames: 67 }],
           },
         ],
       },
@@ -115,14 +116,16 @@ function leaves(value: unknown, at: string[] = []): [string[], unknown][] {
 
 test("a compiled scenario holds nothing but numbers, texts and file names, and the library's and the actions' names", async () => {
   const example = plugin.script.guide.match(/```yaml\n([\s\S]*?)```/)![1]!;
-  for (const text of [HELLO, example]) {
+  for (const text of [HELLO, AT_ONCE, example]) {
     const script = written(text);
-    const checked = await checkScenario(plugin.script, script, library, speakers);
+    const checked = await check(text);
     assert.ok("scenes" in checked);
-    const said = script.scenes.flatMap((scene) => scene.lines).filter((line) => line.action === SAY);
+    const rows = script.scenes.map((scene) => linesIn(scene.items));
+    const said = rows.flat().filter((line) => line.action === SAY);
     const voices = said.map((_, n) => voiced(`${String(n).padStart(20, "0")}.wav`, 1 + n / 7));
     const compiled = compile(checked.scenes, voices, SETTINGS, "../../videos/a-cartoon.yaml");
-    const names = new Set([NARRATOR, SAY, ...Object.keys(plugin.script.actions), ...Object.keys(library.raw.characters), ...Object.keys(library.raw.backgrounds)]);
+    const cast = Object.keys(parse(text).cast ?? {});
+    const names = new Set([NARRATOR, SAY, ...cast, ...Object.keys(plugin.script.actions), ...Object.keys(library.raw.characters), ...Object.keys(library.raw.backgrounds)]);
     const texts = new Set(said.map((line) => line.text));
     const files = new Set(["../../videos/a-cartoon.yaml", ...voices.map((voice) => voice.file)]);
     for (const [at, value] of leaves(compiled)) {
@@ -136,12 +139,16 @@ test("a compiled scenario holds nothing but numbers, texts and file names, and t
       // A mark is written in a script, and compiled to its point.
       assert.ok(!(String(value) in MARKS), `${where} is the mark ${value}`);
     }
-    // Every line of the script is there, on frames that follow each other.
-    const lines = compiled.scenes.flatMap((scene) => scene.lines);
-    assert.deepEqual(lines.map((line) => [line.line, line.who, line.action]), script.scenes.flatMap((scene) => scene.lines.map((line) => [line.line, line.who, line.action])));
-    for (const line of lines) assert.ok(Number.isInteger(line.from) && Number.isInteger(line.frames) && line.frames > 0, `line ${line.line}`);
+    // Every line of the script is there, in the order written, on frames of its scene.
+    assert.deepEqual(
+      compiled.scenes.map((scene) => scene.lines.map((line) => [line.line, line.who, line.action])),
+      rows.map((lines) => lines.map((line) => [line.line, line.who, line.action])),
+    );
     for (const scene of compiled.scenes) {
-      scene.lines.forEach((line, i) => assert.ok(line.from >= (i === 0 ? scene.from : scene.lines[i - 1]!.from + scene.lines[i - 1]!.frames), `line ${line.line} begins after the one before`));
+      for (const line of scene.lines) {
+        assert.ok(Number.isInteger(line.from) && Number.isInteger(line.frames) && line.frames > 0, `line ${line.line}`);
+        assert.ok(line.from >= scene.from && line.from + line.frames <= scene.from + scene.frames, `line ${line.line} is in its scene`);
+      }
     }
   }
 });
@@ -162,30 +169,30 @@ function pictures(compiled: Compiled): string[] {
 /** Who stands where, and how, in a frame of a compiled scenario. */
 const stagingOf = (compiled: Compiled, frame: number) => scriptStaging(readLibrary(library), shownAt(pictureOf(compiled), frame));
 
-test("hello-script's frames: Pip off the stage, walking in from frame 18 to 131, and there to the end", async () => {
+test("hello-script's frames: Pip off the stage, walking in from frame 18 to 84, and there to the end", async () => {
   const compiled = await compiledOf(HELLO, VOICES);
   const x = (frame: number) => stagingOf(compiled, frame).characters.map(({ name, at, facing, arm }) => [name, Math.round(at[0]), facing, arm]);
   assert.deepEqual(x(0), [["pip", -250, 1, 0]]);
   assert.deepEqual(x(18), [["pip", -250, 1, 0]]);
-  // Slow at both ends: halfway there in the middle of its 113 frames, and nearly there in the last.
-  assert.deepEqual(x(74)[0]![1], Math.round(-250 + 1210 * (0.5 - 0.5 * Math.cos((Math.PI * 56) / 113))));
-  assert.ok((x(130)[0]![1] as number) > 955);
-  for (const frame of [131, 143, 287]) assert.deepEqual(x(frame), [["pip", 960, 1, 0]]);
+  // Slow at both ends: halfway there in the middle of its 66 frames, and nearly there in the last.
+  assert.deepEqual(x(50)[0]![1], Math.round(-250 + 1210 * (0.5 - 0.5 * Math.cos((Math.PI * 32) / 66))));
+  assert.ok((x(83)[0]![1] as number) > 955);
+  for (const frame of [84, 96, 162]) assert.deepEqual(x(frame), [["pip", 960, 1, 0]]);
   // A walk rises between its steps and ends on the ground.
   const heights = Array.from({ length: compiled.frames }, (_, frame) => stagingOf(compiled, frame).characters[0]!.at[1]);
   assert.equal(Math.max(...heights), 880);
   assert.ok(Math.min(...heights) < 866 && Math.min(...heights) >= 864);
-  assert.equal(heights[131], 880);
+  assert.equal(heights[84], 880);
 
   const frames = pictures(compiled);
-  assert.equal(frames.length, 288);
+  assert.equal(frames.length, 163);
   assert.deepEqual(pictures(compiled), frames, "the same every time");
   assert.equal(new Set(frames.slice(0, 19)).size, 1, "off the stage, before the walk");
-  assert.equal(new Set(frames.slice(19, 131)).size, 112, "each frame of the walk is its own");
+  assert.equal(new Set(frames.slice(19, 84)).size, 65, "each frame of the walk is its own");
   // The narrator's lines move nobody's mouth: after the walk, but for a blink, the picture is one.
-  assert.match(frames[143]!, /^<svg [^>]*viewBox="0 0 1920 1080" width="1920" height="1080">/);
-  assert.equal(frames[143], frames[144]);
-  assert.equal(frames[143], frames[221]);
+  assert.match(frames[90]!, /^<svg [^>]*viewBox="0 0 1920 1080" width="1920" height="1080">/);
+  assert.equal(frames[90], frames[91]);
+  assert.equal(frames[90], frames[96]);
 });
 
 test("a walk is drawn in a script as it is in a beat: the same way, as far through, at the same time", async () => {
@@ -194,9 +201,50 @@ test("a walk is drawn in a script as it is in a beat: the same way, as far throu
   const scenario = plugin.check(beats, "hello.yaml", library);
   const frames = pictures(compiled);
   for (let frame = 18; frame < 140; frame++) {
-    const moment = { span: 0, progress: Math.min(1, (frame - 18) / 113), time: frame / 30, into: (frame - 18) / 30, mouths: {} };
+    const moment = { span: 0, progress: Math.min(1, (frame - 18) / 66), time: frame / 30, into: (frame - 18) / 30, mouths: {} };
     assert.equal(frames[frame], plugin.frame(scenario, moment, size), `frame ${frame}`);
   }
+});
+
+/** all-at-once's lines, spoken: each as long as it is in its own voice, in hundredths of a second. */
+const AT_ONCE_VOICES = [210, 98, 124, 200, 86, 204, 197, 237, 167, 118, 108, 116, 196, 252, 294, 115, 236, 82, 148].map((hundredths, n) => voiced(`${n}.wav`, hundredths / 100));
+
+test("all-at-once: a walk under words, a chorus, an interruption at a word, a radio that is waited for, and a murmur cut where the talk over it ends", async () => {
+  const compiled = await compiledOf(AT_ONCE, AT_ONCE_VOICES);
+  const lines = compiled.scenes.flatMap((scene) => scene.lines);
+  const said = lines.filter((line) => "text" in line);
+  /** The line that says this: the frame it begins on, and the one it has stopped by. */
+  const of = (words: string) => {
+    const line = said.find((one) => one.text.startsWith(words))!;
+    return { from: line.from, end: line.from + line.frames, line };
+  };
+  const walk = lines.find((line) => line.action === "walk")!;
+  const told = of("Every morning");
+  assert.deepEqual([walk.from, walk.from + walk.frames], [told.from, told.end], "Tuk walks as long as it is told");
+  const chorus = said.filter((line) => line.text === "Good morning, Tuk!");
+  assert.deepEqual(chorus.map((line) => line.from), [chorus[0]!.from, chorus[0]!.from]);
+  const badger = of("Last night");
+  assert.ok(of("A badger?").from > badger.from + 20 && of("A badger?").from < badger.end - 20, "Mo begins within Pip's line");
+  assert.equal(of("A badger?").from, badger.from + Math.round((19 / 37) * badger.line.frames), "where Pip says badger");
+  const [news, seen, alone] = [of("Good morning, and"), of("A badger was"), of("It has asked")];
+  assert.ok(seen.from > news.end && alone.from > seen.end, "the radio's lines are in order");
+  assert.ok(of("That was me").from > seen.from && of("That was me").end > seen.end && of("They know").from > of("That was me").end, "the talk has an order of its own");
+  assert.equal(of("Poor badger").from, Math.max(alone.end, of("They know").end) + 12, "what comes after waits for both");
+  const [one, five, why, which] = [of("One reed"), of("Five reeds"), of("Why is"), of("And which")];
+  assert.equal(one.from, why.from, "Mo murmurs as Pip begins");
+  assert.equal(five.end, which.end, "and is cut where the third of them ends");
+  assert.ok(five.line.frames < AT_ONCE_VOICES[14]!.mouth.length);
+  assert.equal(five.line.mouth.length, five.line.frames);
+  assert.equal(of("That, only").from, which.end + 12);
+
+  // Two who speak at once both move their mouths, and the cut one's is shut after the cut.
+  const open = (frame: number) => Object.keys(shownAt(pictureOf(compiled), frame).mouths).sort();
+  assert.deepEqual(open(chorus[0]!.from), ["mo", "pip"]);
+  assert.ok(open(of("A badger?").from).includes("mo"));
+  assert.deepEqual(open(seen.from), ["radio"]);
+  const speaks = (who: string, from: number, to: number) => Array.from({ length: to - from }, (_, k) => open(from + k)).some((names) => names.includes(who));
+  assert.ok(speaks("mo", five.from, five.end) && !speaks("mo", five.end, of("That, only").from));
+  assert.equal(pictures(compiled).length, compiled.frames);
 });
 
 test("a character's line opens its mouth as the voice goes, and nobody else's; the next scene begins anew", async () => {
@@ -259,7 +307,7 @@ test("the check follows who stands where: a walk by someone the scene does not p
   assert.deepEqual((await issuesOf(["pip walk to=middle", "pip walk to=middle"])).map((i) => [i.line, i.message]), [[7, '"pip" stands at middle already']]);
   const moved = await check([...SCENE, "      pip walk to=middle", "      mo walk to=off-right", "      mo say: Goodbye!", "      pip walk to=right", ""].join("\n"));
   assert.ok("scenes" in moved);
-  assert.deepEqual(moved.scenes[0]!.lines.map((line) => ("length" in line ? [line.values, line.length] : line.text)), [
+  assert.deepEqual(linesIn(moved.scenes[0]!.items).map((line) => ("length" in line ? [line.values, line.length] : line.text)), [
     [{ from: [-250, 880], to: [960, 880] }, 3.781],
     [{ from: [1440, 880], to: [2170, 880] }, 2.281],
     "Goodbye!",
@@ -297,10 +345,24 @@ test("each action is described, and its example is a line of a script that passe
     assert.ok(description.length > 20, `${name} says what it does`);
     const read = readScript(example);
     assert.deepEqual(read.issues, []);
-    assert.equal(read.lines[0]!.action, name);
-    assert.equal((await values["~standard"].validate(read.lines[0]!.values)).issues, undefined, `${name}'s example`);
+    const [line] = linesIn(read.items);
+    assert.equal(line!.action, name);
+    assert.equal((await values["~standard"].validate(line!.values)).issues, undefined, `${name}'s example`);
     assert.ok(values["~standard"].jsonSchema.input({ target: "draft-2020-12" }), `${name}'s JSON Schema`);
   }
+});
+
+test("the check refuses a time that has none, as the tool does, with the lines it is between", async () => {
+  assert.deepEqual((await issuesOf(["[w] pip walk to=middle", "& narrator say: Pip walks.", "& pip say @ w.end: Here."])).map((i) => [i.line, i.also, i.message]), [
+    [8, [6], "it goes round: line 6 waits for line 8 and line 8 waits for line 6"],
+  ]);
+  assert.deepEqual((await issuesOf(["in order:", "  under:", "    pip walk to=middle", "  narrator say: Pip walks."])).map((i) => [i.line, i.also, i.message]), [
+    [8, [7], "an action is never under the rest: cut, it would leave pip where only the voices know"],
+  ]);
+  // Where each stands is followed in the order written, whichever blocks the walks are in.
+  assert.deepEqual((await issuesOf(["together:", "  mo walk to=middle", "  in order:", "    pip walk to=right", "    pip walk to=middle"])).map((i) => [i.line, i.message]), [
+    [10, '"pip" walks to middle, where "mo" stands'],
+  ]);
 });
 
 test("the guide's example is a cartoon the plugin takes as a script, against the library, and compiles", async () => {
@@ -309,13 +371,23 @@ test("the guide's example is a cartoon the plugin takes as a script, against the
   assert.equal(parse(examples[0]!).use, plugin.scene);
   const script = written(examples[0]!);
   assert.deepEqual(script.issues, []);
-  const checked = await checkScenario(plugin.script, script, library, speakers);
+  const checked = await check(examples[0]!);
   assert.ok("scenes" in checked, JSON.stringify(checked));
-  // It shows what a script has so far: two scenes, a walk, and lines by the narrator and by characters.
+  // It shows what a script has so far: two scenes, a walk, lines by the narrator, by characters and
+  // by a voice of the file's cast, and every kind of block.
   assert.equal(checked.scenes.length, 2);
-  const lines = checked.scenes.flatMap((scene) => scene.lines);
+  const lines = checked.scenes.flatMap((scene) => linesIn(scene.items));
   assert.deepEqual(new Set(lines.map((line) => line.action)), new Set(["say", "walk"]));
-  assert.deepEqual(new Set(lines.filter((line) => "text" in line).map((line) => line.who)), new Set(["narrator", "pip", "mo"]));
+  assert.deepEqual(new Set(lines.filter((line) => "text" in line).map((line) => line.who)), new Set(["narrator", "pip", "mo", "radio"]));
+  const kinds = new Set<string>();
+  const look = (item: ScriptItem) => {
+    if (item.anchor) kinds.add("@");
+    if (!isBlock(item)) return;
+    kinds.add(item.joined ? "&" : item.under ? "under" : item.order);
+    item.items.forEach(look);
+  };
+  script.scenes.flatMap((scene) => scene.items).forEach(look);
+  assert.deepEqual([...kinds].sort(), ["&", "@", "in order", "together", "under"]);
   const said = lines.filter((line) => "text" in line).length;
   const compiled = compile(checked.scenes, Array.from({ length: said }, (_, n) => voiced(`${n}.wav`, 2)), SETTINGS, "example.yaml");
   assert.equal(pictures(compiled).length, compiled.frames);

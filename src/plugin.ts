@@ -14,8 +14,10 @@ export type { ClipEvent, ClipText, Moment, Request };
 /** The moment each frame of a request shows, as the host gives them to the plugin: for a plugin's tests. */
 export { moments } from "./moments.ts";
 /** A script read, checked and compiled as the tool does it (AGENTS.md, "A script"): for a plugin's tests, and its hints. */
-export { NARRATOR, SAY, checkScenario, listed, nearest, readScript } from "./scenario.ts";
-export type { Action, ActionLine, Checked, CheckedLine, CheckedScene, Issue, Plain, SceneActions, SceneChecked, ScriptLine, ScriptPlugin, WrittenScene, WrittenScript } from "./scenario.ts";
+export { listed, nearest } from "./names.ts";
+export { SAY, isBlock, readScript } from "./read.ts";
+export { NARRATOR, checkScenario, linesIn } from "./scenario.ts";
+export type { Action, ActionLine, Anchor, Checked, CheckedLine, CheckedScene, Issue, Plain, SceneActions, SceneChecked, ScriptBlock, ScriptItem, ScriptLine, ScriptPlugin, WrittenScene, WrittenScript } from "./scenario.ts";
 export { compile } from "./compile.ts";
 export type { Compiled, CompiledCaption, CompiledLine, CompiledScene, CompileSettings, Said, Voiced } from "./compile.ts";
 /** What each frame of a compiled scenario shows, as the host gives it to a plugin's `script.draw`: for a plugin's tests. */

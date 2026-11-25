@@ -1,13 +1,13 @@
 // The compiled scenario (AGENTS.md, "A script"): a checked scenario with its voices measured, every
 // line on its frames, in plain numbers. The sound, the picture, the captions and the web page are
-// made from it alone. When each line begins and ends is worked out by times.ts. For now a script has
-// no words for what happens at once, so the lines of a scene follow each other in the order written,
-// and the scenes too.
+// made from it alone. When each line begins and ends is worked out by times.ts, from the plan of its
+// lines and blocks (plan.ts).
 //
 // It needs none of the tool's packages: plugin.ts gives it to the plugins' tests.
 import { LINGER, captionsOf } from "./captions.ts";
-import type { CheckedLine, CheckedScene, Plain } from "./scenario.ts";
-import { times, type Block, type Line } from "./times.ts";
+import { planOf, type Lasting } from "./plan.ts";
+import { linesIn, type CheckedLine, type CheckedScene, type Plain } from "./scenario.ts";
+import { times, type Item } from "./times.ts";
 
 /**
  * A line's voice, spoken and measured: its file's name in the tool's voice cache, its length,
@@ -31,6 +31,8 @@ export interface CompileSettings {
   gap: number;
   /** After a scene's last line. */
   tail: number;
+  /** How slow and how fast a fitted action may be, as multiples of its own speed. */
+  moves: { slowest: number; fastest: number };
 }
 
 /** One caption: its words, the frame of the video it shows from, and for how many. */
@@ -48,7 +50,10 @@ export interface Said {
   captions: CompiledCaption[];
 }
 
-/** A line on its frames: what is said, or one of the plugin's actions in plain numbers. */
+/**
+ * A line on its frames: what is said, or one of the plugin's actions in plain numbers. What is cut
+ * stops with its frames, its voice and its mouth too; what is cut before it begins is no line.
+ */
 export type CompiledLine = {
   /** Its line in the video file. */
   line: number;
@@ -88,60 +93,64 @@ export const saidLines = (scenes: Pick<CompiledScene, "lines">[]) => scenes.flat
 
 /**
  * The captions of a scene that ends on frame `end`: each said line's, split (captions.ts), given to
- * it. A caption stays through the pause after its words, until the next one, `linger` frames, or
- * the scene's end.
+ * it. One shows at a time: it stays through the pause after its words, until the next one, `linger`
+ * frames, or the scene's end, and a cut line's goes with its voice. Of two that begin on one frame,
+ * the one written later shows. `lasts` is how many frames a line's words take, cut or not.
  */
-function caption(lines: CompiledLine[], end: number, linger: number): void {
-  const pieces = saidLines([{ lines }]).flatMap((line) => captionsOf(line.text, line.from, line.frames).map((piece) => ({ ...piece, line })));
-  const from = pieces.map((piece) => Math.round(piece.start));
-  pieces.forEach(({ text, end: words, line }, k) => {
-    const until = Math.min(from[k + 1] ?? end, Math.round(words) + linger, end);
-    line.captions.push({ text, from: from[k]!, frames: until - from[k]! });
+function caption(lines: CompiledLine[], lasts: (line: CompiledLine) => number, end: number, linger: number): void {
+  const pieces = saidLines([{ lines }])
+    .flatMap((line) => {
+      const stop = line.from + line.frames;
+      const cut = line.frames < lasts(line);
+      return captionsOf(line.text, line.from, lasts(line)).map(({ text, start, end: words }) => ({ line, text, from: Math.round(start), until: cut ? stop : Math.round(words) + linger }));
+    })
+    .filter(({ from, until }) => from < until)
+    .sort((a, b) => a.from - b.from);
+  pieces.forEach(({ line, text, from, until }, k) => {
+    const frames = Math.min(pieces[k + 1]?.from ?? end, until, end) - from;
+    if (frames > 0) line.captions.push({ text, from, frames });
   });
 }
 
 /**
- * Lays a checked scenario on the video's frames. `voices` are its said lines' voices, in the order
- * written. A scene is a block in order, and so are the scenes: each line follows the one before, the
- * first beginning `lead` after the scene does, each next one `gap` after the one before has ended,
- * and the scene ends `tail` after its last. A voice lasts the frames it sounds in, an action its own
- * length to the nearest frame, each at least one. `from` names the video file, for the compiled
- * scenario to say what it is made from.
+ * Lays a checked scenario on the video's frames, by the laws of what happens at once (times.ts).
+ * `voices` are its said lines' voices, in the order written. A voice lasts the frames it sounds in,
+ * an action its own length to the nearest frame, or what it is fitted to takes, within the video's
+ * `moves`: each at least one. What is under the rest stops where its block does. `from` names the
+ * video file, for the compiled scenario to say what it is made from.
  */
 export function compile(scenes: CheckedScene[], voices: Voiced[], settings: CompileSettings, from: string): Compiled {
-  const { fps, loudness } = settings;
-  const frames = (seconds: number) => Math.round(seconds * fps);
-  const said = scenes.flatMap((scene) => scene.lines).filter((line) => "text" in line);
+  const { fps, loudness, moves } = settings;
+  const said = scenes.flatMap((scene) => linesIn(scene.items)).filter((line) => "text" in line);
   if (said.length !== voices.length) throw new Error(`the scenario says ${said.length} lines, and ${voices.length} voices were measured`);
   const voiceOf = new Map<CheckedLine, Voiced>(said.map((line, i) => [line, voices[i]!]));
-  const planned = new Map<CheckedLine, Line>();
-  const plan = scenes.map((scene): Block => {
-    const items = scene.lines.map((line): Line => {
-      const item: Line =
-        "text" in line
-          ? { kind: "voice", on: [`${line.who} voice`], length: Math.max(1, Math.ceil(voiceOf.get(line)!.duration * fps - EPS)) }
-          : { kind: "move", on: [], length: Math.max(1, frames(line.length)) };
-      planned.set(line, item);
-      return item;
-    });
-    return { kind: "block", order: "in order", items, lead: frames(settings.lead), pause: frames(settings.gap), tail: frames(settings.tail) };
-  });
-  const video: Block = { kind: "block", order: "in order", items: plan };
+  const lasting = (line: CheckedLine): Lasting => {
+    if ("text" in line) return { kind: "voice", length: Math.max(1, Math.ceil(voiceOf.get(line)!.duration * fps - EPS)) };
+    const own = Math.max(1, Math.round(line.length * fps));
+    return { kind: "move", length: { own, least: Math.ceil(own / moves.fastest - EPS), most: Math.floor(own / moves.slowest + EPS) } };
+  };
+  const { video, scenes: planned, items } = planOf(scenes, settings, lasting);
   const placed = times(video);
-  const spanOf = (item: Block | Line) => {
+  const spanOf = (item: Item) => {
     const { start, end } = placed.get(item)!;
     return { from: start, frames: end - start };
   };
   const compiled = scenes.map((scene, i): CompiledScene => {
-    const span = spanOf(plan[i]!);
-    const lines = scene.lines.map((line): CompiledLine => {
+    const span = spanOf(planned[i]!);
+    /** How long each line would last if nothing cut it. */
+    const lasts = new Map<CompiledLine, number>();
+    const lines = linesIn(scene.items).flatMap((line): CompiledLine[] => {
       const { line: n, who, action } = line;
-      const at = { line: n, who, action, ...spanOf(planned.get(line)!) };
-      if (!("text" in line)) return { ...at, values: line.values };
+      const at = { line: n, who, action, ...spanOf(items.get(line)!) };
+      // Its block ended before it began: it is not there.
+      if (at.frames === 0) return [];
+      if (!("text" in line)) return [{ ...at, values: line.values }];
       const { file, mouth } = voiceOf.get(line)!;
-      return { ...at, text: line.text, file, mouth, captions: [] };
+      const compiled = { ...at, text: line.text, file, mouth: mouth.slice(0, at.frames), captions: [] };
+      lasts.set(compiled, lasting(line).length as number);
+      return [compiled];
     });
-    caption(lines, span.from + span.frames, frames(LINGER));
+    caption(lines, (line) => lasts.get(line)!, span.from + span.frames, Math.round(LINGER * fps));
     return { ...span, setting: scene.setting, lines };
   });
   return { format: "ai-videos-compiled", version: 1, made: { by: "ai-videos compile", from }, fps, frames: spanOf(video).frames, loudness, scenes: compiled };

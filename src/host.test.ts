@@ -394,13 +394,13 @@ test("a plugin with a script: its guide and actions come with it, and a script's
       { line: 5, who: "sq", action: "slide", values: { to: "right" } },
       { line: 6, who: "sq", action: "say", values: {}, text: "Here I am." },
     ];
-    const script = { scenes: [{ line: 3, setting: { colour: "red" }, lines }], issues: [] };
+    const script = { scenes: [{ line: 3, setting: { colour: "red" }, items: lines }], issues: [] };
     assert.deepEqual(await host.checkScript(video, script, library, ["sq"]), {
       scenes: [
         {
           line: 3,
           setting: { colour: "#d04040" },
-          lines: [
+          items: [
             { line: 5, who: "sq", action: "slide", values: { x: 120 }, length: 1.5 },
             { line: 6, who: "sq", action: "say", text: "Here I am." },
           ],
@@ -408,9 +408,9 @@ test("a plugin with a script: its guide and actions come with it, and a script's
       ],
     });
     // A mistake of the tool's finding (the action's values) and one of the plugin's (a name), each with its line.
-    const wrong = { scenes: [{ line: 3, setting: { colour: "red" }, lines: [{ ...lines[0]!, values: { to: "up" } }] }], issues: [] };
+    const wrong = { scenes: [{ line: 3, setting: { colour: "red" }, items: [{ ...lines[0]!, values: { to: "up" } }] }], issues: [] };
     assert.deepEqual(await host.checkScript(video, wrong, library, ["sq"]), { issues: [{ line: 5, message: "slide, to=up: it is left or right", hint: "as in: sq slide to=right" }] });
-    const blue = { scenes: [{ line: 3, setting: { colour: "blue" }, lines }], issues: [] };
+    const blue = { scenes: [{ line: 3, setting: { colour: "blue" }, items: lines }], issues: [] };
     assert.deepEqual(await host.checkScript(video, blue, library, ["sq"]), { issues: [{ line: 3, message: "no colour is named blue", hint: "name a colour of the library" }] });
     // Nothing is written by it.
     assert.equal(existsSync(path.join(root, ".cache")), false);
@@ -428,13 +428,13 @@ test("a script's clip is drawn from its compiled scenario and the library, with 
     {
       line: 3,
       setting: { colour: "#d04040" },
-      lines: [
+      items: [
         { line: 5, who: "sq", action: "slide", values: { x: 120 }, length: 0.4 },
         { line: 6, who: "sq", action: "say", text: "Here I am." },
       ],
     },
   ];
-  const compiled = compile(scenes, [{ file: "a.wav", duration: 0.3, mouth: [0.5, 1, 0] }], { fps: 10, loudness: -14, lead: 0.2, gap: 0.2, tail: 0.2 }, "../../videos/sq.yaml");
+  const compiled = compile(scenes, [{ file: "a.wav", duration: 0.3, mouth: [0.5, 1, 0] }], { fps: 10, loudness: -14, lead: 0.2, gap: 0.2, tail: 0.2, moves: { slowest: 0.5, fastest: 2 } }, "../../videos/sq.yaml");
   const cache = path.join(root, ".cache", "sq");
   const file = path.join(cache, "compiled.json");
   await mkdir(cache, { recursive: true });

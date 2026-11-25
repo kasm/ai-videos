@@ -16,7 +16,8 @@ the tool's projects, and a session for it is opened in the repo's root.
   `use: cartoon` on top, then its scenario, in names: the library's
   characters and backgrounds, places as marks, each line written once, in
   its beat (the tool's `AGENTS.md`, "A video file"). `hello-script.yaml`
-  is written as a script instead (The script, below).
+  and `all-at-once.yaml` are written as scripts instead (The script,
+  below).
 - `.cache/<name>/`: what the tool makes on the way (the plan, the request,
   the clip, the build); `out/<name>.mp4`: the finished video,
   and `out/<name>.html`, its web page.
@@ -278,13 +279,15 @@ scenes:
 
 A cartoon may be written as a script: each scene has a `script:`, a
 block of lines, in place of `beats:`. `videos/hello-script.yaml` is
-`hello` written so. The plan `docs/plans/compiled-scenario.md` builds
+`hello` written so, and `videos/all-at-once.yaml` has what can happen at
+once: a chorus, an interruption, a murmur under a talk, a radio. The plan `docs/plans/compiled-scenario.md` builds
 this step by step, and the seven cartoons stay in beats until its end.
 `make` checks and compiles it (`.cache/<name>/compiled.json`; `--fit`
 stops there), and makes the video and the page from that and the
 library's drawings, as it makes any cartoon's. The tool's `AGENTS.md`,
-"A script", has the line's form, the check, the compiled scenario and
-what a frame of it shows.
+"A script", has the form of lines and blocks, the check, the compiled
+scenario and what a frame of it shows; its "What happens at once" has
+the laws.
 
 ```yaml
 use: cartoon
@@ -294,7 +297,7 @@ scenes:
     places: { pip: off-left }
     script: |
       pip walk to=middle
-      narrator say: This is Pip. Pip walks into the meadow.
+      & narrator say: This is Pip. Pip walks into the meadow.
       narrator say: And here, Pip stops.
 ```
 
@@ -302,8 +305,15 @@ scenes:
   and its `script`. Every other key is refused.
 - **A line** is the tool's: who, the action, its values, and after a
   colon the words. `say` is the tool's action; `narrator` is nobody on
-  the stage. The lines happen in the order written: a walk above a line
+  the stage, and a name the file's `cast:` gives a voice (a radio) is
+  only heard. The lines happen in the order written: a walk above a line
   is over before the line is said.
+- **Blocks** are the tool's too: `in order:`, `together:` and `under:`
+  (cut where its block ends), `&` before a row joined to the one above,
+  and an anchor, `@ a.word(mole)`, for one that begins within another. A
+  walk joined to words lasts as long as they do, at most twice as fast
+  as its own pace and at least half (`timing.moves`). A character's walks
+  are one at a time; a walk is never under the rest.
 - **`walk to=<mark>`** is the plugin's only action so far (`ACTIONS`,
   `script.ts`): the character goes from where the lines above left it to
   the mark, at `PACE.walk`. It is refused for a character the scene does
@@ -311,7 +321,9 @@ scenes:
   another stands. A walk turns nobody, and nothing turns a character yet.
 - **The check** (`checkScript`) gives each scene as it begins, every
   character it places at its mark's point, facing 1 (right, as drawn) or
-  -1, and each walk as its two points with its own length. A mistake
+  -1, and each walk as its two points with its own length. It follows
+  who stands where in the order written, whichever blocks the walks are
+  in. A mistake
   comes with its line and a hint: the library's names, and the nearest.
   Nothing is mended in a script.
 - **The picture** (`drawScript`, `picture.ts`) is drawn from what the

@@ -108,27 +108,41 @@ A background the library lacks is drawn under library: backgrounds:, when no bac
  * with it.
  */
 export const SCRIPT_GUIDE = `
-A cartoon is drawn on one stage, 1920 by 1080 pixels, with characters made of flat rectangles and ellipses. They stand on the ground in front of a background; they walk, blink and talk. A cartoon written as a script shows no more than that yet: what the story has besides, the narrator says in a few words, or it is left out. Never invent a key, a mark or an action: the tool refuses it.
+A cartoon is drawn on one stage, 1920 by 1080 pixels, with characters made of flat rectangles and ellipses. They stand on the ground in front of a background; they walk, blink and talk, several of them at once where the story has it so. A cartoon written as a script shows no more than that yet: what the story has besides, the narrator says in a few words, or it is left out. Never invent a key, a mark or an action: the tool refuses it.
 
 ### An episode
 
 \`\`\`yaml
 use: cartoon
+cast: { radio: am_michael }                # a voice nobody is drawn for: a radio, a crowd, someone off stage
 scenes:
   - background: morning                    # a background of the library
     places: { pip: off-left, mo: right }   # the mark each character of the scene stands on as it begins
     faces: { mo: left }                    # who faces left as the scene begins; the others face right
     script: |
-      narrator say: It is morning in the meadow.
       pip walk to=middle
-      pip say: Hello, Mo!
-      mo say: Hello, Pip. You are early today.
+      & narrator say: It is morning in the meadow, and Pip is early.
+      [hello] pip say: Hello, Mo! Have you heard the news today?
+      mo say @ hello.word(news): What news?
+      together:
+        radio say: And now the news. The pond is frozen, and it will stay so all week.
+        in order:
+          pip say: There it is!
+          mo say: Hush, I want to hear.
+      mo say: We can skate!
   - background: night                      # a new scene: everyone placed anew
-    places: { pip: middle }
+    places: { pip: middle, mo: right }
+    faces: { mo: left }
     script: |
-      narrator say: By night, Pip is alone.
-      pip say: Good night, meadow.
-      pip walk to=off-right
+      in order:
+        under:
+          mo say: One star, two stars, three stars, four stars.
+          mo say: Five stars, six stars, seven stars, eight stars.
+        narrator say: By night, Mo counts the stars.
+        pip say: Good night, Mo.
+      together:
+        pip walk to=off-right
+        narrator say: And Pip goes home.
 \`\`\`
 
 ### Scenes and marks
@@ -136,13 +150,15 @@ scenes:
 - A scene is one stretch of the story in one place. It names the background it begins with, the mark each of its characters stands on as it begins (places), who faces left (faces), and its script. A new scene begins anew: everyone on its own mark, facing as the scene says.
 - The marks are where characters stand: left, middle and right on the stage, one character each, and off-left and off-right out of sight, where any number wait. Two characters never stand on one mark of the stage, as a scene begins or after a walk.
 - Everyone faces right, as drawn, unless the scene's faces says left. A walk turns nobody: a character walks the way it faces, so who walks left begins the scene facing left. Two who talk face each other.
-- A character the scene does not place may speak too: it is a voice off stage.
+- A character the scene does not place may speak too: it is a voice off stage. So may a name the file's cast gives a voice: cast: { radio: am_michael }, on top, beside use. Nobody else is drawn for it.
+- A walk is over before the next row, unless it is joined to words or together with them: then it lasts as long as they do, within reason. Join a walk to the line that tells of it.
 
 ### Lines
 
 - A line is a sentence or two, said by one character or by the narrator. A longer speech is several lines, one under another.
 - Keep a line to about 45 characters: a longer one is a caption of two rows, and its upper row covers the characters' feet.
 - What a character says in the story, it says: write reported speech as the words themselves.
+- People who talk over each other are drawn so, and heard so, but only one caption shows at a time. Keep it for what the story has at once: a chorus, someone breaking in, talk over a radio, a crowd under two who talk.
 - The narrator says what nobody says and the picture cannot show: where we are, who somebody is, what somebody feels, time passing.
 - Write for the ear: plain words, no brackets, no stage directions. The line is also the caption.
 `;

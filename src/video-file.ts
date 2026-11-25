@@ -12,7 +12,8 @@ import { z } from "zod";
 import type { ClipJson } from "./clip.ts";
 import { pluginOf, type PluginFile } from "./make.ts";
 import type { Library } from "./plugin.ts";
-import { readScript, type Issue, type WrittenScene, type WrittenScript } from "./scenario.ts";
+import { readScript } from "./read.ts";
+import type { Issue, WrittenScene, WrittenScript } from "./scenario.ts";
 import { FORMATS, overlay, settings, slug, Speaker, type EventLimitsScript, type FormatName, type VideoScript } from "./script.ts";
 
 /** The project's library, beside its package.json. */
@@ -196,7 +197,7 @@ export async function readVideoFile(file: string, profile?: string): Promise<Vid
 /**
  * A video file's scenes and their lines, when it is written as a script (AGENTS.md, "A script"):
  * `scenes:` is a list, and one of them has a `script:`. Each scene is its own keys but `script`,
- * and its script's lines, each with its line in the file. A script is a block of lines
+ * and its script's lines and blocks, each with its line in the file. A script is a block of lines
  * (`script: |`), so that a line of it is a line of the file. Undefined for any other file.
  */
 export function writtenScript(text: string): WrittenScript | undefined {
@@ -216,18 +217,18 @@ export function writtenScript(text: string): WrittenScript | undefined {
     }
     const { script: _script, ...setting } = item.toJS(document) as Record<string, unknown>;
     const script = item.get("script", true);
-    let lines: WrittenScene["lines"] = [];
+    let items: WrittenScene["items"] = [];
     if (script === undefined) issues.push({ line, message: "this scene has no script", hint: block });
     else if (!isScalar(script) || script.type !== "BLOCK_LITERAL" || typeof script.value !== "string") {
       issues.push({ line: lineOf(script), message: "this script is not a block of lines", hint: block });
     } else {
       // The block's first line is the one under its `|`.
       const read = readScript(script.value, lineOf(script) + 1);
-      lines = read.lines;
+      items = read.items;
       issues.push(...read.issues);
-      if (read.lines.length === 0 && read.issues.length === 0) issues.push({ line: lineOf(script), message: "this script has no line", hint: block });
+      if (read.items.length === 0 && read.issues.length === 0) issues.push({ line: lineOf(script), message: "this script has no line", hint: block });
     }
-    scenes.push({ line, setting, lines });
+    scenes.push({ line, setting, items });
   }
   return { scenes, issues };
 }
