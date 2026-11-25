@@ -11,10 +11,11 @@ import { Call, pluginOf, startPlugin, type PluginHost } from "./make.ts";
 import { importReply } from "./import.ts";
 import { lock } from "./lock.ts";
 import { mouthTrack } from "./mouth.ts";
+import { listed } from "./names.ts";
 import { promptFor } from "./prompt.ts";
 import { compiledPage, writePage, pageVideo, type PagePicture, type PageVideo } from "./page.ts";
 import { hyperframes, muxSound, renderProject } from "./render.ts";
-import { NARRATOR, issuesText, linesIn, type CheckedScene, type Issue } from "./scenario.ts";
+import { NARRATOR, issuesText, linesIn, type Checked, type Default, type Issue } from "./scenario.ts";
 import { FORMATS, voiceOf, type EventLimitsScript, type FormatName, type LoadedVideo } from "./script.ts";
 import { cachePaths, cacheRoot, ready, setup } from "./setup.ts";
 import { pictureOf } from "./shown.ts";
@@ -53,8 +54,8 @@ Commands
                     written as a script is checked and compiled, .cache/<name>/compiled.json, in
                     place of the plan and the fit, and made from that (AGENTS.md, "A script")
   check <file.yaml> A video file checked, with nothing spoken or written: a script's mistakes each
-                    with its line and a hint; any other file as its plugin checks it. Needs
-                    nothing from setup (AGENTS.md, "A script")
+                    with its line and a hint, or the defaults it takes; any other file as its
+                    plugin checks it. Needs nothing from setup (AGENTS.md, "A script")
   story <story.md>  A story to its videos, by a web chat and the clipboard: the prompt copied, each
                     answer copied back into <name>.reply.md and imported, what was refused copied
                     for the chat, then each episode made. Goes on from the reply's file when it is
@@ -106,13 +107,13 @@ function sameScene(video: VideoFile, host: PluginHost): void {
 /**
  * The check of a video written as a script (AGENTS.md, "A script"), the only pass that refuses:
  * the tool's and the plugin's (scenario.ts), then each speaker's voice one the tool speaks in, known
- * with no model on the disk. It gives the scenario worked out, or throws every mistake with its
- * line and a hint.
+ * with no model on the disk. It gives the scenario worked out, with the defaults it takes, or throws
+ * every mistake with its line and a hint.
  */
-async function checkScript(video: VideoFile, host: PluginHost): Promise<CheckedScene[]> {
+async function checkScript(video: VideoFile, host: PluginHost): Promise<Extract<Checked, { scenes: unknown }>> {
   sameScene(video, host);
   const refused = (issues: Issue[]) => new Error(issuesText(path.relative(CALLER, video.file), video.text, issues));
-  const checked = await host.checkScript(video.file, video.script!, video.library, Object.keys(video.settings.cast));
+  const checked = await host.checkScript(video.file, video.script!, video.library, Object.keys(video.settings.cast), video.settings.timing);
   if ("issues" in checked) throw refused(checked.issues);
   const voices = new Set((await kokoroVoices()).map((voice) => voice.name));
   const unspoken = checked.scenes.flatMap((scene) => linesIn(scene.items)).flatMap((line): Issue[] => {
@@ -123,7 +124,13 @@ async function checkScript(video: VideoFile, host: PluginHost): Promise<CheckedS
     return [{ line: line.line, message: `${line.who} speaks in ${voice}, which is not one of the tool's voices`, hint: `${home} give one that npm run -s video -- voices lists` }];
   });
   if (unspoken.length > 0) throw refused(unspoken);
-  return checked.scenes;
+  return checked;
+}
+
+/** The defaults a script takes, a row for each value that nothing sets: what it is then, and the lines that take it. */
+function logDefaults({ defaults }: { defaults: Default[] }): void {
+  if (defaults.length > 0) log("By default, as nothing sets it:");
+  for (const { name, value, lines } of defaults) log(`  ${name}: ${value} (${lines.length === 1 ? "line" : "lines"} ${listed(lines.map(String))})`);
 }
 
 /**
@@ -137,9 +144,11 @@ async function checkFile(file: string): Promise<void> {
   const host = await startPlugin(video.plugin, () => {});
   try {
     if (video.script) {
-      const lines = (await checkScript(video, host)).flatMap((scene) => linesIn(scene.items));
+      const checked = await checkScript(video, host);
+      const lines = checked.scenes.flatMap((scene) => linesIn(scene.items));
       const said = lines.filter((line) => "text" in line).length;
-      return log(`Checked: ${shown}, a script of ${count(video.script.scenes.length, "scene")} and ${count(lines.length, "line")}, ${said} of them said.`);
+      log(`Checked: ${shown}, a script of ${count(video.script.scenes.length, "scene")} and ${count(lines.length, "line")}, ${said} of them said.`);
+      return logDefaults(checked);
     }
     sameScene(video, host);
     const { repaired, plan } = await host.check(video.file, video.source, video.library);
@@ -196,9 +205,11 @@ async function playScript(video: VideoFile, fit: boolean, plugin: () => Promise<
   begin("the script's check");
   const host = await plugin();
   const format = formatOf(host.scene, host.stage);
-  const scenes = await checkScript(video, host);
+  const checked = await checkScript(video, host);
+  const { scenes } = checked;
   const lines = scenes.flatMap((scene) => linesIn(scene.items));
   log(`${count(scenes.length, "scene")}, ${count(lines.length, "line")}`);
+  logDefaults(checked);
 
   begin("the voices and the compiled scenario");
   const { voice, speed, fps, loudness, timing } = video.settings;
@@ -223,7 +234,7 @@ async function playScript(video: VideoFile, fit: boolean, plugin: () => Promise<
   const file = path.join(video.cache, "compiled.json");
   const from = path.relative(video.cache, video.file).split(path.sep).join("/");
   await mkdir(video.cache, { recursive: true });
-  await writeFile(file, compiledText(compile(scenes, voices, { fps, loudness, ...timing }, from)));
+  await writeFile(file, compiledText(compile(scenes, voices, { fps, loudness, moves: timing.moves }, from)));
   const compiled = JSON.parse(await readFile(file, "utf8")) as Compiled;
   const seconds = (frames: number) => `${(frames / compiled.fps).toFixed(2)}s`;
   log(`\nCompiled ${video.name}: ${seconds(compiled.frames)}, ${compiled.frames} frames at ${compiled.fps} a second`);

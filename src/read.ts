@@ -1,12 +1,15 @@
 // A script's text read (AGENTS.md, "A script"): its lines, and the blocks they are in, by how far
-// each row is indented. It reads what is written and nothing more: what a line's action takes is the
-// check's (scenario.ts), and what its anchor names is plan.ts's.
+// each row is indented. It reads what is written and nothing more: what its values come to is
+// values.ts's, what a line's action takes is the check's (scenario.ts), and what its anchor names is
+// labels.ts's.
 //
 // Like scenario.ts, it imports nothing that runs but what needs none of the tool's packages.
-import type { Anchor, Issue, Placed, ScriptBlock, ScriptItem, ScriptLine, Written } from "./scenario.ts";
+import { Wrong, readAnchor, readFormula } from "./formula.ts";
+import type { Issue, Placed, ScriptBlock, ScriptItem, ScriptLine } from "./scenario.ts";
 
 const NAME = /^[a-z][a-z0-9-]*$/;
-const NUMBER = /^-?\d+(\.\d+)?$/;
+/** A value's name as a level sets it: for everything in it, or for a character or an action (`walk.speed`). */
+export const SET =/^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)?$/;
 
 /** The blocks of a script, by the words of their headers. */
 const BLOCKS: Record<string, Pick<ScriptBlock, "order" | "under">> = {
@@ -24,43 +27,33 @@ export const PREV = "prev";
 export const BLOCK = "block";
 
 const LINE_FORM = "a line is who, the action, its values, and after a colon its words: pip say: Hello!";
-const MOMENTS = "a moment is a.start, a.end, a.50% or a.word(mole), and seconds after it or before it: @ a.end - 0.5s";
-const MOMENT = /^([a-z][a-z0-9-]*)\s*\.\s*(?:(start|end)|(\d+(?:\.\d+)?)%|word\(([^()]*)\))(?:\s*([+-])\s*(\d+(?:\.\d+)?)(s?))?$/;
 
-/** What is wrong with a row, and how to mend it. */
-class Wrong extends Error {
-  readonly hint: string;
-  constructor(message: string, hint: string) {
-    super(message);
-    this.hint = hint;
-  }
+/** The words of a row before its colon and its anchor, and the values after them: each from its `name=` to the next one's. */
+function split(head: string): { words: string[]; values: [name: string, written: string][] } {
+  const starts = [...head.matchAll(/(?:^|\s)([^\s=]+)=/g)];
+  return {
+    words: head.slice(0, starts[0]?.index ?? head.length).split(/\s+/).filter((word) => word !== ""),
+    values: starts.map((found, i) => [found[1]!, head.slice(found.index + found[0].length, starts[i + 1]?.index).trim()]),
+  };
 }
 
-/** An anchor, from what is written after its `@`. */
-function readAnchor(written: string): Anchor {
-  const found = MOMENT.exec(written);
-  if (!found) throw new Wrong(`"${written}" is not a moment of something above`, `${MOMENTS}; it is the last thing before the colon`);
-  const [, of, edge, percent, word, sign, seconds, unit] = found;
-  if (seconds !== undefined && unit === "") throw new Wrong(`"${sign} ${seconds}" has no unit`, `write it in seconds: ${sign} ${seconds}s`);
-  if (percent !== undefined && Number(percent) > 100) throw new Wrong(`${percent}% is more than the whole of "${of}"`, "a share is from 0% to 100%");
-  if (word !== undefined && word.trim() === "") throw new Wrong("word() names no word", "write the word as the line says it: a.word(mole)");
-  const at = edge !== undefined ? (edge as "start" | "end") : percent !== undefined ? { share: Number(percent) / 100 } : { word: word!.trim().replace(/\s+/g, " ") };
-  return { of: of!, at, plus: seconds === undefined ? 0 : Number(`${sign}${seconds}`) };
-}
-
-/** A line's values, `name=value` each. */
-function readValues(who: string, parts: string[]): Record<string, Written> {
-  const values: Record<string, Written> = {};
-  for (const part of parts) {
-    const equals = part.indexOf("=");
-    const [name, value] = [part.slice(0, equals), part.slice(equals + 1)];
-    if (equals < 0 || !NAME.test(name)) {
-      throw new Wrong(`"${part}" is not a value`, `write a value as name=value, before the colon, and what is said after it: ${who} say: Hello!`);
+/** Values as a row writes them, `name=value` each, a value being a formula; `what` says whose they are, for a hint. */
+function readValues(written: [name: string, written: string][], what: "line" | "block"): Record<string, string> {
+  const values: Record<string, string> = {};
+  for (const [name, text] of written) {
+    if (what === "line" && SET.test(name) && !NAME.test(name)) {
+      const own = name.split(".")[1];
+      throw new Wrong(`${name} is not a line's value`, `a line's values are its own: write ${own}=${text}, and ${name} on a block, a scene or the cartoon`);
     }
-    if (Object.hasOwn(values, name)) throw new Wrong(`${name} is given twice`, `a line gives a value once: keep one ${name}=`);
-    if (NUMBER.test(value)) values[name] = Number(value);
-    else if (NAME.test(value)) values[name] = value;
-    else throw new Wrong(`${name}=${value}: "${value}" is neither a number nor a name`, "a value is a number (2, 1.5) or a name in lowercase letters, digits and dashes (middle)");
+    if (!SET.test(name)) throw new Wrong(`"${name}=${text}" is not a value`, "a value's name is in lowercase letters, digits and dashes: name=value");
+    if (Object.hasOwn(values, name)) throw new Wrong(`${name} is given twice`, `a ${what} gives a value once: keep one ${name}=`);
+    if (text === "") throw new Wrong(`${name}= has no value`, `write it after the sign, or leave ${name}= out`);
+    try {
+      readFormula(text);
+    } catch (e) {
+      throw e instanceof Wrong ? new Wrong(`${name}=${text}: ${e.message}`, e.hint) : e;
+    }
+    values[name] = text;
   }
   return values;
 }
@@ -93,7 +86,7 @@ function readRow({ line, written }: Row, opens: boolean): { item: ScriptItem; jo
   const text = colon < 0 ? "" : rest.slice(colon + 1).trim();
   const head = (colon < 0 ? rest : rest.slice(0, colon)).trim();
   const at = head.indexOf("@");
-  const words = (at < 0 ? head : head.slice(0, at)).trim().split(/\s+/).filter((word) => word !== "");
+  const { words, values } = split(at < 0 ? head : head.slice(0, at));
   const placed = { line, ...(label === undefined ? {} : { label }), ...(at < 0 ? {} : { anchor: readAnchor(head.slice(at + 1).trim()) }) };
 
   const name = words.join(" ");
@@ -101,18 +94,19 @@ function readRow({ line, written }: Row, opens: boolean): { item: ScriptItem; jo
   if (block) {
     if (colon < 0) throw new Wrong(`the header ${name} has no colon`, `a block's header ends with a colon: ${name}:`);
     if (text !== "") throw new Wrong(`${name}: is a block's header, with nothing after its colon`, "write its lines on the rows under it, indented");
-    return { item: { ...placed, ...block, items: [] }, joined };
+    return { item: { ...placed, ...block, ...(values.length > 0 ? { values: readValues(values, "block") } : {}), items: [] }, joined };
   }
-  const [who, action, ...values] = words;
+  const [who, action, stray] = words;
   if (colon >= 0 && text === "" && (words.length === 1 || (opens && action !== SAY))) throw new Wrong(`"${name}:" is neither a line nor a block's header`, HEADERS);
   if (!who || !NAME.test(who)) throw new Wrong(`"${who ?? ""}" is not a name: a line begins with who does it`, LINE_FORM);
   if (!action) throw new Wrong(`${who} does nothing: the action comes after the name`, LINE_FORM);
   if (!NAME.test(action)) throw new Wrong(`"${action}" is not an action's name`, LINE_FORM);
-  return { item: { ...placed, who, action, values: readValues(who, values), ...(text === "" ? {} : { text }) } satisfies ScriptLine, joined };
+  if (stray !== undefined) throw new Wrong(`"${stray}" is not a value`, `write a value as name=value, before the colon, and what is said after it: ${who} ${SAY}: Hello!`);
+  return { item: { ...placed, who, action, values: readValues(values, "line"), ...(text === "" ? {} : { text }) } satisfies ScriptLine, joined };
 }
 
 /** Whether an item of a script is a block: its header and what is in it, or the lines `&` joins. */
-export const isBlock = <L extends Placed>(item: ScriptItem<L>): item is ScriptBlock<L> => "items" in item;
+export const isBlock = <L extends Placed<unknown>>(item: ScriptItem<L>): item is ScriptBlock<L> => "items" in item;
 
 /**
  * Joins `item` to the last of `items`: the two are a block together, or the third is in the block the
@@ -128,8 +122,8 @@ function join(items: ScriptItem[], item: ScriptItem): void {
 /**
  * A script's lines and blocks, read from its text; `first` is the line of the file its first row is
  * on. A row is a line, `who action name=value ... @ moment: text`, where what is before the first
- * colon is read and what is after it is the text, as written; or a block's header, whose lines are
- * the rows indented under it. `&` before a row joins it to the one above, and `[name]` labels it. An
+ * colon is read and what is after it is the text, as written; or a block's header, with the values
+ * set on it, whose lines are the rows indented under it. `&` before a row joins it to the one above, and `[name]` labels it. An
  * empty row, or one that begins with `#`, is passed over.
  */
 export function readScript(script: string, first = 1): { items: ScriptItem[]; issues: Issue[] } {

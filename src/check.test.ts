@@ -80,7 +80,18 @@ test("check takes a script with no mistake, with no voice model on the disk, and
   const file = await video("good", script(["sq slide to=right", "sq say: Here I am.", "narrator say: And it stays."]));
   const { code, stdout, stderr } = await cli(["check", file]);
   assert.equal(code, 0, stderr);
-  assert.match(stdout, /^Checked: .*good\.yaml, a script of 1 scene and 3 lines, 2 of them said\.\n$/);
+  assert.equal(
+    stdout.replace(path.relative(ROOT, file), "good.yaml").replace(file, "good.yaml"),
+    [
+      "Checked: good.yaml, a script of 1 scene and 3 lines, 2 of them said.",
+      "By default, as nothing sets it:",
+      "  lead: 0.6s (line 3)",
+      "  pause: 0.4s (line 3)",
+      "  tail: 1s (line 3)",
+      "  speed: 1, or what the words beside it take (line 5)",
+      "",
+    ].join("\n"),
+  );
   assert.equal(existsSync(path.join(root, ".cache")), false);
   assert.equal(existsSync(path.join(cache, "tts")), false);
 });
@@ -144,7 +155,7 @@ test("check refuses a name from below, a loop, and a voice that follows a cut on
       "round.yaml:8: sq say @ s.end: Here.",
       "  it goes round: line 6 waits for line 8 and line 8 waits for line 6",
       "  round.yaml:6: [s] sq slide to=right",
-      "  Hint: begin it by the start, a share or a word of something above, or write it after the block",
+      "  Hint: begin it by the start, a share or a word of something above, or write it after the block, or give the action its length (takes=2s)",
       "",
     ].join("\n"),
   );
@@ -163,7 +174,41 @@ test("check refuses a name from below, a loop, and a voice that follows a cut on
   // Blocks that have a time are taken, and their lines counted.
   const good = await cli(["check", await video("blocks", script(["sq slide to=right", "& narrator say: It slides.", "in order:", "  under:", "    sq say: One, two, three.", "  narrator say @ prev.start + 1s: It counts."]))]);
   assert.equal(good.code, 0, good.stderr);
-  assert.match(good.stdout, /blocks\.yaml, a script of 1 scene and 4 lines, 3 of them said\.\n$/);
+  assert.match(good.stdout, /blocks\.yaml, a script of 1 scene and 4 lines, 3 of them said\.\n/);
+});
+
+test("check refuses a move given both a speed and a length, and values that go round with their chain, and says the defaults taken", async () => {
+  const wrong = await video(
+    "values-wrong",
+    ["use: square", "values: { beat: pause / 2, pause: beat * 2 }", "scenes:", "  - colour: red", "    values: { sq.speed: 2 }", "    script: |", "      sq slide to=right", "      sq slide to=left takes=1s speed=3", "      narrator say: It slid.", ""].join("\n"),
+  );
+  const { code, stdout, stderr } = await cli(["check", wrong]);
+  assert.equal(code, 1);
+  assert.equal(stdout, "");
+  assert.equal(
+    stderr.replaceAll(path.relative(ROOT, wrong), "wrong.yaml").replaceAll(wrong, "wrong.yaml"),
+    [
+      "2 mistakes in wrong.yaml:",
+      "",
+      "wrong.yaml:2: values: { beat: pause / 2, pause: beat * 2 }",
+      "  the values go round: beat is pause / 2 and pause is beat * 2",
+      "  wrong.yaml:4: - colour: red",
+      "  Hint: give one of them a value that reads none of the others",
+      "",
+      "wrong.yaml:8: sq slide to=left takes=1s speed=3",
+      "  sq slide is given both takes and speed, and each says how long it lasts",
+      "  Hint: keep one of them on this level: the others are worked out from it",
+      "",
+    ].join("\n"),
+  );
+  // A key on top that nothing reads, as a slip of values: would be.
+  const slip = await cli(["check", await video("slip", ["use: square", "valuse: { pause: 1s }", "scenes:", "  - colour: red", "    script: |", "      sq say: Hi.", ""].join("\n"))]);
+  assert.equal(slip.code, 1);
+  assert.match(slip.stderr, /slip\.yaml:2: valuse: \{ pause: 1s \}\n {2}nothing reads "valuse"\n {2}Hint: on top of a script are .*: did you mean values\?\n$/);
+  // What is set is no default: the rest is said, with the lines that take it.
+  const good = await cli(["check", await video("values", ["use: square", "values: { beat: 0.4s, pause: beat }", "scenes:", "  - colour: red", "    values: { lead: beat }", "    script: |", "      sq slide to=right speed=2", "      sq slide to=left", "      sq say: Here.", ""].join("\n"))]);
+  assert.equal(good.code, 0, good.stderr);
+  assert.match(good.stdout, /2 lines|3 lines, 1 of them said\.\nBy default, as nothing sets it:\n {2}tail: 1s \(line 4\)\n {2}speed: 1, or what the words beside it take \(line 8\)\n$/);
 });
 
 test("check refuses a name the plugin does not find, at its scene's line, and a voice the tool does not speak in", async () => {

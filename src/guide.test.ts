@@ -6,35 +6,55 @@ import { test } from "node:test";
 import { compile, type CompiledLine } from "./compile.ts";
 import { SCRIPT, guideOf } from "./guide.ts";
 import { isBlock, readScript } from "./read.ts";
-import { checkScenario, linesIn, type ScriptItem, type ScriptPlugin } from "./scenario.ts";
+import type { Schema } from "./plugin.ts";
+import { checkScenario, linesIn, type ScriptItem, type ScriptPlugin, type WrittenScript } from "./scenario.ts";
+import { writtenScript } from "./video-file.ts";
 
 /** The examples of the tool's part, each as it is written. */
 const EXAMPLES = [...SCRIPT.matchAll(/```script\n([\s\S]*?)```/g)].map((m) => m[1]!);
 
-/** A plugin that draws nothing. */
-const bare: ScriptPlugin = { actions: {}, guide: "Nothing is drawn.", check: (scenes) => ({ scenes: scenes.map(() => ({ setting: {}, actions: [] })) }), draw: () => () => "<svg/>" };
+/** The files in the tool's part, each as it is written. */
+const FILES = [...SCRIPT.matchAll(/```yaml\n([\s\S]*?)```/g)].map((m) => m[1]!);
 
-/** An example checked and compiled, each voice as many frames as its line has letters and at least 30: its lines, and the frame each ends on. */
+/** `go` takes `to`, a name, and 2 seconds at its own speed. */
+const to: Schema = { "~standard": { version: 1, vendor: "test", validate: (values) => ({ value: values }), jsonSchema: { input: () => ({ properties: { to: {} } }), output: () => ({}) } } };
+/** A plugin that draws nothing. */
+const bare: ScriptPlugin = {
+  actions: { go: { description: "One goes somewhere.", example: "ann go to=pond", values: to } },
+  guide: "Nothing is drawn.",
+  check: (scenes) => ({ scenes: scenes.map(({ actions }) => ({ setting: {}, actions: actions.map(() => ({ values: {}, length: 2 })) })) }),
+  draw: () => () => "<svg/>",
+};
+
+const TIMING = { lead: 0.6, gap: 0.4, tail: 1 };
+const SETTINGS = { fps: 30, loudness: -14, moves: { slowest: 0.5, fastest: 2 } };
+
+/** A script checked and compiled, each voice as many frames as its line has letters and at least 30: its scenes' lines, and the frame each ends on. */
+async function compiledScenes(script: WrittenScript): Promise<(CompiledLine & { end: number })[][]> {
+  assert.deepEqual(script.issues, []);
+  const checked = await checkScenario(bare, script, undefined, ["ann", "ben", "cat", "radio"], TIMING);
+  assert.ok("scenes" in checked, JSON.stringify(checked));
+  const said = script.scenes.flatMap((scene) => linesIn(scene.items)).flatMap((line) => line.text ?? []);
+  const voices = said.map((text, n) => ({ file: `${n}.wav`, duration: Math.max(30, text.length) / 30, mouth: [] }));
+  const { scenes } = compile(checked.scenes, voices, SETTINGS, "example.yaml");
+  return scenes.map((scene) => scene.lines.map((line) => ({ ...line, end: line.from + line.frames })));
+}
+/** An example of one scene, by itself. */
 async function compiled(example: string): Promise<(CompiledLine & { end: number })[]> {
   const { items, issues } = readScript(example);
-  assert.deepEqual(issues, []);
-  const checked = await checkScenario(bare, { scenes: [{ line: 1, setting: {}, items }], issues: [] }, undefined, ["ann", "ben", "cat", "radio"]);
-  assert.ok("scenes" in checked, JSON.stringify(checked));
-  const voices = linesIn(items).map(({ line, text }) => ({ file: `${line}.wav`, duration: Math.max(30, text!.length) / 30, mouth: [] }));
-  const settings = { fps: 30, loudness: -14, lead: 0.6, gap: 0.4, tail: 1, moves: { slowest: 0.5, fastest: 2 } };
-  const { scenes } = compile(checked.scenes, voices, settings, "example.yaml");
-  return scenes[0]!.lines.map((line) => ({ ...line, end: line.from + line.frames }));
+  return (await compiledScenes({ scenes: [{ line: 1, setting: {}, items }], issues }))[0]!;
 }
 
 /** The example that has this in it. */
 const example = (said: string) => EXAMPLES.find((text) => text.includes(said))!;
 
-test("the tool's part shows scripts the tool takes, with no action but its own, and they compile", async () => {
-  assert.equal(EXAMPLES.length, 6);
+test("the tool's part shows scripts the tool takes, with no action but its own and one made up for values, and they compile", async () => {
+  assert.equal(EXAMPLES.length, 7);
   for (const text of EXAMPLES) {
     assert.ok((await compiled(text)).length > 0);
-    assert.deepEqual(new Set(linesIn(readScript(text).items).map(({ action }) => action)), new Set(["say"]));
+    assert.deepEqual(new Set(linesIn(readScript(text).items).map(({ action }) => action)), new Set(text.includes("takes=") ? ["say", "go"] : ["say"]));
   }
+  assert.equal(FILES.length, 1);
   // They show every kind of block, and what joins, labels and anchors.
   const seen = new Set<string>();
   const look = (item: ScriptItem) => {
@@ -82,10 +102,29 @@ test("an anchor: one breaks in at a word, and one a little before the end", asyn
   assert.equal(narrator!.from, Math.max(ben!.end, cat!.end) + 12);
 });
 
+test("values: each level over the one around it, and a formula worked out where it is read", async () => {
+  const script = writtenScript(FILES[0]!)!;
+  assert.deepEqual(Object.keys(script.values!), ["beat", "pause"]);
+  const [first, second] = await compiledScenes(script);
+  // The pauses of the first scene are 0.8 s, in its block 0.2, and those of the second scene 0.4: in frames, 24, 6 and 12.
+  assert.deepEqual(first!.slice(1).map((line, k) => line.from - first![k]!.end), [24, 6, 24]);
+  assert.deepEqual(second!.slice(1).map((line, k) => line.from - second![k]!.end), [12]);
+});
+
+test("how long an action lasts: from a line's length, at a speed, and to arrive at a word", async () => {
+  const [a, ann, ben, c, cat, narrator] = await compiled(example("It is a long way"));
+  assert.deepEqual([ann!.from, ann!.frames], [a!.from, a!.frames * 2]);
+  assert.deepEqual([ben!.from, ben!.frames], [ann!.end + 12, 120], "2 seconds, half as fast");
+  // "Wait for me, all of you, I am " is 36 of the 46 its letters and marks weigh.
+  assert.equal(cat!.from, c!.from);
+  assert.equal(cat!.end, c!.from + Math.round((36 / 46) * c!.frames));
+  assert.equal(narrator!.from, cat!.end + 30);
+});
+
 test("what the tool's part says is refused, is refused", async () => {
   const refused = async (...rows: string[]) => {
     const { items, issues } = readScript(rows.join("\n"));
-    const checked = await checkScenario(bare, { scenes: [{ line: 1, setting: {}, items }], issues }, undefined, ["ann", "ben", "radio"]);
+    const checked = await checkScenario(bare, { scenes: [{ line: 1, setting: {}, items }], issues }, undefined, ["ann", "ben", "radio"], TIMING);
     return "issues" in checked ? checked.issues.length : 0;
   };
   assert.equal(await refused("ann say @ b.end: One.", "[b] ben say: Two."), 1);
@@ -93,21 +132,26 @@ test("what the tool's part says is refused, is refused", async () => {
   assert.equal(await refused("in order:", "  under:", "    [a] ann say: One.", "  ben say @ a.end: Two."), 1);
   assert.equal(await refused("in order:", "  under:", "    ann say: One.", "  ben say: Two.", "  ann say: Three."), 1);
   assert.equal(await refused("ann say: One.", "under:", "  ben say: Two."), 1);
+  assert.equal(await refused("in order beat=2s:", "  ann say: One."), 1, "a value that nothing reads");
+  assert.equal(await refused("in order one=two two=one:", "  ann go to=pond takes=one"), 1);
+  assert.equal(await refused("ann go to=pond takes=2s speed=2"), 1);
+  assert.equal(await refused("[a] ann go to=pond", "ben go to=pond takes=a.length"), 1);
+  assert.equal(await refused("[a] in order:", "  ann say: One.", "ben go to=pond takes=a.length"), 1);
   // The forms its text names are read.
   assert.equal(await refused("[a] ann say: A mole by a mole.", "under @ a.50%:", "  radio say: One.", "ann say: Two.", "together @ prev.end - 1s:", "  ann say @ block.start + 0.5s: Three.", "  ben say @ a.word(mole by): Four."), 0);
+  assert.equal(await refused("[a] ann say: One.", "in order pause=5s - a.length:", "  ben say: Two.", "  ann say: Three."), 0);
 });
 
 test("the tool's part says what a script has: a line's form, say, blocks, joining, labels and anchors", () => {
-  for (const said of ["`script: |`", "`narrator`", "`say`", "`name=value`", "a colon and the words", "in order", "`#`", "`together:`", "`in order:`", "`under:`", "`&`", "`@`", "`prev`", "`block`", "`a.word(mole)`", "`- 0.5s`"]) {
+  for (const said of ["`script: |`", "`narrator`", "`say`", "`name=value`", "a colon and the words", "in order", "`#`", "`together:`", "`in order:`", "`under:`", "`&`", "`@`", "`prev`", "`block`", "`a.word(mole)`", "`- 0.5s`", "`values:`", "`50%`", "`pause`", "`lead`", "`tail`", "`takes=2s`", "`speed=0.5`", "`arrive=a.end - 0.5s`", "`a.length`", "`ann.speed`", "`go.speed`"]) {
     assert.ok(SCRIPT.includes(said), said);
   }
 });
 
-test("a plugin's guide: the tool's part, the plugin's, and each action described once with its example", () => {
-  const guide = guideOf({
-    guide: "\nA square slides to a side.\n",
-    actions: { slide: { description: "The square slides to a side.", example: "sq slide to=right" } },
-  });
+test("a plugin's guide: the tool's part, the plugin's, each action described once with its example, and its names for numbers", () => {
+  const square = { guide: "\nA square slides to a side.\n", actions: { slide: { description: "The square slides to a side.", example: "sq slide to=right" } } };
+  const guide = guideOf({ ...square, names: {} });
+  assert.match(guideOf({ ...square, names: { slow: 0.6, fast: 1.6 } }), /sq slide to=right`\n\nThese names stand for numbers in any value: `slow` is 0\.6 and `fast` is 1\.6\.\n$/);
   assert.match(guide, /^## A script\n\nA scene's `script` says what happens in it/);
   assert.match(guide, /\n## The format\n\nA square slides to a side\.\n\n## The actions\n\n/);
   assert.match(guide, /\n- \*\*say\*\*: The character says the words after the colon.* For example: `narrator say: Once upon a time\.`\n/);

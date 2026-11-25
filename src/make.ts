@@ -8,7 +8,7 @@ import path from "node:path";
 import { z } from "zod";
 import type { Described, Job, PlayCall, Reply } from "./host.ts";
 import type { EventLimits, Library, Plan } from "./plugin.ts";
-import type { Checked, WrittenScript } from "./scenario.ts";
+import type { Checked, Timing, WrittenScript } from "./scenario.ts";
 import { FORMATS, slug, type FormatName } from "./script.ts";
 
 /** The host runs in the project's folder, not the tool's, so every file is named in full. */
@@ -139,10 +139,10 @@ export interface PluginHost extends Described {
   check(file: string, source: unknown, library: Library | undefined): Promise<{ repaired: string[]; plan: Plan }>;
   /**
    * Checks a video written as a script (scenario.ts), writing nothing: the scenario worked out, or
-   * every mistake in it. `speakers` are the names with a voice. Throws when the plugin takes no
-   * script, or its library does not read.
+   * every mistake in it. `speakers` are the names with a voice, and `timing` the video's pauses.
+   * Throws when the plugin takes no script, or its library does not read.
    */
-  checkScript(file: string, script: WrittenScript, library: Library | undefined, speakers: string[]): Promise<Checked>;
+  checkScript(file: string, script: WrittenScript, library: Library | undefined, speakers: string[], timing: Timing): Promise<Checked>;
   /** Draws a compiled scenario's clip (compile.ts) from its file and the library, its progress logged; throws why it failed. */
   play(call: Omit<PlayCall, "step">, library: Library | undefined, log: (msg: string) => void): Promise<void>;
   /** Ends its process. */
@@ -173,8 +173,8 @@ export async function startPlugin(plugin: PluginFile, log: (msg: string) => void
       const done = await ask({ call: { step: "check" }, file, source, ...withLibrary(library) });
       return { repaired: done.repaired ?? [], plan: done.plan! };
     },
-    async checkScript(file, script, library, speakers) {
-      return (await ask({ call: { step: "script", script, speakers }, file, source: undefined, ...withLibrary(library) })).script!;
+    async checkScript(file, script, library, speakers, { lead, gap, tail }) {
+      return (await ask({ call: { step: "script", script, speakers, timing: { lead, gap, tail } }, file, source: undefined, ...withLibrary(library) })).script!;
     },
     async play(call, library, log) {
       log(`${scene}: ${shown(call.clip)}, drawn from ${path.basename(call.compiled)} (${call.format})`);

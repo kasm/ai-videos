@@ -256,6 +256,71 @@ test("a script's blocks are in the file as they are indented, under its own marg
   });
 });
 
+test("the values of a file and of a scene are formulas, each with its line; they are no key of the plugin's", async () => {
+  const text = [
+    "use: cartoon", // line 1
+    "timing: { gap: 0.2 }",
+    "values: { pause: 0.8s, walk.speed: slow, near: 150 }", // 3
+    "scenes:",
+    "  - background: meadow", // 5
+    "    values:",
+    "      near: near-by * 2 + 20", // 7
+    '      "pip.near": "1.50"',
+    "      share: 50%",
+    "    script: |",
+    "      pip say: Hi.", // 11
+    "  - script: |",
+    "      pip say: Ho.",
+    "",
+  ].join("\n");
+  const root = await project("with-values", {}, { "hello.yaml": text });
+  const video = await readVideoFile(path.join(root, "videos", "hello.yaml"));
+  const say = (line: number, words: string) => ({ line, who: "pip", action: "say", values: {}, text: words });
+  assert.deepEqual(video.script, {
+    values: { pause: { line: 3, text: "0.8s" }, "walk.speed": { line: 3, text: "slow" }, near: { line: 3, text: "150" } },
+    scenes: [
+      {
+        line: 5,
+        setting: { background: "meadow" },
+        values: { near: { line: 7, text: "near-by * 2 + 20" }, "pip.near": { line: 8, text: "1.50" }, share: { line: 9, text: "50%" } },
+        items: [say(11, "Hi.")],
+      },
+      { line: 12, setting: {}, items: [say(13, "Ho.")] },
+    ],
+    issues: [],
+  });
+  assert.equal(video.settings.timing.gap, 0.2, "a setting is the tool's still");
+});
+
+test("values that do not read, and a key on top of a script that nothing reads, are refused with their lines", () => {
+  const scene = ["scenes:", "  - script: |", "      pip say: Hi."];
+  const refused = (...rows: string[]) => writtenScript([...rows, ...scene, ""].join("\n"))!.issues.map(({ line, message }) => [line, message]);
+  assert.deepEqual(refused("values:", "  pause: 2 *", "  near: 150px", "  on: true", "  none:", "  list: [1, 2]", "  walk: { speed: slow, takes: 2s }"), [
+    [2, 'pause=2 *: something is missing after "*"'],
+    [3, 'near=150px: "150px" has no unit that is known'],
+    [4, "on has no value"],
+    [5, "none has no value"],
+    [6, "list has no value"],
+    [7, "walk has values of its own"],
+  ]);
+  assert.equal(writtenScript(["values:", "  walk: { speed: slow, takes: 2s }", ...scene, ""].join("\n"))!.issues[0]!.hint, "write each on a row: walk.speed: slow, walk.takes: 2s");
+  // A comma ends a value in braces: what is left of it is none.
+  assert.deepEqual(refused("values: { meet: midpoint(door, tree) }"), [
+    [1, 'meet=midpoint(door: "(" comes after what is a value already'],
+    [1, "tree) has no value"],
+  ]);
+  assert.deepEqual(refused("values: 0.5s"), [[1, "these values are not a mapping"]]);
+  assert.deepEqual(writtenScript(["use: cartoon", "valuse: { pause: 1s }", "outputs: { web: true }", ...scene, ""].join("\n"))!.issues, [
+    {
+      line: 2,
+      message: 'nothing reads "valuse"',
+      hint: "on top of a script are use, voice, cast, speed, fps, loudness, timing, quality, outputs, values and scenes: did you mean values?",
+    },
+  ]);
+  const [inScene] = writtenScript(["scenes:", "  - values: { pause: 1 s }", "    script: |", "      pip say: Hi.", ""].join("\n"))!.issues;
+  assert.deepEqual([inScene!.line, inScene!.message], [2, 'pause=1 s: "s" comes after what is a value already']);
+});
+
 test("a script is a block of lines, one in every scene", () => {
   const block = "write its lines under script: |, one under another";
   const script = writtenScript('scenes:\n  - script: "pip say: Hi."\n  - background: night\n  - script: |\n      # nothing yet\n  - night\n  - script: >\n      pip say: Hi.\n');

@@ -115,6 +115,7 @@ A cartoon is drawn on one stage, 1920 by 1080 pixels, with characters made of fl
 \`\`\`yaml
 use: cartoon
 cast: { radio: am_michael }                # a voice nobody is drawn for: a radio, a crowd, someone off stage
+values: { beat: 0.4s, pause: beat }        # what holds for the whole cartoon
 scenes:
   - background: morning                    # a background of the library
     places: { pip: off-left, mo: right }   # the mark each character of the scene stands on as it begins
@@ -126,13 +127,14 @@ scenes:
       mo say @ hello.word(news): What news?
       together:
         radio say: And now the news. The pond is frozen, and it will stay so all week.
-        in order:
+        in order pause=beat / 2:
           pip say: There it is!
           mo say: Hush, I want to hear.
       mo say: We can skate!
   - background: night                      # a new scene: everyone placed anew
     places: { pip: middle, mo: right }
     faces: { mo: left }
+    values: { beat: 0.6s }                 # the evening is slower: the pauses are its beat
     script: |
       in order:
         under:
@@ -141,17 +143,18 @@ scenes:
         narrator say: By night, Mo counts the stars.
         pip say: Good night, Mo.
       together:
-        pip walk to=off-right
+        pip walk to=off-right speed=slow
         narrator say: And Pip goes home.
 \`\`\`
 
 ### Scenes and marks
 
-- A scene is one stretch of the story in one place. It names the background it begins with, the mark each of its characters stands on as it begins (places), who faces left (faces), and its script. A new scene begins anew: everyone on its own mark, facing as the scene says.
+- A scene is one stretch of the story in one place. It names the background it begins with, the mark each of its characters stands on as it begins (places), who faces left (faces), and its script; it may have values. A new scene begins anew: everyone on its own mark, facing as the scene says.
 - The marks are where characters stand: left, middle and right on the stage, one character each, and off-left and off-right out of sight, where any number wait. Two characters never stand on one mark of the stage, as a scene begins or after a walk.
 - Everyone faces right, as drawn, unless the scene's faces says left. A walk turns nobody: a character walks the way it faces, so who walks left begins the scene facing left. Two who talk face each other.
 - A character the scene does not place may speak too: it is a voice off stage. So may a name the file's cast gives a voice: cast: { radio: am_michael }, on top, beside use. Nobody else is drawn for it.
 - A walk is over before the next row, unless it is joined to words or together with them: then it lasts as long as they do, within reason. Join a walk to the line that tells of it.
+- Leave a walk's speed and time out, unless the story has somebody hurry or dawdle: a walk that is given one keeps it, and the next row waits. Set pip.speed on a scene for somebody who is slow all through it, or walk.speed for everybody.
 
 ### Lines
 

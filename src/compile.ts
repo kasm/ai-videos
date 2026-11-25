@@ -5,6 +5,7 @@
 //
 // It needs none of the tool's packages: plugin.ts gives it to the plugins' tests.
 import { LINGER, captionsOf } from "./captions.ts";
+import { secondsOf, type Span } from "./formula.ts";
 import { planOf, type Lasting } from "./plan.ts";
 import { linesIn, type CheckedLine, type CheckedScene, type Plain } from "./scenario.ts";
 import { times, type Item } from "./times.ts";
@@ -20,17 +21,11 @@ export interface Voiced {
   mouth: number[];
 }
 
-/** What a scenario is compiled by: the video's frame rate, its loudness, and its pauses, seconds (script.ts, settings). */
+/** What a scenario is compiled by: the video's frame rate, its loudness, and its limits on a fitted action (script.ts, settings). */
 export interface CompileSettings {
   fps: number;
   /** How loud the video's sound is, LUFS. */
   loudness: number;
-  /** Before a scene's first line. */
-  lead: number;
-  /** Between a line's end and the next line. */
-  gap: number;
-  /** After a scene's last line. */
-  tail: number;
   /** How slow and how fast a fitted action may be, as multiples of its own speed. */
   moves: { slowest: number; fastest: number };
 }
@@ -114,22 +109,32 @@ function caption(lines: CompiledLine[], lasts: (line: CompiledLine) => number, e
 
 /**
  * Lays a checked scenario on the video's frames, by the laws of what happens at once (times.ts).
- * `voices` are its said lines' voices, in the order written. A voice lasts the frames it sounds in,
- * an action its own length to the nearest frame, or what it is fitted to takes, within the video's
- * `moves`: each at least one. What is under the rest stops where its block does. `from` names the
- * video file, for the compiled scenario to say what it is made from.
+ * `voices` are its said lines' voices, in the order written. A voice lasts the frames it sounds in. An
+ * action given its length lasts that to the nearest frame, worked out from the lengths of lines above
+ * where it reads them; any other its own, or what it is fitted to or arrives at takes, within the
+ * video's `moves`. Each lasts at least one frame. What is under the rest stops where its block does.
+ * `from` names the video file, for the compiled scenario to say what it is made from.
  */
 export function compile(scenes: CheckedScene[], voices: Voiced[], settings: CompileSettings, from: string): Compiled {
   const { fps, loudness, moves } = settings;
   const said = scenes.flatMap((scene) => linesIn(scene.items)).filter((line) => "text" in line);
   if (said.length !== voices.length) throw new Error(`the scenario says ${said.length} lines, and ${voices.length} voices were measured`);
   const voiceOf = new Map<CheckedLine, Voiced>(said.map((line, i) => [line, voices[i]!]));
+  /** The frames of each line that is said or is given its length, by its line in the file: those above it are there before it. */
+  const given = new Map<number, number>();
+  const frames = (seconds: Span) => Math.round(secondsOf(seconds, (line) => given.get(line)! / fps) * fps);
+  for (const line of scenes.flatMap((scene) => linesIn(scene.items))) {
+    if ("text" in line) given.set(line.line, Math.max(1, Math.ceil(voiceOf.get(line)!.duration * fps - EPS)));
+    else if (line.takes !== undefined) given.set(line.line, Math.max(1, frames(line.takes)));
+  }
   const lasting = (line: CheckedLine): Lasting => {
-    if ("text" in line) return { kind: "voice", length: Math.max(1, Math.ceil(voiceOf.get(line)!.duration * fps - EPS)) };
+    const length = given.get(line.line);
+    if ("text" in line) return { kind: "voice", length: length! };
+    if (length !== undefined) return { kind: "move", length };
     const own = Math.max(1, Math.round(line.length * fps));
-    return { kind: "move", length: { own, least: Math.ceil(own / moves.fastest - EPS), most: Math.floor(own / moves.slowest + EPS) } };
+    return { kind: "move", length: { own, least: Math.ceil(own / moves.fastest - EPS), most: Math.floor(own / moves.slowest + EPS) }, arrive: line.arrive };
   };
-  const { video, scenes: planned, items } = planOf(scenes, settings, lasting);
+  const { video, scenes: planned, items } = planOf(scenes, frames, lasting);
   const placed = times(video);
   const spanOf = (item: Item) => {
     const { start, end } = placed.get(item)!;

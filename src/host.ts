@@ -16,15 +16,17 @@ import type { Compiled } from "./compile.ts";
 import type { Call } from "./make.ts";
 import type { DrawingPlugin, EventLimits as Limits, Library, Plan, Plugin, RecordingPlugin, Schema } from "./plugin.ts";
 import { SAY, isBlock, readScript } from "./read.ts";
-import { checkScenario, type Checked, type ScriptPlugin, type WrittenScript } from "./scenario.ts";
+import { checkScenario, type Checked, type ScriptPlugin, type Timing, type WrittenScript } from "./scenario.ts";
 import { EventLimits, FORMATS, slug } from "./script.ts";
 import { pictureOf, shownAt } from "./shown.ts";
+import { OWN, plainValues, valuesTaken } from "./values.ts";
 
-/** The check of a video written as a script (scenario.ts): its scenes as written, and the names with a voice. */
+/** The check of a video written as a script (scenario.ts): its scenes as written, the names with a voice, and the video's pauses. */
 export interface ScriptCall {
   step: "script";
   script: WrittenScript;
   speakers: string[];
+  timing: Timing;
 }
 
 /** The drawing of a video written as a script: its compiled scenario, and the clip to draw from it. */
@@ -58,8 +60,8 @@ export interface Described {
   guide: string;
   /** Each command's description and example (its schema stays in the plugin's process). */
   commands: Record<string, { description: string; example: unknown }>;
-  /** Its part of a script, when its videos may be written as one: its guide, and each action's description and example. */
-  script?: { guide: string; actions: Record<string, { description: string; example: string }> };
+  /** Its part of a script, when its videos may be written as one: its guide, each action's description and example, and its names for numbers. */
+  script?: { guide: string; actions: Record<string, { description: string; example: string }>; names: Record<string, number> };
 }
 
 /** What a job did: the drawing's frames, what was mended, and for the plan its limits and the files it is made from. */
@@ -120,6 +122,7 @@ const PluginShape = z
             values: z.custom<Schema>(isSchema, "give a schema with ~standard.validate and ~standard.jsonSchema (as zod 4's have)"),
           }),
         ),
+        names: z.record(slug, z.number()).optional(),
         guide: z.string().trim().min(1, "give the plugin's part of the guide to a script (plugin.ts, script)"),
         check: fn,
         draw: fn,
@@ -195,8 +198,15 @@ export async function loadPlugin(file: string): Promise<Plugin> {
     let why = read.issues[0] && `  ${read.issues[0].message}`;
     const own = line && !isBlock(line) && read.items.length === 1 && line.action === name && !line.text && !line.label && !line.anchor ? line : undefined;
     if (!why && !own) why = `  it is one line of a script that names ${name}, with no words after a colon`;
-    why ??= issuesText((await values["~standard"].validate(own!.values)).issues ?? []);
+    why ??= issuesText((await values["~standard"].validate(plainValues(own!.values))).issues ?? []);
     if (why) throw new Error(`${file}: the action "${name}" fails its own example, ${example}:\n${why}`);
+  }
+  // The tool's own values mean what they mean for every action, and a name for a number is no action's value.
+  const taken = Object.entries(valuesTaken(plugin.script?.actions ?? {})).flatMap(([name, values]) => Object.keys(values).map((value) => [name, value] as const));
+  for (const [name, value] of taken) if (OWN.includes(value)) throw new Error(`${file}: the action "${name}" takes a value called ${value}, which is the tool's own for every action`);
+  for (const name of Object.keys(plugin.script?.names ?? {})) {
+    const of = OWN.includes(name) ? "the tool's" : taken.find(([, value]) => value === name)?.[0];
+    if (of) throw new Error(`${file}: "${name}" is a value of ${of === "the tool's" ? of : `${of}'s`}, and no name for a number`);
   }
   return plugin;
 }
@@ -345,7 +355,7 @@ export async function runJob(plugin: Plugin, pluginFile: string, job: Job): Prom
   const { call, file } = job;
   if (call.step === "script") {
     if (!plugin.script) throw new Error(`${file} is written as a script, and the ${plugin.scene} plugin takes none: it has no script (AGENTS.md, "A script")`);
-    return { script: await checkScenario(plugin.script, call.script, job.library, call.speakers) };
+    return { script: await checkScenario(plugin.script, call.script, job.library, call.speakers, call.timing) };
   }
   if (call.step !== "check") fills(plugin, call.format, call.step === "draw" ? call : FORMATS[call.format]);
   const repaired = plugin.repair?.(job.source, job.library) ?? { source: job.source, did: [] };
@@ -402,6 +412,7 @@ if (import.meta.main) {
     const script = plugin.script && {
       guide: plugin.script.guide,
       actions: Object.fromEntries(Object.entries(plugin.script.actions).map(([name, { description, example }]) => [name, { description, example }])),
+      names: plugin.script.names ?? {},
     };
     await send({ ready: { scene: plugin.scene, stage: plugin.stage, picture: plugin.camera ? "recorded" : "drawn", guide: plugin.guide, commands, ...(script ? { script } : {}) } });
   } catch (e) {

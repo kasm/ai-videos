@@ -17,7 +17,9 @@ export { moments } from "./moments.ts";
 export { listed, nearest } from "./names.ts";
 export { SAY, isBlock, readScript } from "./read.ts";
 export { NARRATOR, checkScenario, linesIn } from "./scenario.ts";
-export type { Action, ActionLine, Anchor, Checked, CheckedLine, CheckedScene, Issue, Plain, SceneActions, SceneChecked, ScriptBlock, ScriptItem, ScriptLine, ScriptPlugin, WrittenScene, WrittenScript } from "./scenario.ts";
+export type { Action, ActionLine, Anchor, Checked, CheckedLine, CheckedScene, Default, Issue, Plain, SceneActions, SceneChecked, ScriptBlock, ScriptItem, ScriptLine, ScriptPlugin, Timing, WrittenAnchor, WrittenScene, WrittenScript, WrittenValue } from "./scenario.ts";
+export type { Span } from "./formula.ts";
+export { plainValues } from "./values.ts";
 export { compile } from "./compile.ts";
 export type { Compiled, CompiledCaption, CompiledLine, CompiledScene, CompileSettings, Said, Voiced } from "./compile.ts";
 /** What each frame of a compiled scenario shows, as the host gives it to a plugin's `script.draw`: for a plugin's tests. */

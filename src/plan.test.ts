@@ -3,38 +3,49 @@
 // laws themselves are tried in times.test.ts.
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { secondsOf, type Span } from "./formula.ts";
 import { planOf, timeIssues, type Lasting } from "./plan.ts";
 import { readScript } from "./read.ts";
-import { linesIn, type ScriptItem, type ScriptLine, type WrittenScene } from "./scenario.ts";
+import { linesIn, type ScriptItem } from "./scenario.ts";
 import { times } from "./times.ts";
+import { workOut, type WorkedLine, type WorkedScene } from "./values.ts";
 
-/** Ten frames a second: half a second before a scene's first line, 0.3 s between lines, a second after its last. */
-const PAUSES = { fps: 10, lead: 0.5, gap: 0.3, tail: 1 };
+/** Half a second before a scene's first line, 0.3 s between lines, a second after its last; an action's value is `to`. */
+const GIVEN = { actions: { slide: { to: {} } }, names: {}, speakers: ["sq", "mo", "tri", "radio"], timing: { lead: 0.5, gap: 0.3, tail: 1 } };
 
-/** Scenes of these rows, the first row of the first on line 1. */
-function scenes(...scripts: string[][]): WrittenScene[] {
+/** Scenes of these rows, their values worked out, the first row of the first on line 1. */
+function scenes(...scripts: string[][]): WorkedScene[] {
   let first = 1;
-  return scripts.map((rows) => {
+  const written = scripts.map((rows) => {
     const { items, issues } = readScript(rows.join("\n"), first);
     assert.deepEqual(issues, []);
     const scene = { line: first, setting: {}, items };
     first += rows.length;
     return scene;
   });
+  const worked = workOut({ scenes: written, issues: [] }, GIVEN);
+  assert.deepEqual(worked.issues, []);
+  return worked.scenes;
 }
 
-/** A voice lasts a frame a letter, and an action 20 frames at its own speed, from 10 to 40. */
-const lasting = ({ text }: ScriptLine): Lasting => (text === undefined ? { kind: "move", length: { own: 20, least: 10, most: 40 } } : { kind: "voice", length: text.length });
+/** Ten frames a second. */
+const frames = (seconds: Span) => Math.round(secondsOf(seconds, () => 0) * 10);
+/** A voice lasts a frame a letter, and an action 20 frames at its own speed, from 10 to 40, unless it is given its length. */
+const lasting = ({ text, lasts }: WorkedLine): Lasting => {
+  if (text !== undefined) return { kind: "voice", length: text.length };
+  if (lasts && "takes" in lasts) return { kind: "move", length: frames(lasts.takes) };
+  return { kind: "move", length: { own: 20, least: 10, most: 40 }, arrive: lasts && "arrive" in lasts ? lasts.arrive : undefined };
+};
 
 /** When each line of the scenes happens, by its line: the frame it begins on, and the one it has stopped by. */
 function when(...scripts: string[][]) {
   const written = scenes(...scripts);
   assert.deepEqual(timeIssues(written), []);
-  const { video, items } = planOf(written, PAUSES, lasting);
+  const { video, items } = planOf(written, frames, lasting);
   const placed = times(video);
   return Object.fromEntries(
     written.flatMap((scene) => linesIn(scene.items)).map((line) => {
-      const { start, end } = placed.get(items.get(line as ScriptItem)!)!;
+      const { start, end } = placed.get(items.get(line as ScriptItem<WorkedLine>)!)!;
       return [line.line, [start, end]];
     }),
   );
@@ -139,6 +150,7 @@ test("refused: an anchor that names something below it, in another scene, or not
     [1, "there is no prev: it is the first of its block", "begin it by the block it is in (@ block.start + 1s), or by a label above"],
     [3, "there is no prev: it is the first of its block", "begin it by the block it is in (@ block.start + 1s), or by a label above"],
   ]);
+  assert.deepEqual(why(["[a] sq say @ a.50%: One.", "& mo say: Two."]), [[1, [], '"a" is its own label']]);
   assert.deepEqual(refused(["[a] sq say: One.", "mo say @ prv.end: Two."])[0]!.hint, "labelled above: a; prev is the line just above, and block the block it is in: did you mean prev?");
   assert.deepEqual(why(["[a] sq say: One.", "mo say: Two.", "[a] sq say: Three."]), [[3, [1], "a is the label of line 1 already"]]);
 });
@@ -166,7 +178,11 @@ test("refused: a loop, with everything in it", () => {
   // Of three, with no anchor: the first walk is fitted to the words, they wait for the second walk, and that for the first.
   assert.deepEqual(loops("together:", "  mo slide to=left", "  in order:", "    mo slide to=right", "    mo say: There."), [[2, [4, 5], "it goes round: line 2 waits for line 5, line 5 waits for line 4 and line 4 waits for line 2"]]);
   assert.deepEqual(loops("[w] sq slide to=left", "& narrator say: It goes.", "& sq say @ w.end: Here."), [[3, [1], "it goes round: line 1 waits for line 3 and line 3 waits for line 1"]]);
-  assert.match(refused(["sq say: One.", "mo say @ block.end: Two."])[0]!.hint, /begin it by the start, a share or a word of something above, or write it after the block/);
+  const hint = "begin it by the start, a share or a word of something above, or write it after the block";
+  assert.equal(refused(["sq say: One.", "mo say @ block.end: Two."])[0]!.hint, hint);
+  assert.equal(refused(["[w] sq slide to=left", "& narrator say: It goes.", "& sq say @ w.end: Here."])[0]!.hint, `${hint}, or give the action its length (takes=2s)`);
+  // With its length given, the action waits for no words, and they may wait for it.
+  assert.deepEqual(when(["[w] sq slide to=left takes=1s", "& narrator say: It goes.", "& sq say @ w.end: Here."]), { 1: [5, 15], 2: [5, 13], 3: [15, 20] });
 });
 
 test("refused: a voice that follows a cut one in its block, and an action that would be cut", () => {

@@ -12,6 +12,7 @@ import { run } from "./render.ts";
 import { linesIn, type CheckedLine, type ScriptItem } from "./scenario.ts";
 import { compiledVoices, mix, writeSound } from "./sound.ts";
 import { encodeWav, readWav } from "./tts.ts";
+import { workOut, type WorkedLine } from "./values.ts";
 
 const scratch = await mkdtemp(path.join(os.tmpdir(), "ai-videos-sound-"));
 after(() => rm(scratch, { recursive: true, force: true }));
@@ -91,7 +92,8 @@ test("each voice of a script is in the sound at its compiled time, and what is c
   const { items, issues } = readScript(script.join("\n"));
   assert.deepEqual(issues, []);
   // As the check gives it: a said line without its values.
-  const checked = (item: ScriptItem): ScriptItem<CheckedLine> => ("items" in item ? { ...item, items: item.items.map(checked) } : { ...item, text: item.text! });
+  const { scenes: worked } = workOut({ scenes: [{ line: 1, setting: {}, items }], issues: [] }, { actions: {}, names: {}, speakers: ["ann", "ben", "cat", "dan", "radio"], timing: { lead: 0.6, gap: 0.4, tail: 1 } });
+  const checked = (item: ScriptItem<WorkedLine>): ScriptItem<CheckedLine> => ("items" in item ? { ...item, items: item.items.map(checked) } : { ...item, text: item.text! });
   const lines = linesIn(items);
   const lengths: Record<number, number> = { 2: 1, 3: 1.4, 4: 2.4, 5: 1.5, 8: 1.8, 9: 5, 10: 1, 11: 0.8, 12: 0.9, 14: 5, 16: 0.7, 17: 0.9, 18: 0.6 };
   /** Every line its own tone, so that each is found in the mix by itself: 300 Hz, and 150 more for each after it. */
@@ -104,8 +106,8 @@ test("each voice of a script is in the sound at its compiled time, and what is c
       return { file, duration: lengths[line]!, mouth: mouthTrack({ samples, sampleRate: 24000 }, 0, 30).open };
     }),
   );
-  const settings = { fps: 30, loudness: -20, lead: 0.6, gap: 0.4, tail: 1, moves: { slowest: 0.5, fastest: 2 } };
-  const compiled = compile([{ line: 1, setting: {}, items: items.map(checked) }], voices, settings, "x.yaml");
+  const settings = { fps: 30, loudness: -20, moves: { slowest: 0.5, fastest: 2 } };
+  const compiled = compile(worked.map((scene) => ({ ...scene, setting: {}, items: scene.items.map(checked) })), voices, settings, "x.yaml");
   const said = saidLines(compiled.scenes);
   assert.equal(said.length, lines.length);
   // The laws' times: seconds. The murmur's second line has 5 s, and 1.3 of them before the cut.

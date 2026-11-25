@@ -10,10 +10,12 @@ import path from "node:path";
 import { LineCounter, isMap, isScalar, isSeq, parse, parseDocument } from "yaml";
 import { z } from "zod";
 import type { ClipJson } from "./clip.ts";
+import { Wrong, readFormula } from "./formula.ts";
 import { pluginOf, type PluginFile } from "./make.ts";
+import { listed, nearest } from "./names.ts";
 import type { Library } from "./plugin.ts";
 import { readScript } from "./read.ts";
-import type { Issue, WrittenScene, WrittenScript } from "./scenario.ts";
+import type { Issue, WrittenScene, WrittenScript, WrittenValue } from "./scenario.ts";
 import { FORMATS, overlay, settings, slug, Speaker, type EventLimitsScript, type FormatName, type VideoScript } from "./script.ts";
 
 /** The project's library, beside its package.json. */
@@ -194,11 +196,39 @@ export async function readVideoFile(file: string, profile?: string): Promise<Vid
   return { ...videoFileOf(await readProject(plugin), file, raw, profile), text, ...(script ? { script } : {}) };
 }
 
+/** The values of a file or a scene (`values:`), each a formula with its line in the file. */
+function writtenValues(node: unknown, lineOf: (node: unknown) => number): { values: Record<string, WrittenValue>; issues: Issue[] } {
+  const values: Record<string, WrittenValue> = {};
+  const issues: Issue[] = [];
+  const form = "a value is written by its name: values: { pause: 0.3s, walk.speed: slow }";
+  if (!isMap(node)) return { values, issues: [{ line: lineOf(node), message: "these values are not a mapping", hint: form }] };
+  for (const { key, value } of node.items) {
+    const line = lineOf(key);
+    const name = String(isScalar(key) ? key.value : key);
+    const issue = (message: string, hint: string) => void issues.push({ line, message, hint });
+    if (isMap(value)) issue(`${name} has values of its own`, `write each on a row: ${value.items.map((inner) => `${name}.${inner.key}: ${inner.value}`).join(", ")}`);
+    else if (!isScalar(value) || value.value === null || typeof value.value === "boolean") issue(`${name} has no value`, `${form}; one with a comma in it goes on a row of its own`);
+    else {
+      // A number as it is written, and not as YAML has it.
+      const text = typeof value.value === "number" ? (value.source ?? String(value.value)) : String(value.value);
+      try {
+        readFormula(text);
+        values[name] = { line, text: text.trim() };
+      } catch (e) {
+        if (!(e instanceof Wrong)) throw e;
+        issue(`${name}=${text}: ${e.message}`, e.hint);
+      }
+    }
+  }
+  return { values, issues };
+}
+
 /**
  * A video file's scenes and their lines, when it is written as a script (AGENTS.md, "A script"):
- * `scenes:` is a list, and one of them has a `script:`. Each scene is its own keys but `script`,
- * and its script's lines and blocks, each with its line in the file. A script is a block of lines
- * (`script: |`), so that a line of it is a line of the file. Undefined for any other file.
+ * `scenes:` is a list, and one of them has a `script:`. Each scene is its own keys but `script` and
+ * `values`, and its script's lines and blocks, each with its line in the file. A script is a block of
+ * lines (`script: |`), so that a line of it is a line of the file. Beside its scenes the file has the
+ * tool's keys and its own `values`, and no other. Undefined for any other file.
  */
 export function writtenScript(text: string): WrittenScript | undefined {
   const lineCounter = new LineCounter();
@@ -208,6 +238,21 @@ export function writtenScript(text: string): WrittenScript | undefined {
   const lineOf = (node: unknown) => lineCounter.linePos((node as { range: [number, number, number] }).range[0]).line;
   const scenes: WrittenScene[] = [];
   const issues: Issue[] = [];
+  const valuesOf = (node: unknown) => {
+    if (node === undefined) return {};
+    const read = writtenValues(node, lineOf);
+    issues.push(...read.issues);
+    return { values: read.values };
+  };
+  const top = document.contents as { items: { key: unknown }[] };
+  const keys = [...TOOL_KEYS, "values", "scenes"];
+  for (const { key } of top.items) {
+    const name = String(key);
+    if (keys.includes(name)) continue;
+    const near = nearest(name, keys);
+    issues.push({ line: lineOf(key), message: `nothing reads "${name}"`, hint: `on top of a script are ${listed(keys)}${near ? `: did you mean ${near}?` : ""}` });
+  }
+  const own = valuesOf(document.get("values", true));
   for (const item of list.items) {
     const line = lineOf(item);
     const block = "write its lines under script: |, one under another";
@@ -215,7 +260,8 @@ export function writtenScript(text: string): WrittenScript | undefined {
       issues.push({ line, message: "this scene is not a mapping", hint: `a scene has its own keys and its script: ${block}` });
       continue;
     }
-    const { script: _script, ...setting } = item.toJS(document) as Record<string, unknown>;
+    const { script: _script, values: _values, ...setting } = item.toJS(document) as Record<string, unknown>;
+    const values = valuesOf(item.get("values", true));
     const script = item.get("script", true);
     let items: WrittenScene["items"] = [];
     if (script === undefined) issues.push({ line, message: "this scene has no script", hint: block });
@@ -228,9 +274,9 @@ export function writtenScript(text: string): WrittenScript | undefined {
       issues.push(...read.issues);
       if (read.items.length === 0 && read.issues.length === 0) issues.push({ line: lineOf(script), message: "this script has no line", hint: block });
     }
-    scenes.push({ line, setting, items });
+    scenes.push({ line, setting, ...values, items });
   }
-  return { scenes, issues };
+  return { ...own, scenes, issues };
 }
 
 /**

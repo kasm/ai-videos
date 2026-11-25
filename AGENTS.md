@@ -42,7 +42,7 @@ the voice model always stay in this tool.
 | Path | What it is |
 | --- | --- |
 | `scenes/clip/scene.html` | The scene template (a HyperFrames sub-composition with `{{placeholders}}`): the plugin's clip, muted, with the captions over it. |
-| `src/` | The pipeline: `video-file` (the file, its settings in layers, and the `script` the pipeline reads) → the plugin in its process (`plugin`, `make`, `host`): its plan → `tts` → `timeline` (and `fit` with `mouth`) → `sound` → the drawing (`moments`, `frames`, `clip`) → `compose` (with `bundle` and `captions`) → `render`; `page`, the web page; `stages` and `lock`, a make's cache and its lock (see The cache); `setup`, what the commands need on the disk; `prompt` and `import`, a story's prompt for a web chat and its reply taken in, and `story`, the two by the clipboard and the episodes made (see prompt, import, story); `read`, `scenario` with `names`, `plan` with `times` and `words`, `compile`, `shown` and `guide`, a video written as a script: its lines and blocks read and checked, when each begins and ends, compiled, what each frame of it shows, and how it is taught (see A script, What happens at once). |
+| `src/` | The pipeline: `video-file` (the file, its settings in layers, and the `script` the pipeline reads) → the plugin in its process (`plugin`, `make`, `host`): its plan → `tts` → `timeline` (and `fit` with `mouth`) → `sound` → the drawing (`moments`, `frames`, `clip`) → `compose` (with `bundle` and `captions`) → `render`; `page`, the web page; `stages` and `lock`, a make's cache and its lock (see The cache); `setup`, what the commands need on the disk; `prompt` and `import`, a story's prompt for a web chat and its reply taken in, and `story`, the two by the clipboard and the episodes made (see prompt, import, story); `read`, `scenario` with `names` and `labels`, `values` with `formula`, `plan` with `times` and `words`, `compile`, `shown` and `guide`, a video written as a script: its lines and blocks read and checked, what its values come to, when each begins and ends, compiled, what each frame of it shows, and how it is taught (see A script, Values, What happens at once). |
 | `cartoons/` | A project of the tool's, in this repo: the cartoon plugin (`cartoons/src/plugin.ts`), its library, videos and stories, and its notes, `cartoons/CLAUDE.md`. Its `episode` skill is the repo's, `.claude/skills/episode/`. |
 | `out/voice-samples/` | What `voices` writes. |
 | `.cache/tts/` | Narration audio, keyed by text, voice and speed. |
@@ -113,13 +113,16 @@ A project's plugin draws its videos: a module the tool runs in a child process o
     - `actions`: what a line may do besides the tool's `say`, by name, each described once: a
       `description`, an `example` (one line of a script that names it: `pip walk to=middle`) and
       `values`, a schema of the values a line gives it. An example that is no such line, or fails
-      its schema, is refused when the plugin loads.
+      its schema, is refused when the plugin loads. A value its JSON Schema names may be set on any
+      level (see Values); one with a name of the tool's own is refused.
+    - `names`, optional: its names for numbers (`slow: 0.6`), which any value may use. One that is a
+      value's name is refused.
     - `guide`: its part of the guide to writing a script, in Markdown: what its videos can show, a
       scene's own keys, and a whole video file as an example.
     - `check(scenes, library)`: the script checked against the library, and worked out. It gets
       each scene's line in the file, its own keys as written, and its lines that name one of the
-      plugin's actions, in order, each with its line and its values as the action's schema gave
-      them. It gives each scene's `setting` (how it begins) and each action's `values` and own
+      plugin's actions, in order, each with its line and its values, worked out, as the action's
+      schema gave them. It gives each scene's `setting` (how it begins) and each action's `values` and own
       `length`, seconds, all in plain numbers: numbers and names, in lists and tables. Or it gives
       `issues`, each `{ line, message, hint }`.
     - `draw(library)`: its picture. It gives a function, `(shown, size)` to SVG, that draws what a
@@ -205,13 +208,15 @@ scenes:
 
 - **A file is a script** when `scenes:` is a list and one of its scenes has a `script:`. Then every
   scene has one, written as a block (`script: |`), so that a line of the script is a line of the
-  file (`writtenScript`, `src/video-file.ts`).
+  file (`writtenScript`, `src/video-file.ts`). Beside its scenes it has the tool's keys and `values:`
+  (see Values), and any other key is refused: nothing reads it.
 - **A line** is `who action name=value ... @ moment: text` (`readScript`, `src/read.ts`): who does
-  it, the action, its values, each a number or a name, its anchor, and after the first colon its
+  it, the action, its values, each a formula (see Values), its anchor, and after the first colon its
   text, as written to the end of the line. Names are lowercase letters, digits and dashes. An empty
   row, or one that begins with `#`, is passed over. Lines happen in order, if nothing says otherwise.
 - **A block** is a header on a row of its own, and the rows indented under it, all by the same
-  spaces; they may be blocks too. It is `in order:`, `together:`, or `under:`, which is in order and
+  spaces; they may be blocks too. Values set on it go before its anchor and its colon:
+  `in order pause=0.2s @ a.50%:`. It is `in order:`, `together:`, or `under:`, which is in order and
   cut (What happens at once): it goes on under the rest of the block it is in, and stops where that
   ends. What is waited for needs no word: a radio in a `together:` holds up what comes after it.
 - **`&`** before a row joins it to the one above it, a line or a block: the two are a block together
@@ -222,7 +227,7 @@ scenes:
   written in: joined rows have no header, so they are no block here.
 - **An anchor**, an `@` and a moment, is the last thing before the colon, and begins a line or a block
   at that moment in place of its block's rule: `a.start`, `a.end`, `a.50%` or `a.word(mole)`, then
-  `+ 0.5s` or `- 0.5s`. A word is as the line says it, and one place of it: several in a row
+  seconds more or less, a formula: `+ 0.5s`, `- beat / 2`. A word is as the line says it, and one place of it: several in a row
   (`a.word(the mole)`) where one is said twice. When it is said is estimated from the text alone
   (`sharesOf`, `src/words.ts`): a letter weighs 1, a comma 4 and a sentence's end 6, which is off by
   0.08 s on average, and at most 0.21, where the cached voices make a pause.
@@ -231,8 +236,8 @@ scenes:
   other action is the plugin's (see Plugins, `script`).
 - **The check** (`checkScenario`) is the pass before the voices, and the only one that refuses:
   1. a row that does not read, an action nobody names, values the action's schema refuses, a `say`
-     with no words or by someone with no voice; and, when every row reads, what has no time
-     (`timeIssues`, `src/plan.ts`): an anchor to something below it, in another scene or not there, or
+     with no words or by someone with no voice; and, when every row reads, a value with no answer (see
+     Values), and what has no time (`timeIssues`, `src/plan.ts`): an anchor to something below it, in another scene or not there, or
      to a word that is not one place of its line; what the laws refuse (What happens at once); and an
      `under:` that would never be heard, last in a block in order with no anchor, or with nothing else
      in its block;
@@ -244,7 +249,7 @@ scenes:
   wrong, the other lines it is between, as written too, and a hint: the names there are, the nearest
   one, the action's example.
 - **`check <file>`** runs the check alone: it speaks and writes nothing, needs nothing from
-  `setup`, and exits with 1 when it refuses. A video file that is not a script it takes as
+  `setup`, says the defaults taken (see Values), and exits with 1 when it refuses. A video file that is not a script it takes as
   `import` takes an episode: mended, checked and planned by its plugin, every speaker with a voice
   the tool speaks in.
 - **`make <file>`** runs the check, speaks and measures each said line (the voice cache), and
@@ -253,10 +258,10 @@ scenes:
   back. The check and the compiling run every time, in a second or so, so the plugin always starts.
 - **The compiled scenario** (`compile`, `src/compile.ts`) has every line on whole frames of the
   video's `fps`: `from`, the frame of the video it begins on, and `frames`, how many it lasts.
-  They are laid by the laws of What happens at once, each scene in order, its `lead`, `pause` and
-  `tail` the video's `timing.lead`, `timing.gap` and `timing.tail`, and the `pause` in its blocks the
-  same. A voice lasts the frames it sounds in, and an action its own length (the plugin's), to the
-  nearest frame, or what it is fitted to takes, within `timing.moves`. A cut voice has the frames it
+  They are laid by the laws of What happens at once, each scene in order, with the `lead`, `pause` and
+  `tail` that Values gives it, and each block's `pause`. A voice lasts the frames it sounds in, and an
+  action the length it is given, its own (the plugin's) when it is given none, to the nearest frame, or
+  what it is fitted to takes, within `timing.moves`. A cut voice has the frames it
   sounds in, and so its mouth, its captions and the voice itself stop there; a line whose block ends
   before it begins is not there (`make` says so).
 - **A said line** holds all of itself: its `text`, its voice's `file`, its `mouth` (how open, a
@@ -264,7 +269,7 @@ scenes:
   its `captions`. One caption shows at a time, for now: the one begun last, and of two that begin on
   one frame the one written later. It stays up until the next one, a second after its words (a cut
   line's, to the cut), or the scene's end. `loudness` is the video's (see How loud).
-- **It holds plain values:** numbers, the lines' texts, file names (a voice's, in the tool's voice
+- **It holds plain values,** no name of a value and no formula: numbers, the lines' texts, file names (a voice's, in the tool's voice
   cache), and the names of the library and of actions. A mark is compiled to its point.
 
 ```json
@@ -299,14 +304,67 @@ scenes:
 - **The build** (see make) has the clip and the captions, each on its own frames, and no voices: the
   video's sound is the tool's one track (see How loud), silent when nobody speaks.
 - **The guide** to writing a script (`guideOf`, `src/guide.ts`) is the tool's part (a line's form,
-  `say`, blocks, joining, anchors, what is refused), the plugin's `script.guide`, and the actions,
-  each with its description and example. Each part's examples are compiled by a test. The prompt for
+  `say`, blocks, joining, anchors, values, what is refused), the plugin's `script.guide`, the actions,
+  each with its description and example, and the plugin's names for numbers. Each part's examples are compiled by a test. The prompt for
   a web chat does not teach scripts yet.
 
-`src/read.test.ts`, `src/scenario.test.ts`, `src/plan.test.ts`, `src/words.test.ts`,
+`src/read.test.ts`, `src/formula.test.ts`, `src/values.test.ts`, `src/scenario.test.ts`,
+`src/plan.test.ts`, `src/words.test.ts`,
 `src/compile.test.ts`, `src/shown.test.ts`, `src/guide.test.ts` and `src/check.test.ts` show each
 rule; `src/sound.test.ts` finds each voice of a script in its sound; `src/page.test.ts` draws the clip and the page from a compiled
 scenario and a library, with no video file, and finds their frames the same.
+
+### Values
+
+What a line, a block, a scene or the cartoon sets, by name (`workOut`, `src/values.ts`):
+
+```yaml
+values: { beat: 0.4s, pause: beat, walk.speed: slow }   # the cartoon
+scenes:
+  - background: meadow
+    values: { beat: 0.8s }                              # a scene
+    script: |
+      in order pause=beat / 4 pip.speed=fast:           # a block
+        [a] pip say: Good morning, everybody!
+        mo walk to=left takes=a.length / 2              # a line
+```
+
+The laws:
+
+1. **A value** is a number (`150`, `0.5s`, `50%`), a name, or a formula of these, with `+ - * /` and
+   parentheses (`src/formula.ts`). A name has dashes of its own, so a minus has a space on each side.
+   A time is in seconds: times add up, and are multiplied and divided by numbers. A name that nothing
+   sets is itself (`middle`, a mark).
+2. **Levels.** A line's own values, its block's, the block's around that, its scene's, the cartoon's;
+   above them the plugin's `names` and the video's `timing` (its `gap` is the `pause`). The nearest wins.
+3. **For whom.** `speed` is for everything, `walk.speed` for an action, `pip.speed` for a character. Of
+   one level, the character's goes over the action's, and both over everything's; a nearer level goes
+   over all three. A line's own has no dot.
+4. **A formula is inherited as it is written,** and worked out for each line that reads it, by what its
+   names are there. So above, the pauses of the scene are 0.8 s, as its `beat` is.
+5. **One formula.** How long an action lasts is given once: by the nearest of `takes`, `speed` and
+   `arrive`, whichever it is. Two equally near are refused. So are values that go round, with their
+   chain.
+6. **The tool's own** values:
+
+   | Name | Set on | What it is |
+   | --- | --- | --- |
+   | `pause` | the cartoon, a scene, a block | seconds between what is in order |
+   | `lead`, `tail` | the cartoon, a scene | seconds before a scene's first line, and after its last |
+   | `takes` | any level | an action's seconds |
+   | `speed` | any level | times the action's own speed (2 is twice as fast) |
+   | `arrive` | any level | the moment above that it ends at, as an anchor's, within `timing.moves` |
+
+   Given `takes` or `speed`, wherever they are set, an action keeps it and is fitted to nothing. A voice
+   takes none of them. Beside these, what an action takes (`to`) may be set on any level, and any name
+   of the writer's that a formula reads.
+7. **`a.length`** is how long a line above lasts: one that is said, or an action given `takes` or
+   `speed`. How long a fitted action lasts, or a block, is known only once everything has its place, and
+   is not read. A length is read by a time alone (`takes`, `pause`, an anchor's), and what that comes to
+   is kept in bounds: `5s - a.length` is a frame at least for an action, and none at least for a pause.
+8. **Said:** the defaults taken, with their lines, by `check` and `make`. **Refused,** each at the line
+   that sets it, with those that read it: a value of the wrong kind, a name nothing reads, whose nobody
+   is, or that is another level's.
 
 ### What happens at once
 
@@ -335,7 +393,7 @@ The laws:
    minus seconds. It is never before that thing begins. A cut thing's end is where it stops, and a
    share of it is of its whole length.
 4. **An end** is the start plus the length.
-   - Fixed: measured or given.
+   - Fixed: measured, given, or worked out from such lengths above.
    - Fitted: a move given no length, directly in a block together. It ends with the last voice the
      block waits for, no faster than its `fastest` and no slower than its `slowest`. Told when to
      arrive, it is fitted to that moment instead. In order, with a start of its own, or with no voice
@@ -362,8 +420,7 @@ They promise:
 - one timing for a plan, whatever the lengths;
 - nothing begins before what it comes after;
 - a block ends after all it waits for;
-- what is cut ends with its block, and its length moves nothing but what is anchored to it;
-- a longer voice begins nothing earlier;
+- what is cut ends with its block, and its length moves nothing but what names it;
 - a channel never does two things, and keeps the written order.
 
 ### The cast

@@ -52,9 +52,8 @@
   scripts compile to the same bytes as before, and `hello-script`, made
   whole, has every stage from the cache; each of thirty laws broken on
   purpose fails a test.
-- Left by step 3: for step 5, a length worked out from a measured one must
-  grow with it (`5s - a.length` breaks the laws); for step 8, a second
-  look in one block is refused so far, as the first holds its channel.
+- Left by step 3: for step 8, a second look in one block is refused so far,
+  as the first holds its channel.
 - **Step 4 done 2026-11-25.** The user's picks: the words `in order:`,
   `together:` and `under:`, not Flexbox's; a moment is `a.50%`, and a word
   is named, `a.word(mole)`; Flexbox's sharing of spare time is a step of
@@ -75,7 +74,27 @@
   once can clip (`all-at-once`'s mix peaks at 1.21, 19 samples); for step
   11, one caption shows at a time, and in `all-at-once` six are up too
   short to read.
-- **Next: step 5, name values and inherit them.**
+- **Step 5 done 2026-11-25.** The user's picks: values are set by
+  `values:` and on a block's header; a formula is inherited as it is
+  written; a move given a speed or `takes`, on any level, keeps it and is
+  fitted to no words; `speed` is the tool's, times the action's own;
+  `arrive=` came in with it; a pause that comes to less than 0 is none.
+  And, beyond the step: the promise "a longer voice begins nothing earlier"
+  is dropped (step 3 proved it, and nothing rested on it), so that
+  `5s - a.length` is allowed; 5b is cut down to a block whose lines end
+  together; 5a is new. Checked: `npm test` and `npm run typecheck` here and
+  in `cartoons/`; RayCraft's media typecheck and `test:libs`, no file of it
+  changed; `make --fit` of the ten gives requests equal to the baseline,
+  byte for byte; `hello-script` compiles to the same bytes as before;
+  `all-at-once` made whole has the frames compiled (929, two beats between
+  the radio's lines), the page's own drawing gives the video's
+  `.svgs`, and with `beat` alone changed to 0.8s it has 1,085; three fresh
+  `claude -p`, two of the default model and one of Sonnet, given only the
+  guide, each wrote a cartoon with a block's settings that passed `check` as
+  written; 60,000 random scripts, 15,521 of them accepted, neither throw nor
+  break a compiled scenario; each of 105 rules broken on purpose fails a
+  test, but the four that 5a takes.
+- **Next: step 5a, random scripts that do not repeat.**
 
 
 ## Goal
@@ -182,8 +201,8 @@ settled in `AGENTS.md`, "A script".
 
 ## The approach
 
-Proposed in the chat of 2026-11-24. Step 3 has settled the part on time;
-step 5 accepts or changes the part on values.
+Proposed in the chat of 2026-11-24. Step 3 has settled the part on time,
+and step 5 the part on values.
 
 **One graph, worked out in order, as a spreadsheet is.** Every value of
 a scenario is a cell: a named value, a place, a start, an end, a length,
@@ -206,8 +225,7 @@ in one direction, the one the writer left open.
 - After them, the cells that need the voices (starts, ends, a fitted
   move's length and speed) are worked out by formulas that cannot fail:
   the latest of, plus, kept within limits, the earliest of. So nothing
-  is refused once the voices are measured, and a longer voice never
-  makes anything begin earlier.
+  is refused once the voices are measured.
 
 **Time: every line is an interval on a channel** (a character's voice,
 its place, its arm). Its laws are in `AGENTS.md`, "What happens at once".
@@ -226,21 +244,23 @@ script's words for each are settled in its step.
 | At a share of a line above | `@ a.50%` | in |
 | At a word of a line above | `@ a.word(mole)` | in, estimated |
 | At a moment of a line below | | out: a loop could be written |
-| By a share of its block's spare time | `justify=end` | step 5b |
+| So that it ends with the longest of its block | a voice with a longer walk | step 5b |
+| By a share of its block's spare time | `justify=center` | out |
 | On a grid of beats | `every=beat` | out |
 
 | How long it lasts | Example | |
 | --- | --- | --- |
 | Measured: a voice, a sound file | `say`, `play` | in |
 | Given | `takes=2s` | in |
-| From a speed and a distance | `walk speed=slow` | in |
+| From a speed, times its own | `walk speed=slow` | in |
 | Fitted to the voices of its block, within limits | a walk joined to lines | in |
 | To arrive at a moment of a line above, within limits | `walk arrive=a.end` | in |
-| From the length of a line above | `takes=a.length / 2` | in |
+| From the length of a line above, said or given | `takes=a.length / 2` | in |
+| From the length of a block, or of a fitted move | | out: known only once everything has its place |
 | Open: to the end of its block | `look-at`, a loop | in |
 | Cut: to the end of its block, if not ended before | a radio under the talk | in |
 | Repeated | `jump times=3`, `loop` | in |
-| A voice placed so that it ends at a moment | `say ends=a.end` | out: a longer line would begin earlier |
+| A voice placed so that it ends at a moment | `say ends=a.end` | out, but in step 5b's block |
 
 | Where | Example | |
 | --- | --- | --- |
@@ -267,13 +287,13 @@ script's words for each are settled in its step.
 **Where it is set.** On the cartoon, a scene, a block or a line, for
 everything or for one character or one action (`radio.volume`,
 `walk.speed`); the nearest wins. The project's settings and a profile
-are the layers above, as today. The defaults do the common thing, so a
-writer writes only the exceptions: lines run in order, a move joined to
-lines is fitted to them, a character stands where the lines above left
-it.
+are the layers above, as today. Its laws are in `AGENTS.md`, "Values".
+The defaults do the common thing, so a writer writes only the
+exceptions: lines run in order, a move joined to lines is fitted to them,
+a character stands where the lines above left it.
 
-**What the compiled scenario keeps:** each cell's number, and which
-were worked out rather than written.
+**What the compiled scenario keeps:** each cell's number, and nothing of
+how it came to it.
 
 
 ## Steps (one session each)
@@ -356,18 +376,35 @@ and a default taken is said; a compiled scenario holds numbers only;
 and no other edit; a fresh `claude -p`, given only the guide, writes a
 scene with a block's settings that passes `check`.
 
-### 5b. Share spare time (the tool)
+### 5a. Random scripts that do not repeat (the tool)
 
-What CSS Flexbox's `justify-content` and `align-items` say, in time: a
-block in order beside a longer one lies at its start, in its middle, at its
-end, or spread over it, and a block together begins or ends its lines at
-once. It gives up "a longer voice begins nothing earlier" inside such a
-block, so its laws come first. `Effort: xhigh`. **Done when:** the user
-has accepted the laws in `AGENTS.md`, or dropped the step; the note beside
-the tests proves what is still promised; tests show a short talk at the
-end, in the middle of and spread over a long voice, and two voices that end
-together; random plans keep every property, and the plain solver gives the
-same times; `all-at-once` has one, and the user accepts it.
+A generator copied between random tests repeats early: step 5's test tried
+a few hundred scripts again and again, and step 4's run of 40,000 may have.
+The random tests draw from one that does not, and step 5's own run
+(`.review/step-5a/fuzz.ts`) becomes a test. The four of step 5's rules that
+no test caught get one each. **Done when:** every random test draws from
+one shared generator, and says how many different scripts or plans it
+tried; random scripts with values on every level neither throw nor break a
+compiled scenario, and keep the promises of `AGENTS.md`, "What happens at
+once"; 40,000 of them have been run, and what they find is mended; a test
+fails when one of the four is broken: a character's value over an action's,
+for a value that is no length; a wrong `takes`, `speed` or `arrive` counts
+as given; a script with a row that does not read has no mistakes of its
+values shown; a number in `values:` is taken as it is written.
+
+### 5b. End together (the tool)
+
+A block whose lines end at once, where the longest does, the shorter ones
+begun later. Its end is worked out from their lengths, so that a line that
+begins by it is no loop. Its items are lines, and a move in it takes its
+given length, or its own. The word for it is settled in the step. **Done
+when:** the user has accepted the law in `AGENTS.md`; the note beside the
+tests proves the five promises with it; tests show a voice that ends with a
+longer walk, two voices that end together, and one that waits for its
+channel; random plans keep every property, and the plain solver gives the
+same times; `check` refuses, each with its lines and a hint, a voice twice
+in it, a line of it anchored to another, and a block in it; `all-at-once`
+has one, and the user accepts it.
 
 ### 6. Work out places (cartoons)
 

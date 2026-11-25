@@ -1,64 +1,76 @@
 // A scenario written as a script (AGENTS.md, "A script"): its lines and blocks as they are read
 // (read.ts), and the check, the pass before the voices and the only one that refuses. The grammar,
-// `say` and when things happen (plan.ts) are the tool's; every other action is the plugin's, named
-// in its `script` with what it takes.
+// what values come to (values.ts), `say` and when things happen (plan.ts) are the tool's; every other
+// action is the plugin's, named in its `script` with what it takes.
 //
 // It needs none of the tool's packages: plugin.ts gives it to the plugins' tests.
+import type { Span } from "./formula.ts";
 import { listed, nearest } from "./names.ts";
 import { timeIssues } from "./plan.ts";
 import type { Library, Schema } from "./plugin.ts";
 import { SAY, isBlock } from "./read.ts";
 import type { Shown } from "./shown.ts";
+import { valuesTaken, workOut, type WorkedLine } from "./values.ts";
 
 /** The speaker nobody draws: its lines are said in the video's voice. */
 export const NARRATOR = "narrator";
 
-/** A value as a script writes it: a number or a name. */
-export type Written = number | string;
-
-/** A moment of something above, where a line or a block begins in place of its block's rule. */
+/** A moment of something above: where a line or a block begins in place of its block's rule, or what a move arrives at. */
 export interface Anchor {
   /** A label of its scene, `prev` (the line or the block just above) or `block` (the block it is in). */
   of: string;
   /** Its start, its end, a share of its length, 0 to 1, or where it says a word (or several in a row). */
   at: "start" | "end" | { share: number } | { word: string };
   /** Seconds after that, or below 0 before it. */
-  plus: number;
+  plus: Span;
 }
 
-/** What a line and a block of a script have alike. */
-export interface Placed {
+/** A moment as it is read: what comes after it is a formula, as written (`- beat / 2`), or nothing. */
+export type WrittenAnchor = Omit<Anchor, "plus"> & { plus?: string };
+
+/** What a line and a block of a script have alike, as it is read, or worked out (`Placed<Anchor>`). */
+export interface Placed<A = WrittenAnchor> {
   /** Its line in the video file, from 1: a block's is its header's. */
   line: number;
   /** What an anchor calls it, once in its scene. */
   label?: string;
-  anchor?: Anchor;
+  anchor?: A;
 }
 
 /** One line of a script: one thing one character does or says. */
 export interface ScriptLine extends Placed {
   who: string;
   action: string;
-  /** Its values by name, as written before the colon. */
-  values: Record<string, Written>;
+  /** Its values by name, each a formula as written before the colon (formula.ts). */
+  values: Record<string, string>;
   /** What follows the colon, to the end of the line, as written; none when nothing does. */
   text?: string;
 }
 
 /** A block of a script: lines and blocks each after those above it, or all begun together. */
-export interface ScriptBlock<L extends Placed = ScriptLine> extends Placed {
+export interface ScriptBlock<L extends Placed<unknown> = ScriptLine> extends Placed<NonNullable<L["anchor"]>> {
   order: "in order" | "together";
   /** It goes on under the rest of the block it is in, and stops where that ends. */
   under?: true;
   /** The lines `&` joins: it has no header, and its line is its first's. */
   joined?: true;
+  /** The values set on its header, by name, each a formula as written: they hold for all in it. */
+  values?: Record<string, string>;
+  /** Worked out, for one in order: the pause between what is in it. */
+  pause?: Span;
   items: ScriptItem<L>[];
 }
 
-export type ScriptItem<L extends Placed = ScriptLine> = L | ScriptBlock<L>;
+export type ScriptItem<L extends Placed<unknown> = ScriptLine> = L | ScriptBlock<L>;
 
 /** The lines of a script, in the order written, whichever blocks they are in. */
-export const linesIn = <L extends Placed>(items: ScriptItem<L>[]): L[] => items.flatMap((item) => (isBlock(item) ? linesIn(item.items) : [item]));
+export const linesIn = <L extends Placed<unknown>>(items: ScriptItem<L>[]): L[] => items.flatMap((item) => (isBlock(item) ? linesIn(item.items) : [item]));
+
+/** A value set on the cartoon or a scene: its line in the file, and its formula as written. */
+export interface WrittenValue {
+  line: number;
+  text: string;
+}
 
 /** A mistake in a scenario: the line of the video file it is in, the other lines it is between, what is wrong, and how to mend it. */
 export interface Issue {
@@ -68,15 +80,17 @@ export interface Issue {
   hint: string;
 }
 
-/** A scene as written: its line in the file, its own keys (all but `script`), and its script's lines and blocks. */
+/** A scene as written: its line in the file, its own keys (all but `script` and `values`), the values set on it, and its script's lines and blocks. */
 export interface WrittenScene {
   line: number;
   setting: Record<string, unknown>;
+  values?: Record<string, WrittenValue>;
   items: ScriptItem[];
 }
 
-/** A scenario as written: its scenes, and what could not be read of them. */
+/** A scenario as written: the values set on the whole of it, its scenes, and what could not be read of them. */
 export interface WrittenScript {
+  values?: Record<string, WrittenValue>;
   scenes: WrittenScene[];
   issues: Issue[];
 }
@@ -87,7 +101,10 @@ export interface Action {
   description: string;
   /** One line that uses it, as a script writes it (`pip walk to=middle`): its values pass `values`. */
   example: string;
-  /** What values a line gives it, by name. */
+  /**
+   * What values a line gives it, by name, each a number or a name. One that its JSON Schema names may
+   * be set on any level (AGENTS.md, "Values"). The tool's own (`takes`, `speed`, `arrive`) are not among them.
+   */
   values: Schema;
 }
 
@@ -122,6 +139,8 @@ export interface SceneChecked {
 export interface ScriptPlugin {
   /** The actions a line may name, besides the tool's `say`. */
   actions: Record<string, Action>;
+  /** Its names for numbers, which any value may use (`slow: 0.6`), unless the file sets them otherwise. */
+  names?: Record<string, number>;
   /**
    * Its part of the guide to writing a script (guide.ts), in Markdown: what its videos can show, a
    * scene's own keys, and a whole video file as an example. The tool adds how a script's lines are
@@ -142,18 +161,39 @@ export interface ScriptPlugin {
   draw(library: Library | undefined): (shown: Shown, size: { width: number; height: number }) => string;
 }
 
-/** A line checked: what is said, or one of the plugin's actions in plain numbers with its own length, seconds. */
-export type CheckedLine = Placed & { who: string; action: string } & ({ text: string } | { values: Plain; length: number });
+/**
+ * A line checked: what is said, or one of the plugin's actions in plain numbers with its own length,
+ * seconds. An action that is given how long it lasts has that (`takes`), or the moment it arrives at.
+ */
+export type CheckedLine = Placed<Anchor> & { who: string; action: string } & ({ text: string } | { values: Plain; length: number; takes?: Span; arrive?: Anchor });
 
-/** A scene checked: how it begins, in plain numbers, and its lines and blocks. */
+/** A scene checked: how it begins, in plain numbers, its pauses (AGENTS.md, "Values"), and its lines and blocks. */
 export interface CheckedScene {
   line: number;
   setting: Plain;
+  /** Before its first line, between what is in order, and after its last line. */
+  lead: Span;
+  pause: Span;
+  tail: Span;
   items: ScriptItem<CheckedLine>[];
 }
 
-/** A scenario checked, or every mistake found in it. */
-export type Checked = { scenes: CheckedScene[] } | { issues: Issue[] };
+/** A value that nothing sets, what it is then, and the lines that take it. */
+export interface Default {
+  name: string;
+  value: string;
+  lines: number[];
+}
+
+/** A scenario checked, with the defaults it takes, or every mistake found in it. */
+export type Checked = { scenes: CheckedScene[]; defaults: Default[] } | { issues: Issue[] };
+
+/** The video's pauses, seconds, where a script sets none (script.ts, settings). */
+export interface Timing {
+  lead: number;
+  gap: number;
+  tail: number;
+}
 
 /**
  * Mistakes as they are shown, in the file's order: each with the file and its line (`file` as it is
@@ -181,21 +221,24 @@ function isPlain(value: unknown): value is Plain {
 const pathOf = (path: ReadonlyArray<PropertyKey | { readonly key: PropertyKey }> | undefined) => (path ?? []).map((p) => String(typeof p === "object" ? p.key : p)).join(".");
 
 /**
- * The check (AGENTS.md, "A script"): every line's action known, its values what the action takes,
- * who speaks someone with a voice (`speakers`, the cast's names, or the narrator), and a time for
- * everything (plan.ts); then the plugin's own check, of the scenes' settings and its actions against
- * the library. It gives the scenario worked out, or every mistake with its line and a hint. The times
- * are tried on a script whose every row reads, and the plugin's check runs only on one with no mistake
- * before it: it follows the lines in the order written, so one missing would mislead it.
+ * The check (AGENTS.md, "A script"): every line's action known, its values worked out (values.ts) and
+ * what the action takes, who speaks someone with a voice (`speakers`, the cast's names, or the
+ * narrator), and a time for everything (plan.ts); then the plugin's own check, of the scenes' settings
+ * and its actions against the library. It gives the scenario worked out, with the defaults it took
+ * (`timing`, the video's pauses, among them), or every mistake with its line and a hint. The values
+ * and the times are tried on a script whose every row reads, and the plugin's check runs only on one
+ * with no mistake before it: it follows the lines in the order written, so one missing would mislead it.
  */
-export async function checkScenario(plugin: ScriptPlugin, script: WrittenScript, library: Library | undefined, speakers: string[]): Promise<Checked> {
+export async function checkScenario(plugin: ScriptPlugin, script: WrittenScript, library: Library | undefined, speakers: string[], timing: Timing): Promise<Checked> {
   const issues = [...script.issues];
   const actions = [SAY, ...Object.keys(plugin.actions)];
+  const worked = workOut(script, { actions: valuesTaken(plugin.actions), names: plugin.names ?? {}, speakers, timing });
+  const workedLines = new Map(worked.scenes.flatMap((scene) => linesIn(scene.items)).map((line) => [line.line, line]));
   const acted: SceneActions[] = [];
   for (const scene of script.scenes) {
     const own: ActionLine[] = [];
     for (const { line, who, action, values, text } of linesIn(scene.items)) {
-      const issue = (message: string, hint: string) => void issues.push({ line, message, hint });
+      const issue = (message: string, hint: string, also: number[] = []) => void issues.push({ line, ...(also.length > 0 ? { also } : {}), message, hint });
       if (action === SAY) {
         const named = Object.keys(values);
         if (named.length > 0) issue(`${SAY} takes no ${listed(named)}`, `write only who says it, and the words: ${who} ${SAY}: Hello!`);
@@ -215,12 +258,15 @@ export async function checkScenario(plugin: ScriptPlugin, script: WrittenScript,
       }
       const hint = `as in: ${known.example}`;
       if (text !== undefined) issue(`${action} takes no words after a colon: only ${SAY} does`, hint);
-      const checked = await known.values["~standard"].validate(values);
+      // What has no answer is said where it is worked out: the rest is not held to the schema without it.
+      const taken = workedLines.get(line)?.values;
+      if (!taken) continue;
+      const checked = await known.values["~standard"].validate(Object.fromEntries(Object.entries(taken).map(([name, { value }]) => [name, value])));
       if (checked.issues) {
         for (const found of checked.issues) {
           const name = pathOf(found.path);
-          const value = Object.hasOwn(values, name) ? `=${values[name]}` : "";
-          issue(`${action}${name ? `, ${name}${value}` : ""}: ${found.message}`, hint);
+          const value = Object.hasOwn(taken, name) ? taken[name] : undefined;
+          issue(`${action}${name ? `, ${name}${value ? `=${value.value}` : ""}` : ""}: ${found.message}`, hint, value && value.line !== line ? [value.line] : []);
         }
         continue;
       }
@@ -228,34 +274,37 @@ export async function checkScenario(plugin: ScriptPlugin, script: WrittenScript,
     }
     acted.push({ line: scene.line, setting: scene.setting, actions: own });
   }
-  if (script.issues.length === 0) issues.push(...timeIssues(script.scenes));
+  // A row that does not read may be the one a label or a value is on.
+  if (script.issues.length === 0) issues.push(...worked.issues, ...timeIssues(worked.scenes));
   if (issues.length > 0) return { issues };
 
-  const worked = plugin.check(acted, library);
-  if ("issues" in worked) {
-    if (worked.issues.length === 0) throw new Error("the plugin's check of the script refused it with no mistake named");
-    return { issues: worked.issues };
+  const result = plugin.check(acted, library);
+  if ("issues" in result) {
+    if (result.issues.length === 0) throw new Error("the plugin's check of the script refused it with no mistake named");
+    return { issues: result.issues };
   }
   // What the plugin gives is the tool's to trust from here on: a scene for each, an action for each, in plain numbers.
   const wrong = (what: string) => new Error(`the plugin's check of the script gave ${what}`);
-  if (worked.scenes.length !== acted.length) throw wrong(`${worked.scenes.length} scenes for ${acted.length}`);
-  const scenes = script.scenes.map((scene, i): CheckedScene => {
-    const { setting, actions: given } = worked.scenes[i]!;
+  if (result.scenes.length !== acted.length) throw wrong(`${result.scenes.length} scenes for ${acted.length}`);
+  const scenes = worked.scenes.map(({ items, ...scene }, i): CheckedScene => {
+    const { setting, actions: did } = result.scenes[i]!;
     const where = `scene ${i + 1} (line ${scene.line})`;
     if (!isPlain(setting)) throw wrong(`${where} a setting that is not numbers and names alone`);
-    if (given.length !== acted[i]!.actions.length) throw wrong(`${where} ${given.length} actions for ${acted[i]!.actions.length}`);
+    if (did.length !== acted[i]!.actions.length) throw wrong(`${where} ${did.length} actions for ${acted[i]!.actions.length}`);
     let next = 0;
-    const check = (item: ScriptItem): ScriptItem<CheckedLine> => {
+    const check = (item: ScriptItem<WorkedLine>): ScriptItem<CheckedLine> => {
       if (isBlock(item)) return { ...item, items: item.items.map(check) };
-      const { values: _written, text, ...rest } = item;
+      const { values: _values, text, lasts, ...rest } = item;
       const { line, action } = item;
       if (action === SAY) return { ...rest, text: text! };
-      const { values, length } = given[next++]!;
+      const { values, length } = did[next++]!;
       if (!isPlain(values)) throw wrong(`line ${line} values that are not numbers and names alone`);
       if (!(Number.isFinite(length) && length > 0)) throw wrong(`line ${line} the length ${length}: an action's own length is seconds, above 0`);
-      return { ...rest, values, length };
+      // A speed is so many times its own, so it says how long it lasts too.
+      const how = lasts && ("speed" in lasts ? { takes: length / lasts.speed } : lasts);
+      return { ...rest, values, length, ...how };
     };
-    return { line: scene.line, setting, items: scene.items.map(check) };
+    return { ...scene, setting, items: items.map(check) };
   });
-  return { scenes };
+  return { scenes, defaults: worked.defaults };
 }

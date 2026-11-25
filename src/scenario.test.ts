@@ -49,7 +49,9 @@ const written = (script: string, colour = "red"): WrittenScript => {
   const { items, issues } = readScript(script, 5);
   return { scenes: [{ line: 3, setting: { colour }, items }], issues };
 };
-const check = (script: string, plugin = scripted(), colour?: string) => checkScenario(plugin, written(script, colour), LIBRARY, ["sq"]);
+/** The video's pauses. */
+const TIMING = { lead: 0.6, gap: 0.4, tail: 1 };
+const check = (script: string, plugin = scripted(), colour?: string) => checkScenario(plugin, written(script, colour), LIBRARY, ["sq"], TIMING);
 const issuesOf = async (script: string, plugin?: ScriptPlugin, colour?: string) => {
   const checked = await check(script, plugin, colour);
   assert.ok("issues" in checked, "it is refused");
@@ -64,12 +66,21 @@ test("the check gives the scenario worked out: what is said, and the plugin's ac
       {
         line: 3,
         setting: { colour: "#d04040", x: 20 },
+        lead: 0.6,
+        pause: 0.4,
+        tail: 1,
         items: [
           { line: 5, who: "sq", action: "say", text: "Here I go!" },
           { line: 6, who: "sq", action: "slide", values: { x: 120 }, length: 1.5 },
           { line: 7, who: "narrator", action: "say", text: "It went." },
         ],
       },
+    ],
+    defaults: [
+      { name: "lead", value: "0.6s", lines: [3] },
+      { name: "pause", value: "0.4s", lines: [3] },
+      { name: "tail", value: "1s", lines: [3] },
+      { name: "speed", value: "1, or what the words beside it take", lines: [6] },
     ],
   });
   // The plugin gets each scene's own keys, and its own actions with what their schema gave.
@@ -94,7 +105,7 @@ test("say is the tool's: its speaker has a voice or is the narrator, it has word
   ]);
   assert.deepEqual((await issuesOf("sq say")).map((i) => i.message), ["sq says nothing"]);
   assert.deepEqual((await issuesOf("sq say loud=2: Hi.")).map((i) => i.message), ["say takes no loud"]);
-  const nobody = await checkScenario(scripted(), written("mo say: Hi."), LIBRARY, []);
+  const nobody = await checkScenario(scripted(), written("mo say: Hi."), LIBRARY, [], TIMING);
   assert.ok("issues" in nobody);
   assert.equal(nobody.issues[0]!.hint, "no character has a voice");
 });

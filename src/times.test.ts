@@ -404,25 +404,6 @@ test("random plans: without what is cut, its block and all it waits for are the 
   assert.ok(removed > 500, `${removed}`);
 });
 
-test("random plans: a longer voice, sound or move begins nothing earlier, and ends nothing earlier", () => {
-  for (const { seed, plan } of PLANS) {
-    const { order, lines } = written(plan);
-    const before = times(plan);
-    const next = random(seed * 7919);
-    const measured = lines.filter(({ length }) => typeof length === "number");
-    for (let k = 0; k < 3 && measured.length > 0; k++) {
-      const line = measured[Math.floor(next() * measured.length)]!;
-      const length = line.length as number;
-      line.length = length + 1 + Math.floor(next() * 30);
-      const now = times(plan);
-      for (const item of order) {
-        for (const key of ["start", "end", "uncut"] as const) assert.ok(now.get(item)![key] >= before.get(item)![key], `${line.name} at ${line.length}: the ${key} of ${item.name}; ${shown(seed, plan)}`);
-      }
-      line.length = length;
-    }
-  }
-});
-
 test("random plans: a channel never does two things, and keeps the written order", () => {
   for (const { seed, plan } of PLANS) {
     const { lines } = written(plan);

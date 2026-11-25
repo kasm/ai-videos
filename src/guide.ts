@@ -1,13 +1,14 @@
 // The guide to writing a video as a script (AGENTS.md, "A script"): the tool's part, how a script's
-// lines and blocks are written, with a plugin's own (host.ts, Described): what its videos can show and
-// a scene's keys, and its actions, each described once. Each step of the plan adds what it gives a
+// lines, blocks and values are written, with a plugin's own (host.ts, Described): what its videos can
+// show and a scene's keys, and its actions, each described once, and its names for numbers. Each step of the plan adds what it gives a
 // script to say; the prompt for a web chat (prompt.ts) will be made from it.
 import type { Described } from "./host.ts";
+import { listed } from "./names.ts";
 import { SAY } from "./read.ts";
 
-/** The tool's part, in Markdown. Each `script` block in it is a script the tool takes, its characters made up (guide.test.ts). */
+/** The tool's part, in Markdown. Each `script` block in it is a script the tool takes, and each `yaml` block a file's, its characters and `go` made up (guide.test.ts). */
 export const SCRIPT = `
-A scene's \`script\` says what happens in it, a row for each thing. It is written as a block: \`script: |\`, then its rows under it. A row is a line, or the header of a block of lines. The characters in the examples here are made up: yours are the library's.
+A scene's \`script\` says what happens in it, a row for each thing. It is written as a block: \`script: |\`, then its rows under it. A row is a line, or the header of a block of lines. The characters in the examples here are made up, and so is \`go\`, an action: yours are the library's, and the actions below.
 
 ### Lines
 
@@ -15,7 +16,7 @@ A line is one thing one character does or says:
 
 - who does it comes first: a character's name, or \`narrator\`, whom nobody sees;
 - then the action: \`${SAY}\`, or one of the actions below;
-- then the action's values, each as \`name=value\`, where a value is a name or a number: the actions below say what each takes;
+- then the action's values, each as \`name=value\`: the actions below say what each takes;
 - then, for \`${SAY}\`, a colon and the words, to the end of the line, as they are said: no quotes.
 
 \`\`\`script
@@ -101,6 +102,51 @@ narrator ${SAY}: Nobody had an answer to that.
 
 What comes after an anchored row waits for it, and for all else above, as for any row. A block takes an anchor too: \`under @ a.50%:\`, \`together @ prev.end - 1s:\`. With a row that has one, what \`&\` joins to it begins with it.
 
+### Values
+
+A value is a number, a name, or a formula of these with \`+ - * /\` and parentheses, a minus with a space on each side. A time is in seconds (\`0.5s\`) and a share in hundredths (\`50%\`); any other number has no unit. A name stands for what it is set to. Values are set at four levels, and each holds for everything inside it: the whole file and a scene, under \`values:\`; a block, on its header; and a line.
+
+\`\`\`yaml
+values: { beat: 0.4s, pause: beat }    # for the whole file
+scenes:
+  - values: { beat: 0.8s }             # for this scene
+    script: |
+      ann ${SAY}: Is anybody at home?
+      in order pause=beat / 4:
+        ben ${SAY}: Nobody.
+        cat ${SAY}: Nobody at all.
+      ann ${SAY}: Then who said that?
+  - script: |
+      narrator ${SAY}: Nobody answered.
+      narrator ${SAY}: She went home.
+\`\`\`
+
+- The nearest wins: the line's own, then its block's, the block's around that, the scene's, the file's.
+- A formula is worked out where it is read, by what its names are there. So above, the pauses of the first scene are 0.8 seconds, as its \`beat\` is, those in its block 0.2, and those of the second scene 0.4. One value changed changes all that reads it.
+- A value is set for everything (\`speed\`), for one character (\`ann.speed\`) or for one action (\`go.speed\`). Of one level, the character's wins over the action's, and that over everything's. A line's own has no dot.
+
+Use your own names for numbers the story repeats, and these, which are the tool's:
+
+- \`pause\`: the seconds between what is in order. On the file, a scene or a block.
+- \`lead\` and \`tail\`: the seconds before a scene's first row and after its last. On the file or a scene.
+- how long an action lasts, one of these three, on any level:
+  - \`takes=2s\`, its seconds;
+  - \`speed=0.5\`, so many times its own speed: 0.5 is half as fast, 2 twice;
+  - \`arrive=a.end - 0.5s\`, a moment of something above, written as after an \`@\`: it is hurried or slowed, within reason, to end then.
+
+An action given its seconds or its speed keeps them, whatever is said beside it. Given none of the three, it goes at its own speed, or takes as long as the words it is joined to. A voice lasts as long as its words: it takes none of them.
+
+\`a.length\` is how long a line above lasts, if that line is said, or is an action given its seconds or its speed. It is read by \`takes\`, by \`pause\` and after an anchor's moment. \`pause=5s - a.length\` is what is left of 5 seconds, and none when the line is longer:
+
+\`\`\`script
+[a] ann ${SAY}: It is a long way to the pond.
+& ann go to=pond takes=a.length * 2
+ben go to=pond speed=0.5
+[c] cat ${SAY}: Wait for me, all of you, I am coming too!
+& cat go to=pond arrive=c.word(coming)
+narrator ${SAY} @ prev.end + 1s: Nobody waited.
+\`\`\`
+
 ### What is refused
 
 - An anchor to something below it, or in another scene.
@@ -108,12 +154,15 @@ What comes after an anchored row waits for it, and for all else above, as for an
 - An action in an \`under:\`. Only what is said may be cut.
 - A line by somebody who is \`under:\` in the same block: they are busy until it ends. Give it to another, or write it after the block.
 - An \`under:\` with nothing to be under: last in a block in order, or alone in its block.
+- A value that nothing reads, values that read each other in a circle, and two of \`takes\`, \`speed\` and \`arrive\` set for one action on one level.
+- The length of a block, or of an action that is fitted to words: those are known only once everything has its place.
 
 One character does one thing at a time: two of its lines, or two of its actions, never overlap, whatever block they are in. The second waits for the first.
 `;
 
-/** The guide for a plugin whose videos are written as scripts: the tool's part, the plugin's, and the actions. */
+/** The guide for a plugin whose videos are written as scripts: the tool's part, the plugin's, the actions, and its names for numbers. */
 export function guideOf(script: NonNullable<Described["script"]>): string {
+  const names = Object.entries(script.names).map(([name, number]) => `\`${name}\` is ${number}`);
   const actions = Object.entries(script.actions).map(([name, { description, example }]) => `- **${name}**: ${description} For example: \`${example}\``);
   return [
     "## A script",
@@ -129,5 +178,6 @@ export function guideOf(script: NonNullable<Described["script"]>): string {
     `- **${SAY}**: The character says the words after the colon, in its voice; the narrator's are said in the video's. For example: \`narrator ${SAY}: Once upon a time.\``,
     ...actions,
     "",
+    ...(names.length > 0 ? [`These names stand for numbers in any value: ${listed(names)}.`, ""] : []),
   ].join("\n");
 }

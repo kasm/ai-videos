@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
-import { NARRATOR, SAY, checkScenario, compile, isBlock, linesIn, pictureOf, readScript, shownAt, type Compiled, type Issue, type ScriptItem, type Voiced, type WrittenScript } from "ai-videos/plugin";
+import { NARRATOR, SAY, checkScenario, compile, isBlock, linesIn, pictureOf, plainValues, readScript, shownAt, type Compiled, type Issue, type ScriptItem, type Voiced, type WrittenScript, type WrittenValue } from "ai-videos/plugin";
 import { parse } from "yaml";
 import { scriptStaging } from "./picture.ts";
 import plugin from "./plugin.ts";
@@ -22,26 +22,31 @@ const { library, speakers } = (() => {
 })();
 
 /**
- * A cartoon's file as the tool reads a script: each scene's own keys, and its script's lines and
- * blocks, each with its line in the file.
+ * A cartoon's file as the tool reads a script: its values, each scene's own keys and values, and its
+ * script's lines and blocks, each with its line in the file.
  */
 function written(text: string): WrittenScript {
   const rows = text.split(/\r?\n/);
   let next = 0;
   const issues: Issue[] = [];
-  const scenes = (parse(text).scenes as Record<string, unknown>[]).map(({ script, ...setting }) => {
+  const valuesOf = (values: unknown, from: number): Record<string, WrittenValue> => {
+    const line = rows.findIndex((row, i) => i >= from && /^\s*(- )?values: \{/.test(row)) + 1;
+    return Object.fromEntries(Object.entries(values ?? {}).map(([name, value]) => [name, { line, text: String(value) }]));
+  };
+  const file = parse(text) as { values?: unknown; scenes: Record<string, unknown>[] };
+  const scenes = file.scenes.map(({ script, values, ...setting }) => {
     // The scene's `- ` row, then its script's `|` row: the lines begin on the row after it.
     const begins = rows.findIndex((row, i) => i >= next && /^\s*- /.test(row));
     const header = rows.findIndex((row, i) => i >= begins && /^\s*(- )?script: \|/.test(row));
     next = header + 1;
     const read = readScript(String(script), header + 2);
     issues.push(...read.issues);
-    return { line: begins + 1, setting, items: read.items };
+    return { line: begins + 1, setting, values: valuesOf(values, begins), items: read.items };
   });
-  return { scenes, issues };
+  return { values: valuesOf(file.values, 0), scenes, issues };
 }
 /** Checked as the tool does it: who speaks has a voice in the library, or in the file's cast. */
-const check = (text: string) => checkScenario(plugin.script, written(text), library, [...speakers, ...Object.keys(parse(text).cast ?? {})]);
+const check = (text: string) => checkScenario(plugin.script, written(text), library, [...speakers, ...Object.keys(parse(text).cast ?? {})], TIMING);
 /** The mistakes the check finds in a scene of the meadow with Pip and Mo, and these lines. */
 const SCENE = ["scenes:", "  - background: meadow", "    places: { pip: off-left, mo: right }", "    faces: { mo: left }", "    script: |"];
 const issuesOf = async (lines: string[], scene = SCENE) => {
@@ -51,7 +56,8 @@ const issuesOf = async (lines: string[], scene = SCENE) => {
 };
 
 /** The tool's timing and loudness, and cartoons' 30 frames a second. */
-const SETTINGS = { fps: 30, loudness: -14, lead: 0.6, gap: 0.4, tail: 1, moves: { slowest: 0.5, fastest: 2 } };
+const TIMING = { lead: 0.6, gap: 0.4, tail: 1 };
+const SETTINGS = { fps: 30, loudness: -14, moves: { slowest: 0.5, fastest: 2 } };
 const HELLO = readFileSync(path.join(root, "videos", "hello-script.yaml"), "utf8");
 const AT_ONCE = readFileSync(path.join(root, "videos", "all-at-once.yaml"), "utf8");
 
@@ -247,6 +253,45 @@ test("all-at-once: a walk under words, a chorus, an interruption at a word, a ra
   assert.equal(pictures(compiled).length, compiled.frames);
 });
 
+test("all-at-once, with one value changed, has another timing and nothing else of it", async () => {
+  assert.match(AT_ONCE, /\nvalues: \{ beat: 0\.4s, pause: beat \}\r?\n/);
+  const [before, after] = await Promise.all([AT_ONCE, AT_ONCE.replace("beat: 0.4s", "beat: 0.8s")].map((text) => compiledOf(text, AT_ONCE_VOICES)));
+  assert.ok(after!.frames > before!.frames + 100, `${before!.frames} frames, and ${after!.frames}`);
+  const lines = (compiled: Compiled) => compiled.scenes.flatMap((scene) => scene.lines);
+  const moved = lines(after!).filter((line, k) => line.from - lines(before!)[k]!.from > 0);
+  // All but the walk and the words joined to it, which the first scene begins with.
+  assert.equal(moved.length, lines(before!).length - 2);
+  const without = (compiled: Compiled) => lines(compiled).map(({ line, who, action, ...rest }) => [line, who, action, "text" in rest ? [rest.text, rest.file] : rest.values]);
+  assert.deepEqual(without(after!), without(before!));
+  // The pause between lines is a beat, and the radio's two.
+  for (const [compiled, beat] of [[before!, 12], [after!, 24]] as const) {
+    const of = (words: string) => lines(compiled).find((line) => "text" in line && line.text.startsWith(words))!;
+    assert.equal(of("Last night").from, of("Good morning, Tuk!").from + Math.max(...lines(compiled).filter((line) => "text" in line && line.text === "Good morning, Tuk!").map((line) => line.frames)) + beat);
+    assert.equal(of("A badger was").from, of("Good morning, and").from + of("Good morning, and").frames + 2 * beat);
+    assert.equal(of("They know").from, of("That was me").from + of("That was me").frames + beat);
+  }
+});
+
+test("a walk at a speed of its own is as long as that says, whatever is said beside it: slow and fast are the cartoon's names", async () => {
+  const walk = async (row: string, ...file: string[]) => {
+    const compiled = await compiledOf([...file, ...SCENE, `      ${row}`, "      & narrator say: Pip walks.", ""].join("\n"), [voiced("a.wav", 2.5)]);
+    return compiled.scenes[0]!.lines[0]!.frames;
+  };
+  // 1210 px at 320 px a second: 3.781 s. Beside 75 frames of words, it is fitted to them.
+  assert.equal(await walk("pip walk to=middle"), 75);
+  assert.equal(await walk("pip walk to=middle speed=1"), 113);
+  assert.equal(await walk("pip walk to=middle speed=slow"), Math.round((3.781 / 0.6) * 30));
+  assert.equal(await walk("pip walk to=middle speed=fast"), Math.round((3.781 / 1.6) * 30));
+  assert.equal(await walk("pip walk to=middle", "values: { walk.speed: slow }"), Math.round((3.781 / 0.6) * 30));
+  assert.equal(await walk("pip walk to=middle", "values: { mo.speed: slow }"), 75);
+  assert.equal(await walk("pip walk to=middle takes=4s"), 120);
+  // A mark may be set by a name, on any level.
+  assert.equal(await walk("pip walk to=there", "values: { there: middle, walk.speed: 1 }"), 113);
+  assert.equal(await walk("pip walk", "values: { pip.to: middle, walk.speed: 1 }"), 113);
+  const wrong = await issuesOf(["pip walk to=there"], ["values: { there: centre }", ...SCENE]);
+  assert.deepEqual(wrong.map((i) => [i.line, i.message]), [[7, "walk, to=centre: it is one of the marks: off-left, left, middle, right, off-right"]]);
+});
+
 test("a character's line opens its mouth as the voice goes, and nobody else's; the next scene begins anew", async () => {
   const text = [
     ...SCENE,
@@ -287,7 +332,7 @@ test("the check refuses an unknown action, a wrong value and an unknown name, ea
     { line: 7, message: "walk, to=centre: it is one of the marks: off-left, left, middle, right, off-right", hint: "as in: pip walk to=middle" },
   ]);
   assert.deepEqual((await issuesOf(["pip walk"])).map((i) => i.message), ["walk, to: it is one of the marks: off-left, left, middle, right, off-right"]);
-  assert.match((await issuesOf(["pip walk to=middle speed=3"]))[0]!.message, /^walk: Unrecognized key: "speed"$/);
+  assert.match((await issuesOf(["pip walk to=middle steps=3"]))[0]!.message, /^walk: Unrecognized key: "steps"$/);
   const pop = await issuesOf(["pop walk to=middle"]);
   assert.deepEqual(pop.map((i) => [i.line, i.message]), [[6, 'no character is named "pop"']]);
   assert.match(pop[0]!.hint, /^the library has the characters pip, mo, tuk, .* and badger: did you mean pip\?$/);
@@ -347,7 +392,7 @@ test("each action is described, and its example is a line of a script that passe
     assert.deepEqual(read.issues, []);
     const [line] = linesIn(read.items);
     assert.equal(line!.action, name);
-    assert.equal((await values["~standard"].validate(line!.values)).issues, undefined, `${name}'s example`);
+    assert.equal((await values["~standard"].validate(plainValues(line!.values))).issues, undefined, `${name}'s example`);
     assert.ok(values["~standard"].jsonSchema.input({ target: "draft-2020-12" }), `${name}'s JSON Schema`);
   }
 });
@@ -374,7 +419,7 @@ test("the guide's example is a cartoon the plugin takes as a script, against the
   const checked = await check(examples[0]!);
   assert.ok("scenes" in checked, JSON.stringify(checked));
   // It shows what a script has so far: two scenes, a walk, lines by the narrator, by characters and
-  // by a voice of the file's cast, and every kind of block.
+  // by a voice of the file's cast, every kind of block, and a value set on every level.
   assert.equal(checked.scenes.length, 2);
   const lines = checked.scenes.flatMap((scene) => linesIn(scene.items));
   assert.deepEqual(new Set(lines.map((line) => line.action)), new Set(["say", "walk"]));
@@ -388,6 +433,16 @@ test("the guide's example is a cartoon the plugin takes as a script, against the
   };
   script.scenes.flatMap((scene) => scene.items).forEach(look);
   assert.deepEqual([...kinds].sort(), ["&", "@", "in order", "together", "under"]);
+  const blocks: Record<string, string>[] = [];
+  const values = (item: ScriptItem) => {
+    if (!isBlock(item)) return;
+    if (item.values) blocks.push(item.values);
+    item.items.forEach(values);
+  };
+  script.scenes.flatMap((scene) => scene.items).forEach(values);
+  assert.deepEqual([Object.keys(script.values!), script.scenes.map((scene) => Object.keys(scene.values!)), blocks], [["beat", "pause"], [[], ["beat"]], [{ pause: "beat / 2" }]]);
+  assert.deepEqual(script.scenes.flatMap((scene) => linesIn(scene.items)).filter((line) => line.action === "walk").map((line) => line.values), [{ to: "middle" }, { to: "off-right", speed: "slow" }]);
+  assert.deepEqual(checked.scenes.map((scene) => scene.pause), [0.4, 0.6]);
   const said = lines.filter((line) => "text" in line).length;
   const compiled = compile(checked.scenes, Array.from({ length: said }, (_, n) => voiced(`${n}.wav`, 2)), SETTINGS, "example.yaml");
   assert.equal(pictures(compiled).length, compiled.frames);

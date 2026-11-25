@@ -1,7 +1,7 @@
 # Why the laws of time hold
 
 The laws are in `AGENTS.md`, "What happens at once"; the code is `times.ts`. This note proves the
-six things they promise. `times.test.ts` tries each on random plans.
+five things they promise. `times.test.ts` tries each on random plans.
 
 ## The formulas
 
@@ -37,8 +37,9 @@ What is heard and seen runs from `s(x)` to `stop(x) = max(s(x), min(e(x), e(C) f
 cuts(x)))`. A line is **there** when `stop(x) > s(x)`.
 
 The lengths, `pause`, `lead`, `tail` and `plus` are whole frames, a length 1 or more and the pauses 0
-or more; `least <= own <= most`; `0 <= p <= 1`. A plan is **accepted** when it has none of the four
-refusals: a name that nothing above has, a channel held, a cut move, a loop.
+or more; `least <= own <= most`; `0 <= p <= 1`. One that is worked out from the lengths of lines above
+is a number by then too (`compile.ts`). A plan is **accepted** when it has none of the four refusals: a
+name that nothing above has, a channel held, a cut move, a loop.
 
 ## 1. One timing for any lengths
 
@@ -58,7 +59,7 @@ So what is refused is refused for any lengths too, and is known before the voice
 - in order, with no anchor: `pause` after the end of everything above it in its block, the left out;
 - with an anchor: its moment, and as M is at least `s(w)` in all three forms, the start of what it
   names;
-- everything above on its channels (6). ∎
+- everything above on its channels (5). ∎
 
 ## 3. A block ends after all it waits for
 
@@ -95,25 +96,7 @@ itself. Then `P` is the outermost block that cuts `z`, so what the hold delays r
 `e(P)` reads, directly or through others, every cell of what `P` waits for: if one of those read what
 is delayed, that would be a loop. ∎
 
-## 5. A longer voice begins nothing earlier
-
-Every formula is non-decreasing in every cell it reads and in every length:
-
-- `max`, `min` and `+` are.
-- The fit, `min(max(t, s + least), s + most)`, is made of them. Which voices `t` is of, and whether
-  there is a `t`, depends on no length: so there is no jump, as there would be from "fitted while
-  something is left to fit to" to "its own length".
-- The share, `f(s, e) = s + round(p (e - s))`. In `e`, as rounding is non-decreasing. In `s`, take
-  one frame more, and let `u = p (e - s)`: `f(s + 1, e) - f(s, e) = 1 + round(u - p) - round(u)`. As
-  `p <= 1`, `round(u - p) >= round(u - 1) = round(u) - 1`, so the difference is 0 or more.
-
-By induction along the order of (1), every start and every uncut end is a non-decreasing function of
-every length; so is every `stop`, a `max` and a `min` of them. ∎
-
-This needs a length to be a number, or to grow with what it is worked out from. A length such as
-`5s - a.length` would break it.
-
-## 6. A channel never does two things
+## 5. A channel never does two things
 
 Let `y` be above `x`, on one channel, and both there. `cuts(y, x)` is one of two:
 

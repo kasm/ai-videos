@@ -1,7 +1,8 @@
 // A cartoon written as a script (CLAUDE.md, "The script"; the tool's AGENTS.md, "A script"): the
-// actions a line may name, and the script's check: each scene's setting and each action found in
-// the library and worked out in plain numbers, a mark as a point, an action with its own length.
-// The tool reads the lines and checks what each action takes; picture.ts draws what the check gives.
+// actions a line may name, its names for numbers, and the script's check: each scene's setting and
+// each action found in the library and worked out in plain numbers, a mark as a point, an action with
+// its own length. The tool reads the lines, works out their values and checks what each action takes;
+// picture.ts draws what the check gives.
 import { NARRATOR, listed, nearest, type Action, type Issue, type Library as LibraryFile, type SceneActions, type SceneChecked } from "ai-videos/plugin";
 import { z } from "zod";
 import { GROUND, MARKS, PACE, name, onStage, readLibrary, type Mark } from "./scenario.ts";
@@ -20,6 +21,9 @@ export const ACTIONS = {
     values: z.strictObject({ to: mark }),
   },
 } satisfies Record<string, Action>;
+
+/** Names for numbers, which any value of a script may use: how fast an action goes, as times its own speed. */
+export const NAMES = { slow: 0.6, fast: 1.6 };
 
 type Point = [number, number];
 

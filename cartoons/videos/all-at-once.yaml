@@ -1,10 +1,12 @@
 # What a script can have at once, one after another: a walk while the narrator talks, a chorus, an
 # interruption at a word, a talk over a radio that is waited for, and a murmur of two lines under
-# three others, cut where they end. The format is in CLAUDE.md ("The script"); the characters and the
-# backgrounds are drawn in library.yaml, and the radio is only heard.
+# three others, cut where they end. All its pauses are one beat, and the radio's two: beat changed
+# times all of it anew. The format is in CLAUDE.md ("The script"); the characters and the backgrounds
+# are drawn in library.yaml, and the radio is only heard.
 use: cartoon
 outputs: { web: true } # its page too, beside the video
 cast: { radio: am_michael }
+values: { beat: 0.4s, pause: beat }
 
 scenes:
   - background: morning
@@ -20,7 +22,7 @@ scenes:
       mo say @ told.word(badger): A badger?
       tuk say: Hush, it is beginning.
       together:
-        in order:
+        in order pause=beat * 2:
           radio say: Good morning, and here is the news.
           [seen] radio say: A badger was seen by the pond last night.
           radio say: It has asked to be left alone.
