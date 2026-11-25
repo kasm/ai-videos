@@ -37,9 +37,10 @@ export interface CompiledCaption {
   frames: number;
 }
 
-/** What is said: its words, its voice's file, how open its speaker's mouth is in each of its frames, and its captions. */
+/** What is said: its words, how loud, dB, its voice's file, how open its speaker's mouth is in each of its frames, and its captions. */
 export interface Said {
   text: string;
+  volume: number;
   file: string;
   mouth: number[];
   captions: CompiledCaption[];
@@ -154,7 +155,7 @@ export function compile(scenes: CheckedScene[], voices: Voiced[], settings: Comp
       if (at.frames === 0) return [];
       if (!("text" in line)) return [{ ...at, values: line.values }];
       const { file, mouth } = voiceOf.get(line)!;
-      const compiled = { ...at, text: line.text, file, mouth: mouth.slice(0, at.frames), captions: [] };
+      const compiled = { ...at, text: line.text, volume: line.volume, file, mouth: mouth.slice(0, at.frames), captions: [] };
       lasts.set(compiled, lasting(line).length as number);
       return [compiled];
     });

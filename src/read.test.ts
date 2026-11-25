@@ -56,7 +56,7 @@ test("a value that does not read is refused, with its line, and the formula's ow
   assert.equal(one("in order pause=1s pause=2s:", "  sq say: One."), "pause is given twice");
   assert.equal(one("in order pause=1sec:", "  sq say: One."), 'pause=1sec: "1sec" has no unit that is known');
   assert.equal(one("in order slow:", "  sq say: One."), '"in order slow:" is neither a line nor a block\'s header');
-  assert.match(read("sq slide far=2 *").issues[0]!.hint, /^a value is a number \(2, 0\.5s, 50%\)/);
+  assert.match(read("sq slide far=2 *").issues[0]!.hint, /^a value is a number \(2, 0\.5s, 50%, -12dB\)/);
 });
 
 test("a block is a header and the rows indented under it, however far, and blocks are in blocks", () => {

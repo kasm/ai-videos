@@ -62,6 +62,33 @@ test("the library: each character's voice is the project's cast, and the plugin 
   });
 });
 
+test("the library: a character's volume is the tool's too, in decibels, and the plugin gets none of it", async () => {
+  const root = await project("library-volumes", {}, { "meet.yaml": "use: cartoon\nscenes: []\n" }, "characters:\n  pip: { voice: am_puck, volume: -4.5dB, parts: {} }\n  mo: { voice: bf_emma, parts: {} }\n  tuk: { voice: bm_fable, volume: +3dB }\n");
+  const video = await readVideoFile(path.join(root, "videos", "meet.yaml"));
+  assert.deepEqual(video.volumes, { pip: -4.5, tuk: 3 });
+  assert.deepEqual(video.library!.raw, { characters: { pip: { parts: {} }, mo: { parts: {} }, tuk: {} } });
+  assert.deepEqual(video.settings.cast, { pip: "am_puck", mo: "bf_emma", tuk: "bm_fable" });
+  const bare = await project("library-none", {}, { "meet.yaml": "use: cartoon\n" });
+  assert.deepEqual((await readVideoFile(path.join(bare, "videos", "meet.yaml"))).volumes, {});
+
+  const wrong = async (name: string, volume: string) => {
+    const root = await project(`volume-${name}`, {}, { "a.yaml": "use: cartoon\n" }, `characters:\n  pip: { voice: am_puck, volume: ${volume} }\n`);
+    return assert.rejects(readVideoFile(path.join(root, "videos", "a.yaml")), (e: Error) => {
+      assert.match(e.message, /library\.yaml: its characters are not valid:[\s\S]*characters\.pip\.volume/);
+      assert.match(e.message, name.startsWith("far") ? /a volume is from -60dB to 12dB/ : /a character's volume is in decibels, -4dB: 0dB is as loud as any voice/);
+      return true;
+    });
+  };
+  await wrong("number", "-4");
+  await wrong("unit", "-4db");
+  await wrong("formula", "-4dB * 2");
+  await wrong("product", "2 * -4dB");
+  await wrong("name", "quiet");
+  await wrong("table", "{ a: 1 }");
+  await wrong("far-under", "-61dB");
+  await wrong("far-over", "12.5dB");
+});
+
 test("settings in layers: the server's, the project's over them, the file's, then a profile's", async () => {
   const project_ = { voice: "am_michael", fps: 24, loudness: -22, timing: { lead: 1 }, outputs: { web: true } };
   const root = await project("layers", project_, { "meet.yaml": FILE }, LIBRARY);

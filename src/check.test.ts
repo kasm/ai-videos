@@ -60,7 +60,7 @@ export default {
 };
 `;
 
-const LIBRARY = "characters:\n  sq: { voice: am_puck }\n  odd: { voice: am_nobody }\ncolours:\n  red: '#d04040'\n";
+const LIBRARY = "characters:\n  sq: { voice: am_puck, volume: -3dB }\n  odd: { voice: am_nobody }\ncolours:\n  red: '#d04040'\n";
 
 /** The project, with these video files. */
 const root = path.join(scratch, "square");
@@ -89,6 +89,7 @@ test("check takes a script with no mistake, with no voice model on the disk, and
       "  pause: 0.4s (line 3)",
       "  tail: 1s (line 3)",
       "  speed: 1, or what the words beside it take (line 5)",
+      "  volume: 0dB (line 7)",
       "",
     ].join("\n"),
   );
@@ -220,7 +221,7 @@ test("check refuses, in a block that ends its lines together, a voice twice, a l
   );
   const good = await cli(["check", await video("ending-good", script(["ending together:", "  sq slide to=right", "  narrator say: It slides.", "  sq say: Whee!"]))]);
   assert.equal(good.code, 0, good.stderr);
-  assert.match(good.stdout, /ending-good\.yaml, a script of 1 scene and 3 lines, 2 of them said\.\n[^]* {2}speed: 1 \(line 6\)\n$/);
+  assert.match(good.stdout, /ending-good\.yaml, a script of 1 scene and 3 lines, 2 of them said\.\n[^]* {2}speed: 1 \(line 6\)\n {2}volume: 0dB \(line 7\)\n$/);
 });
 
 test("check refuses a move given both a speed and a length, and values that go round with their chain, and says the defaults taken", async () => {

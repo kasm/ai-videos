@@ -183,10 +183,10 @@ test("a script's clip and its page are drawn from the compiled scenario and the 
         { line: 4, order: "together", items: [{ line: 4, who: "sq", action: "slide", values: { x: 80 }, channels: ["place"], length: 0.4 }, { line: 5, who: "dot", action: "watch", values: {}, channels: ["facing"], length: "open" }] },
         { line: 6, who: "sq", action: "slide", values: { x: 20 }, channels: ["place"], length: 0.4 },
         // Nobody's line, a frame long, begun with the words.
-        { line: 7, order: "together", items: [{ line: 7, who: "sq", action: "say", text: "Here I am." }, { line: 8, who: "scene", action: "colour", values: { to: "blue" }, channels: ["colour"], length: 0.001, takes: 0.001 }] },
+        { line: 7, order: "together", items: [{ line: 7, who: "sq", action: "say", text: "Here I am.", volume: 0 }, { line: 8, who: "scene", action: "colour", values: { to: "blue" }, channels: ["colour"], length: 0.001, takes: 0.001 }] },
       ],
     },
-    { line: 9, setting: { colour: "blue", x: 60 }, ...pauses, items: [{ line: 11, who: "narrator", action: "say", text: "And </script> it stays." }] },
+    { line: 9, setting: { colour: "blue", x: 60 }, ...pauses, items: [{ line: 11, who: "narrator", action: "say", text: "And </script> it stays.", volume: 0 }] },
   ];
   const voices = [
     { file: "aa.wav", duration: 0.3, mouth: [0.5, 1, 0] },

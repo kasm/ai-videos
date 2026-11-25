@@ -17,11 +17,13 @@ const SCENES: CheckedScene[] = [
     ...PAUSES,
     items: [
       { line: 5, who: "sq", action: "slide", values: { from: [20, 30], to: [120, 30] }, channels: ["place"], length: 1.5 },
-      { line: 6, who: "sq", action: "say", text: "Here I am." },
+      { line: 6, who: "sq", action: "say", text: "Here I am.", volume: -6 },
     ],
   },
-  { line: 8, setting: { colour: "#4040d0", at: [120, 30] }, ...PAUSES, items: [{ line: 10, who: "narrator", action: "say", text: "And it stays." }] },
+  { line: 8, setting: { colour: "#4040d0", at: [120, 30] }, ...PAUSES, items: [{ line: 10, who: "narrator", action: "say", text: "And it stays.", volume: 0 }] },
 ];
+/** A line that is said, as loud as any voice. */
+const say = (line: number, who: string, text: string) => ({ line, who, action: "say", text, volume: 0 });
 const VOICES = [
   { file: "aa.wav", duration: 1.21, mouth: [0, 0.5, 1, 0.5, 0, 0, 0.2, 0.4, 0.6, 0.8, 1, 0.5, 0] },
   { file: "bb.wav", duration: 0.4, mouth: [0.1, 1, 0.5, 0] },
@@ -50,6 +52,7 @@ test("lines follow each other in whole frames: the lead, each line, a gap betwee
             from: 23,
             frames: 13,
             text: "Here I am.",
+            volume: -6,
             file: "aa.wav",
             mouth: [0, 0.5, 1, 0.5, 0, 0, 0.2, 0.4, 0.6, 0.8, 1, 0.5, 0],
             // Up from its first word to a second after its last: the scene ends then too.
@@ -63,7 +66,7 @@ test("lines follow each other in whole frames: the lead, each line, a gap betwee
         frames: 19,
         setting: { colour: "#4040d0", at: [120, 30] },
         lines: [
-          { line: 10, who: "narrator", action: "say", from: 51, frames: 4, text: "And it stays.", file: "bb.wav", mouth: [0.1, 1, 0.5, 0], captions: [{ text: "And it stays.", from: 51, frames: 14 }] },
+          { line: 10, who: "narrator", action: "say", from: 51, frames: 4, text: "And it stays.", volume: 0, file: "bb.wav", mouth: [0.1, 1, 0.5, 0], captions: [{ text: "And it stays.", from: 51, frames: 14 }] },
         ],
       },
     ],
@@ -73,7 +76,7 @@ test("lines follow each other in whole frames: the lead, each line, a gap betwee
 test("captions are on whole frames: a long line's in proportion, each up to the next one, a second after its words or the scene's end", () => {
   // 60 characters and 40: too long for one caption, so the 50 frames of the voice are shared 30 and 20.
   const long = `${"a".repeat(59)}, ${"b".repeat(39)}.`;
-  const items: CheckedScene["items"] = [{ line: 2, who: "sq", action: "say", text: long }, { line: 3, who: "narrator", action: "say", text: "Hi." }];
+  const items: CheckedScene["items"] = [say(2, "sq", long), say(3, "narrator", "Hi.")];
   const voices = [{ file: "a.wav", duration: 5, mouth: [] }, { file: "b.wav", duration: 0.4, mouth: [] }];
   const compiled = compile([{ line: 1, setting: {}, lead: 0.5, pause: 2, tail: 0.5, items }], voices, SETTINGS, "sq.yaml");
   assert.deepEqual(saidLines(compiled.scenes).map((line) => line.captions), [
@@ -92,7 +95,7 @@ test("captions are on whole frames: a long line's in proportion, each up to the 
 });
 
 test("a line lasts a frame at least, and pauses go to the nearest frame", () => {
-  const quick: CheckedScene[] = [{ line: 1, setting: {}, lead: 0.6, pause: 0.4, tail: 1, items: [{ line: 2, who: "sq", action: "slide", values: {}, channels: ["place"], length: 0.01 }, { line: 3, who: "sq", action: "say", text: "Hi." }] }];
+  const quick: CheckedScene[] = [{ line: 1, setting: {}, lead: 0.6, pause: 0.4, tail: 1, items: [{ line: 2, who: "sq", action: "slide", values: {}, channels: ["place"], length: 0.01 }, say(3, "sq", "Hi.")] }];
   const { frames, scenes } = compile(quick, [{ file: "a.wav", duration: 0.001, mouth: [0] }], { ...SETTINGS, fps: 24 }, "sq.yaml");
   // 0.6 s is 14.4 frames, 0.4 s is 9.6.
   assert.deepEqual(scenes[0]!.lines.map((l) => [l.from, l.frames]), [[14, 1], [25, 1]]);
@@ -101,7 +104,6 @@ test("a line lasts a frame at least, and pauses go to the nearest frame", () => 
 
 /** A voice `frames` long at ten frames a second, its mouth as open in each frame as its place in it. */
 const voiced = (file: string, frames: number) => ({ file, duration: frames / 10, mouth: Array.from({ length: frames }, (_, k) => (k + 1) / 100) });
-const say = (line: number, who: string, text: string) => ({ line, who, action: "say", text });
 
 test("what is at once: a joined action fitted to the words, a voice over another, and one cut where its block ends", () => {
   const scenes: CheckedScene[] = [

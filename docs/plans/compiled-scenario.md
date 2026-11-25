@@ -223,7 +223,34 @@
   guide on a fresh `claude -p`.
 - Left by step 8: a look is at a character alone, and not at a place; a second
   look in one block may be taken later, and no script breaks by it.
-- **Next: step 9, mix voices at their volumes.**
+- **Step 9 done 2026-11-25**, `all-at-once`'s sound accepted by the user that
+  day. The user's picks: every voice is first made as loud as any other, so that 0dB
+  is the same for all, over each as Kokoro speaks it; at the video's loudness
+  the difference gives way, so a line louder than the rest is flattened to
+  what fits, and `make` says how far the peaks were lowered. A volume is in
+  decibels, from -60 to 12, and a character's is in the library. A cartoon in
+  beats has none, and keeps today's levelling. Checked: `npm test` and
+  `npm run typecheck` here and in `cartoons/`; RayCraft's media typecheck
+  and `test:libs`, no file of it changed; `make --fit` of the ten gives
+  requests equal to the baseline, byte for byte, the seven cartoons draw the
+  same 6,942 frames, and each of the ten's `sound.m4a`, made anew, is the
+  same bytes, its key too; two lines written 12 dB apart are 11.7 apart in
+  the test's sound, which today's levelling has 10.9 apart; `hello-script`
+  and `all-at-once` compile as before but for the volumes and the line
+  numbers; `all-at-once` made whole has the frames compiled (1,346), only
+  its sound made anew, at -14.0 LUFS, its 23 voices at their compiled times,
+  the narrator at -13.4 in four lines of five (before, -12.6 to -16.5),
+  the radio 8 dB under and Tuk's hush 6; the page's own drawing gives the
+  video's `.svgs`; 40,000 different random scripts with volumes on every
+  level, 20,440 of them with no mistake, neither throw nor break a compiled
+  scenario, and each said line's volume is what a plain re-telling says; how
+  loud a voice is agrees with ffmpeg's meter on all 552 cached voices, to
+  0.06 LU; of 126 rules broken on purpose, 122 fail a test, and the other four
+  change no result. Not tried: the guide on a fresh `claude -p`.
+- Left by step 9: the narrator's volume is the file's to set
+  (`narrator.volume`), as it is not in the library; for step 10, a script's
+  mix is mono, at the voices' 24 kHz.
+- **Next: step 10, play music and sound effects.**
 
 
 ## Goal

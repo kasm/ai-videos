@@ -10,13 +10,14 @@ import path from "node:path";
 import { LineCounter, isMap, isScalar, isSeq, parse, parseDocument, visit, type Pair } from "yaml";
 import { z } from "zod";
 import type { ClipJson } from "./clip.ts";
-import { Wrong, readFormula } from "./formula.ts";
+import { Wrong, exact, readFormula } from "./formula.ts";
 import { pluginOf, type PluginFile } from "./make.ts";
 import { listed, nearest } from "./names.ts";
 import type { Library } from "./plugin.ts";
 import { readScript } from "./read.ts";
 import type { Issue, WrittenScene, WrittenScript, WrittenValue } from "./scenario.ts";
 import { FORMATS, overlay, settings, slug, Speaker, type EventLimitsScript, type FormatName, type VideoScript } from "./script.ts";
+import { volumeWrong } from "./values.ts";
 
 /** The project's library, beside its package.json. */
 export const LIBRARY_FILE = "library.yaml";
@@ -55,12 +56,28 @@ const ProjectSettings = z.strictObject({
   cast: z.never({ error: `a character's voice is in ${LIBRARY_FILE}, beside this package.json: voice: under the character` }).optional(),
 });
 
-/** What the tool reads of a library: each character's voice. The rest is the plugin's. */
+const VOLUME_FORM = "a character's volume is in decibels, -4dB: 0dB is as loud as any voice";
+/** A character's volume in the library, dB, from its text. */
+const LibraryVolume = z
+  .string({ error: VOLUME_FORM })
+  .regex(/^[-+]?\d+(\.\d+)?dB$/, VOLUME_FORM)
+  .transform((text) => exact(Number(text.slice(0, -2))))
+  .superRefine((dB, ctx) => {
+    const wrong = volumeWrong(dB);
+    if (wrong) ctx.addIssue({ code: "custom", message: wrong });
+  });
+
+/** What the tool reads of a library: each character's voice, and how loud it is. The rest is the plugin's. */
 const LibraryVoices = z.looseObject({
   characters: z
-    .record(Speaker, z.looseObject({ voice: z.string({ error: "give each character its voice: one of the tool's (npm run video -- voices lists them)" }).min(1) }), {
-      error: (issue) => (issue.code === "invalid_key" ? "a character's name is lowercase letters, digits and dashes, a letter first" : undefined),
-    })
+    .record(
+      Speaker,
+      z.looseObject({
+        voice: z.string({ error: "give each character its voice: one of the tool's (npm run video -- voices lists them)" }).min(1),
+        volume: LibraryVolume.optional(),
+      }),
+      { error: (issue) => (issue.code === "invalid_key" ? "a character's name is lowercase letters, digits and dashes, a letter first" : undefined) },
+    )
     .optional(),
 });
 
@@ -93,17 +110,19 @@ async function readLibraryFile(dir: string): Promise<LibraryFile | undefined> {
   return { file, text, raw };
 }
 
-/** A library, parsed: its voices taken out as the cast, and the rest the plugin's. Errors name `file`. */
-export function libraryOf(file: string, raw: Record<string, unknown>): { library: Library; cast: Record<string, string> } {
+/** A library, parsed: its voices taken out as the cast, their volumes, dB, and the rest the plugin's. Errors name `file`. */
+export function libraryOf(file: string, raw: Record<string, unknown>): { library: Library; cast: Record<string, string>; volumes: Record<string, number> } {
   const voices = LibraryVoices.safeParse(raw);
   if (!voices.success) throw new Error(`${file}: its characters are not valid:\n${z.prettifyError(voices.error)}`);
   const cast: Record<string, string> = {};
+  const volumes: Record<string, number> = {};
   const characters: Record<string, unknown> = {};
-  for (const [who, { voice, ...drawn }] of Object.entries(voices.data.characters ?? {})) {
+  for (const [who, { voice, volume, ...drawn }] of Object.entries(voices.data.characters ?? {})) {
     cast[who] = voice;
+    if (volume !== undefined) volumes[who] = volume;
     characters[who] = drawn;
   }
-  return { library: { file, raw: voices.data.characters ? { ...raw, characters } : raw }, cast };
+  return { library: { file, raw: voices.data.characters ? { ...raw, characters } : raw }, cast, volumes };
 }
 
 /** A project with a plugin: what its videos share. */
@@ -111,8 +130,10 @@ export interface Project {
   plugin: PluginFile;
   /** library.yaml as written; none when the project has none. */
   libraryFile: LibraryFile | undefined;
-  /** The library without its voices, for the plugin; none without a library.yaml. */
+  /** The library without its voices and volumes, for the plugin; none without a library.yaml. */
   library: Library | undefined;
+  /** The library's volumes, dB, by whose they are: a script's. */
+  volumes: Record<string, number>;
   /** The project's layer over the server's: package.json's "ai-videos", and the library's voices as its cast. */
   settings: Record<string, unknown> & { cast: Record<string, string>; voice: string };
 }
@@ -123,9 +144,9 @@ export async function readProject(plugin: PluginFile): Promise<Project> {
   const project = ProjectSettings.safeParse(plugin.settings);
   if (!project.success) throw new Error(`${plugin.package}: "ai-videos" is not valid:\n${z.prettifyError(project.error)}`);
   const libraryFile = await readLibraryFile(plugin.dir);
-  const { library, cast } = libraryFile ? libraryOf(libraryFile.file, libraryFile.raw) : { library: undefined, cast: {} };
+  const { library, cast, volumes } = libraryFile ? libraryOf(libraryFile.file, libraryFile.raw) : { library: undefined, cast: {}, volumes: {} };
   const { plugin: _plugin, cast: _cast, ...settings } = project.data;
-  return { plugin, libraryFile, library, settings: { ...settings, cast } };
+  return { plugin, libraryFile, library, volumes, settings: { ...settings, cast } };
 }
 
 /** The keys of a video file that are the tool's; every other key is the plugin's source. */
@@ -144,8 +165,10 @@ export interface VideoFile {
   text?: string;
   /** Its scenes and their lines, when it is written as a script (AGENTS.md, "A script") and was read from the disk. */
   script?: WrittenScript;
-  /** The project's library, without its voices: what the plugin finds the names in. None without a library.yaml. */
+  /** The project's library, without its voices and volumes: what the plugin finds the names in. None without a library.yaml. */
   library: Library | undefined;
+  /** The library's volumes, dB, by whose they are: a script's. */
+  volumes: Record<string, number>;
   /** The server's settings, the project's over them, the file's, then the profile's. */
   settings: FileSettingsScript;
   profile: ProfileName | undefined;
@@ -334,6 +357,7 @@ export function videoFileOf(project: Project, file: string, raw: Record<string, 
     use: used.data,
     source,
     library: project.library,
+    volumes: project.volumes,
     settings: picked ? FileSettings.parse(overlay(layered.data, PROFILES[picked])) : layered.data,
     profile: picked,
     cache: path.join(plugin.dir, ".cache", name),

@@ -403,9 +403,9 @@ test("a plugin with a script: its guide and actions come with it, and a script's
       { line: 5, who: "sq", action: "slide", values: { to: "right", speed: "slow" } },
       { line: 6, who: "sq", action: "say", values: {}, text: "Here I am.", anchor: { of: "prev", at: "end", plus: "- pause / 2 + prev.length / 2" } },
     ];
-    // A value set on the whole, the plugin's name for a number, and a length: what the check works out comes back whole.
+    // A value set on the whole, the plugin's name for a number, a length and the library's volume: what the check works out comes back whole.
     const script = { values: { pause: { line: 2, text: "0.4s * 2" } }, scenes: [{ line: 3, setting: { colour: "red" }, items: lines }], issues: [] };
-    assert.deepEqual(await host.checkScript(video, script, library, ["sq"], timing), {
+    assert.deepEqual(await host.checkScript(video, script, library, ["sq"], timing, { sq: -4.5 }), {
       scenes: [
         {
           line: 3,
@@ -415,7 +415,7 @@ test("a plugin with a script: its guide and actions come with it, and a script's
           tail: 1,
           items: [
             { line: 5, who: "sq", action: "slide", values: { x: 120 }, channels: ["place"], length: 1.5, takes: 3 },
-            { line: 6, who: "sq", action: "say", text: "Here I am.", anchor: { of: "prev", at: "end", plus: { seconds: -0.4, lengths: [{ line: 5, times: 0.5 }] } } },
+            { line: 6, who: "sq", action: "say", text: "Here I am.", volume: -4.5, anchor: { of: "prev", at: "end", plus: { seconds: -0.4, lengths: [{ line: 5, times: 0.5 }] } } },
           ],
         },
       ],
@@ -426,16 +426,16 @@ test("a plugin with a script: its guide and actions come with it, and a script's
     });
     // A mistake of the tool's finding (the action's values) and one of the plugin's (a name), each with its line.
     const wrong = { scenes: [{ line: 3, setting: { colour: "red" }, items: [{ ...lines[0]!, values: { to: "up" } }] }], issues: [] };
-    assert.deepEqual(await host.checkScript(video, wrong, library, ["sq"], timing), { issues: [{ line: 5, message: "slide, to=up: it is left or right", hint: "as in: sq slide to=right" }] });
+    assert.deepEqual(await host.checkScript(video, wrong, library, ["sq"], timing, {}), { issues: [{ line: 5, message: "slide, to=up: it is left or right", hint: "as in: sq slide to=right" }] });
     // Its constructions and its tables are the tool's to read: one it has not, and a formula that does not read.
     const made = { scenes: [{ line: 3, setting: { colour: "red", spots: { sq: "between(left" } }, items: [{ ...lines[0]!, values: { to: "beside(left, right)" } }] }], issues: [] };
-    const found = await host.checkScript(video, made, library, ["sq"], timing);
+    const found = await host.checkScript(video, made, library, ["sq"], timing, {});
     assert.deepEqual("issues" in found && found.issues.map(({ line, message }) => [line, message]), [
       [3, 'spots.sq=between(left: between( has no ")" after it'],
       [5, 'to=beside(left, right): no construction is named "beside"'],
     ]);
     const blue = { scenes: [{ line: 3, setting: { colour: "blue" }, items: lines }], issues: [] };
-    assert.deepEqual(await host.checkScript(video, blue, library, ["sq"], timing), { issues: [{ line: 3, message: "no colour is named blue", hint: "name a colour of the library" }] });
+    assert.deepEqual(await host.checkScript(video, blue, library, ["sq"], timing, {}), { issues: [{ line: 3, message: "no colour is named blue", hint: "name a colour of the library" }] });
     // Nothing is written by it.
     assert.equal(existsSync(path.join(root, ".cache")), false);
   } finally {
@@ -457,7 +457,7 @@ test("a script's clip is drawn from its compiled scenario and the library, with 
       tail: 0.2,
       items: [
         { line: 5, who: "sq", action: "slide", values: { x: 120 }, channels: ["place"], length: 0.4 },
-        { line: 6, who: "sq", action: "say", text: "Here I am." },
+        { line: 6, who: "sq", action: "say", text: "Here I am.", volume: 0 },
       ],
     },
   ];
@@ -509,7 +509,7 @@ test("a plugin with no script takes none; an action's example is a line that nam
   const host = await startPlugin((await pluginOf(video))!, quiet);
   try {
     assert.equal(host.script, undefined);
-    await assert.rejects(host.checkScript(video, { scenes: [], issues: [] }, undefined, [], { lead: 0.6, gap: 0.4, tail: 1 }), /sq\.yaml is written as a script, and the square plugin takes none: it has no script/);
+    await assert.rejects(host.checkScript(video, { scenes: [], issues: [] }, undefined, [], { lead: 0.6, gap: 0.4, tail: 1 }, {}), /sq\.yaml is written as a script, and the square plugin takes none: it has no script/);
   } finally {
     host.close();
   }

@@ -32,8 +32,8 @@ test("a frame's time is a whole millisecond before it and after the one before, 
 test("a compiled scenario's build: its clip for its frames, its captions on theirs, and no sound", async () => {
   const pauses = { lead: 0.6, pause: 0.4, tail: 1 };
   const scenes = [
-    { line: 3, setting: {}, ...pauses, items: [{ line: 5, who: "sq", action: "say", text: "Here I am, <b>here</b>." }] },
-    { line: 7, setting: {}, ...pauses, items: [{ line: 9, who: "narrator", action: "say", text: "And it stays." }] },
+    { line: 3, setting: {}, ...pauses, items: [{ line: 5, who: "sq", action: "say", text: "Here I am, <b>here</b>.", volume: 0 }] },
+    { line: 7, setting: {}, ...pauses, items: [{ line: 9, who: "narrator", action: "say", text: "And it stays.", volume: 0 }] },
   ];
   const voices = [{ file: "a.wav", duration: 1.21, mouth: [] }, { file: "b.wav", duration: 0.5, mouth: [] }];
   const compiled = compile(scenes, voices, { fps: 30, loudness: -14, moves: { slowest: 0.5, fastest: 2 } }, "../../videos/sq.yaml");

@@ -161,7 +161,7 @@ test("a reply imported: each episode the plugin takes is written, what it adds g
   await writeFile(
     reply,
     [
-      episode("sq-1", "library:\n  colours:\n    blue: '#4060d0' # new\n  characters:\n    bo:\n      voice: am_echo\nuse: square\ncolour: blue\nwho: bo\nsays: I am Bo.\n"),
+      episode("sq-1", "library:\n  colours:\n    blue: '#4060d0' # new\n  characters:\n    bo:\n      voice: am_echo\n      volume: -4dB\nuse: square\ncolour: blue\nwho: bo\nsays: I am Bo.\n"),
       episode("sq-2", "use: square\ncolour: rouge\n"),
       episode("sq-3", "use: square\ncolour: green\n"),
       episode("sq-4", "library:\n  characters:\n    al:\n      voice: xx_none\nuse: square\ncolour: red\nwho: al\n"),
@@ -180,7 +180,7 @@ test("a reply imported: each episode the plugin takes is written, what it adds g
   assert.deepEqual(taken, [path.join(videos, "sq-1.yaml"), path.join(videos, "sq-2.yaml")]);
   assert.equal(await readFile(path.join(videos, "sq-1.yaml"), "utf8"), "use: square\ncolour: blue\nwho: bo\nsays: I am Bo.\n");
   assert.equal(await readFile(path.join(videos, "sq-2.yaml"), "utf8"), "use: square\ncolour: rouge\n");
-  assert.equal(await readFile(path.join(root, "library.yaml"), "utf8"), `${library}  blue: '#4060d0' # new\n\ncharacters:\n  bo:\n    voice: am_echo\n`);
+  assert.equal(await readFile(path.join(root, "library.yaml"), "utf8"), `${library}  blue: '#4060d0' # new\n\ncharacters:\n  bo:\n    voice: am_echo\n    volume: -4dB\n`);
   assert.match(log, /Library: library\.yaml: added blue, bo \(am_echo\)/);
   assert.match(log, /videos\/sq-2\.yaml: written\n {2}The plugin mends, in what it draws \(the file is as written\):\n {4}- rouge is red/);
 

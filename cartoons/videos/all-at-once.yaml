@@ -1,6 +1,7 @@
 # What a script can have at once, one after another: a walk while the narrator talks, a chorus, an
 # interruption at a word, a talk over a radio that is waited for, words that end as a walk does, and a
-# murmur of two lines under three others, cut where they end. All its pauses are one beat, and the
+# murmur of two lines under three others, cut where they end. The radio and the murmur are lower than
+# the talk over them, and Tuk hushes the others low. All its pauses are one beat, and the
 # radio's two: beat changed times all of it anew. In the second scene Mo stands beside the reeds, a
 # point of the scene's own, and Tuk comes between Pip and Mo, then up to Pip. In the third, the badger
 # walks in while Tuk hops and Mo, a second later, turns round and points, Pip walks up waving and
@@ -10,7 +11,7 @@
 use: cartoon
 outputs: { web: true } # its page too, beside the video
 cast: { radio: am_michael }
-values: { beat: 0.4s, pause: beat }
+values: { beat: 0.4s, pause: beat, radio.volume: -8dB }
 
 scenes:
   - background: morning
@@ -24,7 +25,7 @@ scenes:
         mo say: Good morning, Tuk!
       [told] pip say: Last night I saw a badger by the pond.
       mo say @ told.word(badger): A badger?
-      tuk say: Hush, it is beginning.
+      tuk say volume=-6dB: Hush, it is beginning.
       together:
         in order pause=beat * 2:
           radio say: Good morning, and here is the news.
@@ -46,7 +47,7 @@ scenes:
         tuk walk to=midpoint(pip, mo)
         narrator say: In the evening, Mo counts the reeds.
       in order:
-        under:
+        under volume=-12dB:
           mo say: One reed, two reeds, three reeds, four reeds.
           mo say: Five reeds, six reeds, seven reeds, eight reeds.
         pip say: Why is Mo counting?

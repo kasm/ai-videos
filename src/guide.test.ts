@@ -53,7 +53,7 @@ async function compiled(example: string): Promise<(CompiledLine & { end: number 
 const example = (said: string) => EXAMPLES.find((text) => text.includes(said))!;
 
 test("the tool's part shows scripts the tool takes, with no action but its own and three made up, and they compile", async () => {
-  assert.equal(EXAMPLES.length, 10);
+  assert.equal(EXAMPLES.length, 11);
   for (const text of EXAMPLES) {
     assert.ok((await compiled(text)).length > 0);
     assert.deepEqual(new Set(linesIn(readScript(text).items).map(({ action }) => action)), new Set(["say", ...["go", "nod", "watch"].filter((action) => text.includes(` ${action} `) || text.includes(` ${action}\n`))]));
@@ -148,6 +148,12 @@ test("how long an action lasts: from a line's length, at a speed, and to arrive 
   assert.equal(narrator!.from, cat!.end + 30);
 });
 
+test("how loud: a murmur under a talk, and one who talks low", async () => {
+  const lines = await compiled(example("One leaf"));
+  assert.deepEqual(lines.map((line) => [line.who, "volume" in line && line.volume]), [["ben", -12], ["ben", -12], ["ann", 0], ["cat", -6], ["ann", 0]]);
+  assert.equal(lines[1]!.end, lines[3]!.end, "it is cut where the talk ends");
+});
+
 test("what the tool's part says is refused, is refused", async () => {
   const refused = async (...rows: string[]) => {
     const { items, issues } = readScript(rows.join("\n"));
@@ -167,6 +173,11 @@ test("what the tool's part says is refused, is refused", async () => {
   assert.equal(await refused("ending together:", "  ann go to=pond", "  ann go to=hill"), 1);
   assert.equal(await refused("[a] ben say: One.", "ending together @ a.50%:", "  ann go to=pond", "  ann say: Two."), 0);
   assert.equal(await refused("in order beat=2s:", "  ann say: One."), 1, "a value that nothing reads");
+  for (const volume of ["2", "50%", "-61dB", "12.1dB"]) assert.equal(await refused(`ann say volume=${volume}: One.`), 1);
+  for (const volume of ["-60dB", "0dB", "12dB"]) assert.equal(await refused(`ann say volume=${volume}: One.`), 0);
+  assert.equal(await refused("ann go to=pond volume=-6dB"), 1);
+  assert.equal(await refused("in order go.volume=-6dB:", "  ann say: One."), 1);
+  assert.equal(await refused("in order ann.volume=-6dB say.volume=-5dB volume=-5dB:", "  ann say: One."), 0);
   assert.equal(await refused("in order one=two two=one:", "  ann go to=pond takes=one"), 1);
   assert.equal(await refused("ann go to=pond takes=2s speed=2"), 1);
   assert.equal(await refused("[a] ann go to=pond", "ben go to=pond takes=a.length"), 1);
@@ -189,7 +200,7 @@ test("what the tool's part says is refused, is refused", async () => {
 });
 
 test("the tool's part says what a script has: a line's form, say, blocks, joining, labels and anchors", () => {
-  for (const said of ["`script: |`", "`narrator`", "for an action below that nobody does, the name its example has", "`say`", "`name=value`", "a colon and the words", "in order", "on its channel `voice`", "One channel does one thing at a time", "`#`", "`together:`", "`ending together:`", "`in order:`", "`under:`", "`&`", "`@`", "`prev`", "`block`", "`a.word(mole)`", "`- 0.5s`", "`values:`", "`50%`", "`pause`", "`lead`", "`tail`", "`takes=2s`", "`speed=0.5`", "`arrive=a.end - 0.5s`", "`a.length`", "`ann.speed`", "`go.speed`", "An action that is open", "goes on to the end of the block it is in, and nothing waits for it", "An open action keeps its channel busy to the end of its block"]) {
+  for (const said of ["`script: |`", "`narrator`", "for an action below that nobody does, the name its example has", "`say`", "`name=value`", "a colon and the words", "in order", "on its channel `voice`", "One channel does one thing at a time", "`#`", "`together:`", "`ending together:`", "`in order:`", "`under:`", "`&`", "`@`", "`prev`", "`block`", "`a.word(mole)`", "`- 0.5s`", "`values:`", "`50%`", "`pause`", "`lead`", "`tail`", "`takes=2s`", "`speed=0.5`", "`arrive=a.end - 0.5s`", "`volume`", "`-12dB`", "`radio.volume`", "`a.length`", "`ann.speed`", "`go.speed`", "An action that is open", "goes on to the end of the block it is in, and nothing waits for it", "An open action keeps its channel busy to the end of its block"]) {
     assert.ok(SCRIPT.includes(said), said);
   }
 });

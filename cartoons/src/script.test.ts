@@ -94,6 +94,7 @@ test("hello-script compiles: the walk and the words joined to it, on hello's fra
             from: 18,
             frames: 66,
             text: "This is Pip. Pip walks into the meadow.",
+            volume: 0,
             file: "1f0e3dad99908345f743.wav",
             mouth: VOICES[0]!.mouth,
             captions: [{ text: "This is Pip. Pip walks into the meadow.", from: 18, frames: 78 }],
@@ -105,6 +106,7 @@ test("hello-script compiles: the walk and the words joined to it, on hello's fra
             from: 96,
             frames: 37,
             text: "And here, Pip stops.",
+            volume: 0,
             file: "b7a56873cd771f2c446d.wav",
             mouth: VOICES[1]!.mouth,
             captions: [{ text: "And here, Pip stops.", from: 96, frames: 67 }],
@@ -303,6 +305,10 @@ test("all-at-once: a walk under words, a chorus, an interruption at a word, a ra
   assert.equal(five.line.mouth.length, five.line.frames);
   assert.equal(of("That, only").from, which.end + 12);
 
+  // The radio and the murmur are lower than the talk over them, and Tuk hushes the others low.
+  const lower = said.flatMap((line) => (line.volume === 0 ? [] : [[line.who, line.volume, line.text.slice(0, 10)]]));
+  assert.deepEqual(lower, [["tuk", -6, "Hush, it i"], ["radio", -8, "Good morni"], ["radio", -8, "A badger w"], ["radio", -8, "It has ask"], ["mo", -12, "One reed, "], ["mo", -12, "Five reeds"]]);
+
   // Two who speak at once both move their mouths, and the cut one's is shut after the cut.
   const open = (frame: number) => Object.keys(shownAt(pictureOf(compiled), frame).mouths).sort();
   assert.deepEqual(open(chorus[0]!.from), ["mo", "pip"]);
@@ -356,7 +362,7 @@ test("all-at-once's third scene: one walks in while another hops and a third tur
 });
 
 test("all-at-once, with one value changed, has another timing and nothing else of it", async () => {
-  assert.match(AT_ONCE, /\nvalues: \{ beat: 0\.4s, pause: beat \}\r?\n/);
+  assert.match(AT_ONCE, /\nvalues: \{ beat: 0\.4s, pause: beat, radio\.volume: -8dB \}\r?\n/);
   const [before, after] = await Promise.all([AT_ONCE, AT_ONCE.replace("beat: 0.4s", "beat: 0.8s")].map((text) => compiledOf(text, AT_ONCE_VOICES)));
   assert.ok(after!.frames > before!.frames + 100, `${before!.frames} frames, and ${after!.frames}`);
   const lines = (compiled: Compiled) => compiled.scenes.flatMap((scene) => scene.lines);

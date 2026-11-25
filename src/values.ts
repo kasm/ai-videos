@@ -5,7 +5,7 @@
 // later: what is worked out from one stays a sum of lengths here.
 //
 // It needs none of the tool's packages, as scenario.ts: plugin.ts gives both to the plugins' tests.
-import { Wrong, calculate, exact, minus, namesIn, readFormula, shownAs, spanOf, type Amount, type Construction, type Formula, type Span, type Worked } from "./formula.ts";
+import { KINDS, Wrong, calculate, exact, minus, namesIn, readFormula, shownAs, spanOf, type Amount, type Construction, type Formula, type Span, type Unit, type Worked } from "./formula.ts";
 import { momentIssue, named, nameOf, placesOf, unnamed, type Place } from "./labels.ts";
 import { listed, nearest } from "./names.ts";
 import { SAY, SET, isBlock } from "./read.ts";
@@ -15,8 +15,15 @@ import { NARRATOR, linesIn, type Action, type Anchor, type Default, type Issue, 
 export const PAUSES = ["pause", "lead", "tail"] as const;
 /** The tool's own values that say how long an action lasts, one of them: seconds, times its own speed, or a moment it arrives at. */
 export const LENGTHS = ["takes", "speed", "arrive"] as const;
+/** The tool's own value that says how loud what is said is: decibels over the rest, or under it. */
+export const VOLUME = "volume";
 /** The tool's own values: no action of a plugin's takes one of these names. */
-export const OWN: readonly string[] = [...PAUSES, ...LENGTHS];
+export const OWN: readonly string[] = [...PAUSES, ...LENGTHS, VOLUME];
+
+/** The volume of what is given none, and the least and the most one may be, dB: a voice is hardly heard under the one, and over the other the sound has no room for it. */
+export const VOLUMES = { own: 0, least: -60, most: 12 };
+/** Why a number of decibels is no volume; none when it is one. */
+export const volumeWrong = (dB: number): string | undefined => (dB < VOLUMES.least || dB > VOLUMES.most ? `a volume is from ${VOLUMES.least}dB to ${VOLUMES.most}dB` : undefined);
 
 /** How long an action lasts, when it is given: seconds, times its own speed, or the moment it arrives at. */
 export type Lasts = { takes: Span } | { speed: number } | { arrive: Anchor };
@@ -26,6 +33,8 @@ export interface WorkedLine extends Placed<Anchor> {
   who: string;
   action: string;
   text?: string;
+  /** How loud what is said is, dB. */
+  volume?: number;
   /** What its action is given, by name, and the line of the file that sets it; none when one of them has no answer. */
   values?: Record<string, { value: Worked; line: number }>;
   /** None for what is said, for an action that is open, and for one that is given no length and is fitted. */
@@ -61,6 +70,8 @@ export interface Given {
   speakers: string[];
   /** The video's pauses, seconds. */
   timing: Timing;
+  /** The library's volumes, dB, by whose they are. */
+  volumes?: Record<string, number>;
 }
 
 /** The values each action takes, by name, as its JSON Schema has them: none for a schema that names none. */
@@ -123,17 +134,21 @@ const AFTER = "@";
 const valueOf = ({ key, set }: Found) => (key === AFTER ? `"${set.text}"` : `${key}=${set.text}`);
 const refused = (found: Found, message: string, hint: string, also: number[] = []) => new Refused({ line: found.set.line, also, message, hint });
 const IN_SECONDS = "write it in seconds: 0.5s";
+const IN_DECIBELS = `write it in decibels: -12dB is quieter, and ${VOLUMES.own}dB as loud as any voice`;
+/** Why an action has no volume: by its line, or by a level for it. */
+const noVolume = (action: string) => `${action} takes no ${VOLUME}: only what is said has one`;
 
 /** Who a script's characters are: those with a voice, and whoever does something in it. */
 const peopleOf = (script: WrittenScript, { speakers }: Given) => [NARRATOR, ...speakers, ...script.scenes.flatMap((scene) => linesIn(scene.items)).map(({ who }) => who)];
 
-/** The plugin's and the video's: the level around the cartoon. */
-const outermost = ({ names, timing }: Given): Level => ({
-  values: Object.fromEntries(
-    Object.entries({ ...Object.fromEntries(Object.entries(names).map(([name, number]) => [name, `${number}`])), pause: `${timing.gap}s`, lead: `${timing.lead}s`, tail: `${timing.tail}s` }).map(([name, text]) => [name, { line: 0, text }]),
-  ),
-  around: undefined,
-});
+/** The plugin's, the video's and the library's: the level around the cartoon. */
+const outermost = ({ names, timing, volumes = {} }: Given): Level => {
+  const values: Record<string, string> = {};
+  for (const [name, number] of Object.entries(names)) values[name] = `${number}`;
+  for (const [who, dB] of Object.entries(volumes)) values[`${who}.${VOLUME}`] = `${dB}dB`;
+  Object.assign(values, { pause: `${timing.gap}s`, lead: `${timing.lead}s`, tail: `${timing.tail}s`, [VOLUME]: `${VOLUMES.own}dB` });
+  return { values: Object.fromEntries(Object.entries(values).map(([name, text]) => [name, { line: 0, text }])), around: undefined };
+};
 
 /** The values set on a row, each with the row's line. */
 const ofRow = (values: Record<string, string> = {}, line: number) => Object.fromEntries(Object.entries(values).map(([name, text]) => [name, { line, text }]));
@@ -312,14 +327,32 @@ export function workOut(script: WrittenScript, given: Given): { scenes: WorkedSc
     if (worth.is === "moment") throw refused(found, `${valueOf(found)}: only arrive takes a moment of a line`, `${name} is a number or a name`);
     const { unit, number, lengths } = worth.amount;
     if (lengths.size > 0) throw refused(found, `${valueOf(found)}: ${name} is known before anything is spoken, and a line's length is not`, "only a time reads a line's length: takes, pause, or an anchor");
-    if (unit === "s") throw refused(found, `${valueOf(found)}: ${name} is no time, and has no unit`, "write it without the s");
+    if (unit !== "") throw refused(found, `${valueOf(found)}: ${name} is no ${KINDS[unit].slice(2)}, and has no unit`, `write it without the ${unit}`);
     return exact(number);
   };
 
+  /** What a number with a unit is, where it is not what it should be. */
+  const kindOf = (unit: Unit) => (unit === "" ? "a number" : KINDS[unit]);
+
   /** Seconds, and the lines' lengths they are worked out from. */
   const secondsIn = (amount: Amount, found: Found): Span => {
-    if (amount.unit !== "s") throw refused(found, `${valueOf(found)}: it is a number, and not a time`, IN_SECONDS);
+    if (amount.unit !== "s") throw refused(found, `${valueOf(found)}: it is ${kindOf(amount.unit)}, and not a time`, IN_SECONDS);
     return spanOf(amount);
+  };
+
+  /** How loud what a line says is, dB, as the nearest level sets it. */
+  const volumeOf = (cell: Cell, line: number): number => {
+    const found = find(VOLUME, cell)!;
+    if (found.on === base && found.key === VOLUME) byDefault(VOLUME, found.set.text, line);
+    const volume = attempt(line, () => {
+      const { unit, number, lengths } = amountOf(readFormula(found.set.text), found, cell, [found]);
+      if (lengths.size > 0) throw refused(found, `${valueOf(found)}: a volume is known before anything is spoken, and a line's length is not`, IN_DECIBELS);
+      if (unit !== "dB") throw refused(found, `${valueOf(found)}: it is ${kindOf(unit)}, and not a volume`, IN_DECIBELS);
+      const wrong = volumeWrong(exact(number));
+      if (wrong) throw refused(found, `${valueOf(found)}: ${wrong}`, IN_DECIBELS);
+      return exact(number);
+    });
+    return volume ?? VOLUMES.own;
   };
 
   /** The seconds after a moment, or before it, from what is written after it. */
@@ -396,7 +429,7 @@ export function workOut(script: WrittenScript, given: Given): { scenes: WorkedSc
         return { takes };
       }
       if (amount.lengths.size > 0) throw refused(found, `${valueOf(found)}: a speed is known before anything is spoken, and a line's length is not`, "give it its time: takes=a.length / 2");
-      if (amount.unit === "s") throw refused(found, `${valueOf(found)}: it is a time, and a speed is so many times its own`, "a speed is a number: 0.5 is half its own speed, and 2 twice; its time is takes=2s");
+      if (amount.unit !== "") throw refused(found, `${valueOf(found)}: it is ${kindOf(amount.unit)}, and a speed is so many times its own`, "a speed is a number: 0.5 is half its own speed, and 2 twice; its time is takes=2s");
       const speed = exact(amount.number);
       if (speed <= 0) throw refused(found, `${valueOf(found)}: a speed is more than 0`, "0.5 is half its own speed, and 2 twice");
       return { speed };
@@ -463,10 +496,11 @@ export function workOut(script: WrittenScript, given: Given): { scenes: WorkedSc
       }
       const { who, action, text } = item;
       const line = { ...placed, who, action, ...(text === undefined ? {} : { text }) };
-      if (action === SAY) return line;
+      if (action === SAY) return { ...line, volume: volumeOf(cell, item.line) };
       for (const name of PAUSES.filter((name) => Object.hasOwn(item.values, name))) {
         report({ line: item.line, message: `${action} takes no ${name}`, hint: name === "pause" ? "a pause is a block's: set it on its header, or begin the next row later (@ prev.end + 1s)" : `${name} is a scene's: set it on the scene or the cartoon` });
       }
+      if (Object.hasOwn(item.values, VOLUME)) report({ line: item.line, message: noVolume(action), hint: `leave ${VOLUME} out` });
       return { ...line, ...takenBy(item, cell), ...lastsOf(item, cell) };
     };
     const cell: Cell = { level: own, known: new Map() };
@@ -527,7 +561,8 @@ function setIssues(script: WrittenScript, given: Given, base: Level, worthOf: (n
         const near = nearest(whose, [...new Set([...people, ...actions])]);
         issue(`"${whose}" is neither a character nor an action`, `a value is for everything (${name}), for a character (pip.${name}) or an action (${actions.findLast((one) => !isOpen(one))}.${name})${near ? `: did you mean ${near}?` : ""}`);
       } else if (whose !== undefined && (PAUSES as readonly string[]).includes(name)) issue(`${name} is nobody's own: it is the same for everyone`, `write ${name}`);
-      else if (whose === SAY && ours) issue(`${SAY} takes no ${name}: a voice lasts as long as its words`, `${name} is an action's: leave it out`);
+      else if (name === VOLUME && whose !== undefined && !people.includes(whose) && whose !== SAY) issue(noVolume(whose), `it is for everything that is said (${VOLUME}, ${SAY}.${VOLUME}) or for a character (pip.${VOLUME})`);
+      else if (whose === SAY && ours && name !== VOLUME) issue(`${SAY} takes no ${name}: a voice lasts as long as its words`, `${name} is an action's: leave it out`);
       else if (whose !== undefined && isOpen(whose) && ours) issue(noLength(whose, name), `${name} is another action's: leave it out`);
       else if (level === "block" && (name === "lead" || name === "tail")) issue(`${name} is a scene's, and not a block's`, "set it on the scene or the cartoon; a block has a pause");
       else if (people.includes(name)) issue(`${name} is a character's name, and no value's`, `call it something else: in a formula, ${name} is the character${begins(name, value.text)}`);

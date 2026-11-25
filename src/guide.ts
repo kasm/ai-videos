@@ -144,7 +144,7 @@ What comes after an anchored row waits for it, and for all else above, as for an
 
 ### Values
 
-A value is a number, a name, or a formula of these with \`+ - * /\` and parentheses, a minus with a space on each side. A time is in seconds (\`0.5s\`) and a share in hundredths (\`50%\`); any other number has no unit. A name stands for what it is set to. Values are set at four levels, and each holds for everything inside it: the whole file and a scene, under \`values:\`; a block, on its header; and a line.
+A value is a number, a name, or a formula of these with \`+ - * /\` and parentheses, a minus with a space on each side. A time is in seconds (\`0.5s\`), a volume in decibels (\`-12dB\`) and a share in hundredths (\`50%\`); any other number has no unit. A name stands for what it is set to. Values are set at four levels, and each holds for everything inside it: the whole file and a scene, under \`values:\`; a block, on its header; and a line.
 
 \`\`\`yaml
 values: { beat: 0.4s, pause: beat }    # for the whole file
@@ -169,6 +169,7 @@ Use your own names for numbers the story repeats, and these, which are the tool'
 
 - \`pause\`: the seconds between what is in order. On the file, a scene or a block.
 - \`lead\` and \`tail\`: the seconds before a scene's first row and after its last. On the file or a scene.
+- \`volume\`: how loud what is said is (How loud, below). On any level.
 - how long an action lasts, one of these three, on any level:
   - \`takes=2s\`, its seconds;
   - \`speed=0.5\`, so many times its own speed: 0.5 is half as fast, 2 twice;
@@ -187,6 +188,26 @@ ben go to=pond speed=0.5
 narrator ${SAY} @ prev.end + 1s: Nobody waited.
 \`\`\`
 
+### How loud
+
+Everybody's words are equally loud, whichever voice says them. \`volume\`, in decibels, makes what is said quieter or louder than that: at \`-6dB\` somebody talks a little lower, at \`-12dB\` in a murmur or far off, and at \`-20dB\` is hardly heard under the others. It is a value as any: on a line, a block, a scene or the file, for everything that is said or for one character (\`radio.volume\`), and the nearest wins. A character may have its own in the library, which any of these replaces.
+
+Here the counting is a murmur under the talk, and the cat talks low:
+
+\`\`\`script
+in order:
+  under volume=-12dB:
+    ben ${SAY}: One leaf, two leaves, three leaves, four leaves.
+    ben ${SAY}: Five leaves, six leaves, seven leaves, eight leaves.
+  ann ${SAY}: What is that?
+  cat ${SAY} volume=-6dB: Hush. Nobody may stop the counting.
+ann ${SAY}: Nobody ever could.
+\`\`\`
+
+- What goes on under a talk, as an \`under:\` or a radio, is at \`-8dB\` to \`-14dB\`, so that the talk is heard.
+- Only differences are heard: a whole video at \`-10dB\` is as loud as one at \`0dB\`. A volume is from \`-60dB\` to \`12dB\`.
+- What is quieter comes out as much quieter as it is written, and what is louder a little less so: a shout at \`6dB\` is about 5 over the rest, and one at \`12dB\` about 10.
+
 ### What is refused
 
 - An anchor to something below it, or in another scene.
@@ -197,6 +218,7 @@ narrator ${SAY} @ prev.end + 1s: Nobody waited.
 - A row on a channel that an open action above it keeps busy, in the same block. Write it after the block, or join the open action to what it goes with, so that it ends sooner.
 - Two rows on one channel of one character, directly in one \`together:\` or joined by \`&\`, the later with no start of its own.
 - In an \`ending together:\`, a row that has a time of its own, by an \`@\` or by \`arrive\`; a block, or a row joined by \`&\`; and two rows on one channel of one character. Anchor the whole block, and write a block beside it, in a \`together:\` around both.
+- A \`volume\` that is not in decibels, and one for an action: only what is said has one.
 - A value that nothing reads, values that read each other in a circle, and two of \`takes\`, \`speed\` and \`arrive\` set for one action on one level.
 - The length of a block, or of an action that is fitted to words or open: those are known only once everything has its place.
 

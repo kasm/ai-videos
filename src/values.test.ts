@@ -135,6 +135,80 @@ test("one character's setting reaches only its own, one action's only its own, a
   assert.deepEqual(await far(["sq slide far=near * 2", "mo slide far=near * 2"], { cartoon: { near: "10", "mo.near": "20" } }), [20, 40]);
 });
 
+/** How loud each line that is said is, dB; `library` is the library's volumes. */
+const volumes = async (rows: string[], levels?: Levels, library: Record<string, number> = {}) => {
+  const result = await checkScenario(PLUGIN, scenario(rows, levels), undefined, SPEAKERS, TIMING, library);
+  assert.ok("scenes" in result, JSON.stringify(result));
+  return result.scenes.flatMap((scene) => linesIn(scene.items)).flatMap((line) => ("text" in line ? [line.volume] : []));
+};
+
+test("how loud what is said is, is found on the nearest level: the line's, a block's, the scene's, the cartoon's, and the library's under them", async () => {
+  const rows = [
+    "sq say: One.",
+    "mo say volume=-3dB: Two.",
+    "in order volume=-10dB:",
+    "  sq say: Three.",
+    "  together mo.volume=-20dB:",
+    "    sq say: Four.",
+    "    mo say: Five.",
+    "    narrator say volume=1.5dB: Six.",
+    "narrator say: Seven.",
+  ];
+  assert.deepEqual(await volumes(rows), [0, -3, -10, -10, -20, 1.5, 0]);
+  assert.deepEqual(await volumes(rows, { cartoon: { volume: "-1dB" } }), [-1, -3, -10, -10, -20, 1.5, -1]);
+  assert.deepEqual(await volumes(rows, { cartoon: { volume: "-1dB" }, scene: { volume: "-2dB" } }), [-2, -3, -10, -10, -20, 1.5, -2]);
+  // Of one level, the character's goes over what is said by all, and that over everything's.
+  assert.deepEqual(await volumes(rows, { scene: { volume: "-2dB", "say.volume": "-4dB", "narrator.volume": "-6dB" } }), [-4, -3, -10, -10, -20, 1.5, -6]);
+  // The library's is each character's own, under every level of the file; the narrator is not in it.
+  assert.deepEqual(await volumes(rows, {}, { sq: -5, mo: 2.5 }), [-5, -3, -10, -10, -20, 1.5, 0]);
+  assert.deepEqual(await volumes(["sq say: One.", "mo say: Two."], { cartoon: { "mo.volume": "0dB" } }, { sq: -5, mo: 2.5 }), [-5, 0]);
+  assert.deepEqual(await volumes(["sq say: One.", "mo say: Two."], { scene: { volume: "-9dB" } }, { sq: -5, mo: 2.5 }), [-9, -9]);
+  // A formula of the writer's own names, worked out where it is read.
+  assert.deepEqual(await volumes(["sq say volume=hush: One.", "in order hush=-20dB:", "  mo say volume=hush * 2 + 4dB: Two.", "mo say volume=hush - 0.5dB: Three."], { cartoon: { hush: "-12dB" } }), [-12, -36, -12.5]);
+  assert.deepEqual(await volumes(["sq say volume=0.1dB + 0.2dB: One."]), [0.3]);
+  // It may be read, as any value of the tool's.
+  assert.deepEqual(await volumes(["sq say volume=-6dB * (volume-of / 2): One."], { cartoon: { "volume-of": "3" } }), [-9]);
+  // Joined rows are at the level of the row they are in.
+  assert.deepEqual(await volumes(["sq say volume=-6dB: One.", "& mo say: Two."]), [-6, 0]);
+  // What is given no volume has the default, and is said to; one that the library gives is not.
+  const result = await checkScenario(PLUGIN, scenario(["sq say: One.", "mo say: Two.", "narrator say: Three."]), undefined, SPEAKERS, TIMING, { mo: -3 });
+  assert.ok("scenes" in result);
+  assert.deepEqual(result.defaults.filter(({ name }) => name === "volume"), [{ name: "volume", value: "0dB", lines: [1, 3] }]);
+});
+
+test("a volume that is none, or too much of one, is refused where it is set, and so is one for what is not said", async () => {
+  const one = async (volume: string) => (await issues([`[a] sq say: Hi.`, `mo say volume=${volume}: Ho.`])).map(({ line, message, hint }) => [line, message, hint]);
+  const decibels = "write it in decibels: -12dB is quieter, and 0dB as loud as any voice";
+  assert.deepEqual(await one("0.5"), [[2, "volume=0.5: it is a number, and not a volume", decibels]]);
+  assert.deepEqual(await one("50%"), [[2, "volume=50%: it is a number, and not a volume", decibels]]);
+  assert.deepEqual(await one("2s"), [[2, "volume=2s: it is a time, and not a volume", decibels]]);
+  assert.deepEqual(await one("-60.5dB"), [[2, "volume=-60.5dB: a volume is from -60dB to 12dB", decibels]]);
+  assert.deepEqual(await one("6dB * 2 + 0.001dB"), [[2, "volume=6dB * 2 + 0.001dB: a volume is from -60dB to 12dB", decibels]]);
+  assert.deepEqual(await volumes(["sq say volume=-60dB: Hi.", "sq say volume=12dB: Ho."]), [-60, 12]);
+  assert.deepEqual(await one("a.length / 1s * 3dB"), [[2, "volume=a.length / 1s * 3dB: a volume is known before anything is spoken, and a line's length is not", decibels]]);
+  assert.equal((await one("a.end"))[0]![1], "volume=a.end: a moment of a line is no number");
+  assert.equal((await one("hush"))[0]![1], 'volume=hush: no value is called "hush"');
+  assert.deepEqual(await one("volume - 3dB"), [[2, "the values go round: volume is volume - 3dB", "a value does not read itself: give one of the two another name"]]);
+  // At the line that sets it, with those that read it.
+  assert.deepEqual(await why(["sq say: Hi.", "mo say: Ho."], { scene: { volume: "-6" } }), [[201, [1, 2], "volume=-6: it is a number, and not a volume"]]);
+  // What is not said has none, and a volume is no time and no number.
+  assert.deepEqual(await issues(["sq slide volume=-6dB"]), [{ line: 1, message: "slide takes no volume: only what is said has one", hint: "leave volume out" }]);
+  assert.deepEqual(await why(["sq watch volume=-6dB", "& mo say: Hi."]), [[1, [], "watch takes no volume: only what is said has one"]]);
+  for (const action of ["slide", "watch"]) {
+    assert.deepEqual(await issues(["sq say: Hi."], { cartoon: { [`${action}.volume`]: "-6dB" } }), [
+      { line: 100, message: `${action} takes no volume: only what is said has one`, hint: "it is for everything that is said (volume, say.volume) or for a character (pip.volume)" },
+    ]);
+  }
+  assert.deepEqual(await why(["sq slide takes=3dB"]), [[1, [], "takes=3dB: it is a volume, and not a time"]]);
+  assert.deepEqual(await why(["sq slide speed=3dB"]), [[1, [], "speed=3dB: it is a volume, and a speed is so many times its own"]]);
+  assert.deepEqual(await issues(["sq slide far=3dB"]), [{ line: 1, message: "far=3dB: far is no volume, and has no unit", hint: "write it without the dB" }]);
+  assert.deepEqual(await why(["in order pause=volume:", "  sq say: Hi.", "  sq say: Ho."]), [[1, [], "pause=volume: it is a volume, and not a time"]]);
+  // A wrong one counts as the tool's own: it is the one mistake.
+  assert.deepEqual(await why(["sq say volume=2: Hi."]), [[1, [], "volume=2: it is a number, and not a volume"]]);
+  // For a character or an action nobody is, as any value.
+  assert.deepEqual(await why(["sq say: Hi."], { cartoon: { "sk.volume": "-6dB" } }), [[100, [], '"sk" is neither a character nor an action']]);
+});
+
 test("a formula is inherited as it is written, and worked out where it is read", async () => {
   const rows = ["sq slide far=gap", "in order near=100:", "  sq slide far=gap", "  sq slide far=near"];
   assert.deepEqual(await far(rows, { cartoon: { near: "10", gap: "near * 2 + 1" } }), [21, 201, 100]);
@@ -257,8 +331,9 @@ test("a default taken is said: what it is, and the lines that take it", async ()
     { name: "speed", value: "1, or what the words beside it take", lines: [1] },
     { name: "hop times", value: "1", lines: [2] },
     { name: "speed", value: "1", lines: [2, 3] },
+    { name: "volume", value: "0dB", lines: [5, 6, 8] },
   ]);
-  assert.deepEqual((await checked(rows, { cartoon: { pause: "1s", lead: "1s", tail: "1s", speed: "1", "hop.times": "3" } })).defaults, []);
+  assert.deepEqual((await checked(rows, { cartoon: { pause: "1s", lead: "1s", tail: "1s", speed: "1", "hop.times": "3", volume: "-1dB" } })).defaults, []);
 });
 
 test("an action that is not fitted takes its own length, whatever is said beside it, and the length it is given", async () => {
@@ -387,7 +462,7 @@ test("a value of the wrong kind is refused: a time without seconds, a number in 
 test("a value nothing reads is refused, and whose nobody is, and one set where it means nothing", async () => {
   const say = ["sq say: Hi."];
   assert.deepEqual(await issues(say, { cartoon: { puase: "1s" } }), [
-    { line: 100, message: 'nothing reads "puase"', hint: "a value is one of the tool's (pause, lead, tail, takes, speed, arrive), one an action takes (far, to, times), or one that a formula reads: did you mean pause?" },
+    { line: 100, message: 'nothing reads "puase"', hint: "a value is one of the tool's (pause, lead, tail, takes, speed, arrive, volume), one an action takes (far, to, times), or one that a formula reads: did you mean pause?" },
   ]);
   // What a formula reads is read, and what an action takes is taken, whether or not a line has it.
   assert.equal((await checked(say, { scene: { near: "1", "sq.far": "near", speed: "slow" } })).lines.length, 1);
@@ -426,7 +501,7 @@ test("a compiled scenario holds numbers only: no name and no formula is in it", 
     compiled.scenes[0]!.lines.map((line) => ("values" in line ? [line.from, line.frames, line.values] : [line.from, line.frames])),
     [[5, 14], [5, 7, { far: 20 }], [22, 40, { times: 2 }], [66, 10, { far: 15 }]],
   );
-  for (const name of ["beat", "near", "slow", "length", "takes", "speed", "arrive"]) assert.ok(!JSON.stringify(compiled).includes(name), name);
+  for (const name of ["beat", "near", "slow", "length", "takes", "speed", "arrive", "dB"]) assert.ok(!JSON.stringify(compiled).includes(name), name);
 });
 
 test("the values an action takes are those its JSON Schema names, and an example's are plain", () => {

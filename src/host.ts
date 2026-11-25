@@ -22,12 +22,13 @@ import { EventLimits, FORMATS, slug } from "./script.ts";
 import { pictureOf, shownAt } from "./shown.ts";
 import { OWN, plainValues, valuesTaken } from "./values.ts";
 
-/** The check of a video written as a script (scenario.ts): its scenes as written, the names with a voice, and the video's pauses. */
+/** The check of a video written as a script (scenario.ts): its scenes as written, the names with a voice, the video's pauses, and the library's volumes. */
 export interface ScriptCall {
   step: "script";
   script: WrittenScript;
   speakers: string[];
   timing: Timing;
+  volumes: Record<string, number>;
 }
 
 /** The drawing of a video written as a script: its compiled scenario, and the clip to draw from it. */
@@ -374,7 +375,7 @@ export async function runJob(plugin: Plugin, pluginFile: string, job: Job): Prom
   const { call, file } = job;
   if (call.step === "script") {
     if (!plugin.script) throw new Error(`${file} is written as a script, and the ${plugin.scene} plugin takes none: it has no script (AGENTS.md, "A script")`);
-    return { script: await checkScenario(plugin.script, call.script, job.library, call.speakers, call.timing) };
+    return { script: await checkScenario(plugin.script, call.script, job.library, call.speakers, call.timing, call.volumes) };
   }
   if (call.step !== "check") fills(plugin, call.format, call.step === "draw" ? call : FORMATS[call.format]);
   const repaired = plugin.repair?.(job.source, job.library) ?? { source: job.source, did: [] };

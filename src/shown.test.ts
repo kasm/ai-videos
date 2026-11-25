@@ -15,11 +15,11 @@ const SCENES: CheckedScene[] = [
     ...PAUSES,
     items: [
       { line: 5, who: "sq", action: "slide", values: { x: 120 }, channels: ["place"], length: 1 },
-      { line: 6, who: "sq", action: "say", text: "Here I am." },
+      { line: 6, who: "sq", action: "say", text: "Here I am.", volume: -6 },
       { line: 7, who: "sq", action: "slide", values: { x: 20 }, channels: ["place"], length: 0.5 },
     ],
   },
-  { line: 9, setting: { colour: "#4040d0" }, ...PAUSES, items: [{ line: 11, who: "narrator", action: "say", text: "And it stays." }] },
+  { line: 9, setting: { colour: "#4040d0" }, ...PAUSES, items: [{ line: 11, who: "narrator", action: "say", text: "And it stays.", volume: 0 }] },
 ];
 const VOICES = [
   { file: "aa.wav", duration: 0.4, mouth: [0.25, 1, 0, 0.5] },
@@ -74,16 +74,17 @@ test("every frame of the video shows one scene, and a frame it does not have is 
   for (const frame of [-1, compiled.frames]) assert.throws(() => shownAt(picture, frame), new RegExp(`the compiled scenario has no frame ${frame}`));
 });
 
-test("the picture's part has no words, files, captions, loudness or lines: a change to them draws nothing again", () => {
+test("the picture's part has no words, files, captions, loudness, volumes or lines: a change to them draws nothing again", () => {
   const texts: string[] = [];
   JSON.stringify(picture, (key, value) => (texts.push(key), value));
-  for (const key of ["text", "file", "captions", "loudness", "line", "made"]) assert.ok(!texts.includes(key), key);
+  for (const key of ["text", "file", "captions", "loudness", "volume", "line", "made"]) assert.ok(!texts.includes(key), key);
   const other = (edit: (c: Compiled) => void) => {
     const copy = structuredClone(compiled);
     edit(copy);
     return pictureOf(copy);
   };
   assert.deepEqual(other((c) => (c.loudness = -20)), picture);
+  assert.deepEqual(other((c) => ((c.scenes[0]!.lines[1] as { volume: number }).volume = -20)), picture);
   assert.deepEqual(other((c) => (c.scenes[0]!.lines[1]!.line = 60)), picture);
   assert.notDeepEqual(other((c) => (c.scenes[0]!.lines[0]!.from = 6)), picture);
 });

@@ -1,7 +1,9 @@
-// Runs the HyperFrames CLI and the ffmpeg loudness pass.
+// Runs the HyperFrames CLI and the ffmpeg loudness passes.
 import { spawn } from "node:child_process";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { loudnessOf } from "./loudness.ts";
+import type { Voice } from "./mouth.ts";
 import { foldProgress, type Sink } from "./progress.ts";
 
 interface RunResult {
@@ -123,6 +125,62 @@ export async function levelSound(input: string, output: string, loudness: number
   const filter = await loudnessFilter(input, loudness, "pan=stereo|c0=c0|c1=c0");
   const encode = await run("ffmpeg", ["-hide_banner", "-nostats", "-y", "-i", input, "-vn", "-af", filter, ...AAC, "-map_metadata", "-1", "-movflags", "+faststart", output]);
   if (encode.code !== 0) throw new Error(`ffmpeg loudness pass failed:\n${encode.stderr.slice(-600)}`);
+}
+
+/** The most a sound's peaks may be, dB over full scale. */
+const PEAK = -1.5;
+/** How near its loudness a mix is brought, LU, and in how many rounds at most. */
+const NEAR = 0.02;
+const ROUNDS = 20;
+
+/** How a mix came to its loudness: the gain, dB, what its highest peak was lowered by, dB, and the loudness it came to, LUFS. */
+export interface Levelled {
+  gain: number;
+  lowered: number;
+  loudness: number;
+}
+
+/**
+ * A mix, mono and however high its peaks, brought to `loudness` LUFS by one gain for the whole, its
+ * peaks kept 1.5 dB below full scale by a limiter, into `output`, an .m4a: stereo, the sound in both
+ * channels whole. So what is quieter in it stays as much quieter, but for what the limiter takes of the
+ * louder; it lets go soon, so it takes a peak and little else. What it takes of the whole, the gain makes
+ * up for: it is found in rounds. Silence has no level to bring anywhere.
+ */
+export async function levelMix({ samples, sampleRate }: Voice, output: string, loudness: number): Promise<Levelled> {
+  await mkdir(path.dirname(output), { recursive: true });
+  const [mixed, levelled] = [`${output}.mix.f32`, `${output}.levelled.f32`];
+  const raw = (file: string, rate: number) => ["-f", "f32le", "-ar", String(rate), "-ac", "1", "-i", file];
+  const ffmpeg = async (args: string[]) => {
+    const { code, stderr } = await run("ffmpeg", ["-hide_banner", "-nostats", "-y", ...args]);
+    if (code !== 0) throw new Error(`ffmpeg could not level the mix:\n${stderr.slice(-600)}`);
+    return stderr;
+  };
+  /** The mix by a gain, limited, at 48 kHz: the limiter sees the peaks between the samples too. */
+  const limited = async (gain: number): Promise<Float32Array> => {
+    const limiter = `aresample=192000,alimiter=level=false:limit=${PEAK}dB:attack=1:release=10:latency=true,aresample=48000`;
+    await ffmpeg([...raw(mixed, sampleRate), "-af", `volume=${gain.toFixed(4)}dB:precision=double,${limiter}`, "-f", "f32le", levelled]);
+    const bytes = await readFile(levelled);
+    return new Float32Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length));
+  };
+  try {
+    await writeFile(mixed, Buffer.from(samples.buffer, samples.byteOffset, samples.byteLength));
+    const measured = await ffmpeg([...raw(mixed, sampleRate), "-af", "ebur128=peak=true:framelog=quiet", "-f", "null", "-"]);
+    const highest = Number(measured.match(/Peak:\s+(-?[\d.]+) dBFS/)?.[1] ?? -Infinity);
+    const own = loudnessOf({ samples, sampleRate }, 2);
+    let gain = Number.isFinite(own) ? loudness - own : 0;
+    let at = -Infinity;
+    for (let round = 1; ; round++) {
+      at = loudnessOf({ samples: await limited(gain), sampleRate: 48000 }, 2);
+      // The limiter takes a part of each dB more, so it comes nearer round by round.
+      if (!Number.isFinite(at) || Math.abs(loudness - at) <= NEAR || round === ROUNDS) break;
+      gain += loudness - at;
+    }
+    await ffmpeg([...raw(levelled, 48000), "-af", "pan=stereo|c0=c0|c1=c0", ...AAC, "-map_metadata", "-1", "-movflags", "+faststart", output]);
+    return { gain, lowered: Math.max(0, highest + gain - PEAK), loudness: at };
+  } finally {
+    await Promise.all([mixed, levelled].map((file) => rm(file, { force: true })));
+  }
 }
 
 /** The picture of `video` with the sound of `sound`, both copied as they are, into `output`. */

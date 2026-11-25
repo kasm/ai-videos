@@ -102,13 +102,13 @@ export interface Camera {
 
 /**
  * The project's library, `library.yaml` beside its package.json: what its videos name (a cartoon's
- * characters and backgrounds). The tool reads it, takes each character's `voice` for the cast, and
- * gives the plugin the rest.
+ * characters and backgrounds). The tool reads it, takes each character's `voice` for the cast and its
+ * `volume`, and gives the plugin the rest.
  */
 export interface Library {
   /** The library's file, for an error to name. */
   file: string;
-  /** The file, parsed from YAML, without each character's `voice`. */
+  /** The file, parsed from YAML, without each character's `voice` and `volume`. */
   raw: unknown;
 }
 

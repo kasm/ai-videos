@@ -19,7 +19,7 @@ import { NARRATOR, issuesText, linesIn, type Checked, type Default, type Issue }
 import { FORMATS, voiceOf, type EventLimitsScript, type FormatName, type LoadedVideo } from "./script.ts";
 import { cachePaths, cacheRoot, ready, setup } from "./setup.ts";
 import { pictureOf } from "./shown.ts";
-import { compiledVoices, writeSound, type PlacedVoice } from "./sound.ts";
+import { compiledVoices, writeMix, writeSound } from "./sound.ts";
 import { PLAYING, codeKey, folderKey, inputsKey, keyOf, stagesIn, type Stages } from "./stages.ts";
 import { runStory, windowsIO } from "./story.ts";
 import { buildTimeline, narrate } from "./timeline.ts";
@@ -113,7 +113,7 @@ function sameScene(video: VideoFile, host: PluginHost): void {
 async function checkScript(video: VideoFile, host: PluginHost): Promise<Extract<Checked, { scenes: unknown }>> {
   sameScene(video, host);
   const refused = (issues: Issue[]) => new Error(issuesText(path.relative(CALLER, video.file), video.text, issues));
-  const checked = await host.checkScript(video.file, video.script!, video.library, Object.keys(video.settings.cast), video.settings.timing);
+  const checked = await host.checkScript(video.file, video.script!, video.library, Object.keys(video.settings.cast), video.settings.timing, video.volumes);
   if ("issues" in checked) throw refused(checked.issues);
   const voices = new Set((await kokoroVoices()).map((voice) => voice.name));
   const unspoken = checked.scenes.flatMap((scene) => linesIn(scene.items)).flatMap((line): Issue[] => {
@@ -177,14 +177,14 @@ interface Making {
 
 /**
  * What is played, however its file is written: a plan fitted to the voice, or a script compiled.
- * The sound, the page and the video are made from it. Times are seconds.
+ * The sound, the page and the video are made from it.
  */
 interface Played {
   fps: number;
-  duration: number;
   /** How loud its sound is, LUFS. */
   loudness: number;
-  voices: PlacedVoice[];
+  /** Its sound: what it is made from, and how it is written into a file, with what it says of that. */
+  sound: { key: string; write(file: string): Promise<string | undefined> };
   /** Its picture is recorded, not drawn: its page plays the clip. */
   recorded: boolean;
   /** Draws its clip, or takes it from the cache. */
@@ -253,8 +253,9 @@ async function playScript(video: VideoFile, fit: boolean, plugin: () => Promise<
       const needs = (own.get(line.line) ?? 0) * compiled.fps;
       const cut = "text" in line && Math.ceil(needs - 1e-6) > on.frames;
       const fitted = !("text" in line) && Math.round(needs) > 0 && Math.round(needs) !== on.frames;
+      const loud = "volume" in on && on.volume !== 0 ? `, at ${on.volume}dB` : "";
       const how = !own.has(line.line) ? ", to the end of its block" : cut ? ", cut" : fitted ? `, ${(needs / on.frames).toFixed(2)} times its own speed` : "";
-      log(`${what}  at ${seconds(on.from).padStart(7)} for ${seconds(on.frames).padStart(6)}, frames ${on.from} to ${on.from + on.frames - 1}${how}`);
+      log(`${what}  at ${seconds(on.from).padStart(7)} for ${seconds(on.frames).padStart(6)}, frames ${on.from} to ${on.from + on.frames - 1}${how}${loud}`);
     }
   });
   log(`  ${shown(file)}`);
@@ -263,11 +264,19 @@ async function playScript(video: VideoFile, fit: boolean, plugin: () => Promise<
   const { clip } = madeFiles(video.cache, video.name, format);
   const size = FORMATS[format];
   const drawKey = keyOf("drawing", pictureOf(compiled), video.library?.raw, await codeKey(video.plugin.file, PLAYING));
+  const placed = compiledVoices(compiled, TTS_CACHE);
+  const length = compiled.frames / compiled.fps;
   return {
     fps: compiled.fps,
-    duration: compiled.frames / compiled.fps,
     loudness: compiled.loudness,
-    voices: compiledVoices(compiled, TTS_CACHE),
+    sound: {
+      key: keyOf("mix", placed.map(({ file, start, duration, volume }) => [path.basename(file), start, duration, volume]), length, compiled.loudness),
+      async write(sound) {
+        const { gain, lowered, loudness } = await writeMix(placed, length, sound, compiled.loudness);
+        if (!Number.isFinite(loudness)) return "nobody speaks: it is silence";
+        return `one gain of ${gain.toFixed(1)} dB, to ${loudness.toFixed(1)} LUFS${lowered > 0.05 ? `; its peaks lowered by at most ${lowered.toFixed(1)} dB` : ""}`;
+      },
+    },
     recorded: false,
     async draw() {
       if (stages.cached("drawing", drawKey, [clip, `${clip}.frames`, `${clip}.svgs`])) return cached(`the clip, ${shown(clip)}`);
@@ -316,7 +325,7 @@ async function playPlan(video: VideoFile, fit: boolean, plugin: () => Promise<Pl
   // The plan's format is the stage's, which only the plugin knows, and so are how it pictures, its
   // limits and the files it is made from (plugin.ts, inputs): they are recorded with the plan.
   const planFile = path.join(video.cache, "plan.json");
-  // The library without its voices: a voice changed redoes the voices, not the plan. The files the
+  // The library without its voices and volumes: a voice changed redoes the voices, not the plan. The files the
   // plugin named last time go in too: one changed makes the plan again, which names them anew.
   const planKeyOf = (inputs: string) => keyOf("plan", video.use, video.source, video.library?.raw, code, inputs);
   let inputs = await inputsKey(video.plugin.dir, (stages.last("plan")?.inputs ?? []) as string[]);
@@ -374,11 +383,19 @@ async function playPlan(video: VideoFile, fit: boolean, plugin: () => Promise<Pl
   const drawKey = keyOf("drawing", await readFile(files.request, "utf8"), video.use, video.source, video.library?.raw, code, inputs);
   // A drawn clip has its SVGs' hashes beside it, for the page's test; a recorded one, none.
   const drawnFiles = [files.clip, files.data, `${files.clip}.frames`, ...(recorded ? [] : [`${files.clip}.svgs`])];
+  const { duration } = timeline;
+  const { loudness } = video.settings;
+  const placed = timeline.scenes.flatMap((s) => s.lines.map((line) => ({ file: line.audioFile, start: line.start })));
   return {
     fps: script.fps,
-    duration: timeline.duration,
-    loudness: video.settings.loudness,
-    voices: timeline.scenes.flatMap((s) => s.lines.map((line) => ({ file: line.audioFile, start: line.start }))),
+    loudness,
+    sound: {
+      key: keyOf("sound", placed.map(({ file, start }) => [path.basename(file), start]), duration, loudness),
+      async write(sound) {
+        await writeSound(placed, duration, sound, loudness);
+        return undefined;
+      },
+    },
     recorded,
     async draw() {
       if (stages.cached("drawing", drawKey, drawnFiles)) return cached(`the clip, ${shown(files.clip)}`);
@@ -444,18 +461,18 @@ async function makeFile(file: string, opts: { fit: boolean; profile: string | un
 async function makePlayed(video: VideoFile, outputs: Mode[], played: Played, { stages, begin, cached, shown }: Making): Promise<string[]> {
   // A finished file is shown as it opens from where the command was typed: its project may be another folder.
   const finished = (file: string) => path.relative(CALLER, file);
-  const { duration, loudness, voices, recorded } = played;
+  const { loudness, recorded } = played;
 
   begin("the sound");
   const { quality } = video.settings;
   const sound = path.join(video.cache, "sound.m4a");
-  const soundKey = keyOf("sound", voices.map(({ file, start, duration: lasts }) => [path.basename(file), start, ...(lasts === undefined ? [] : [lasts])]), duration, loudness);
-  if (stages.cached("sound", soundKey, [sound])) cached(`the sound, ${shown(sound)}`);
+  if (stages.cached("sound", played.sound.key, [sound])) cached(`the sound, ${shown(sound)}`);
   else {
     await stages.forget("sound");
     log(`Sound: the voices mixed at ${loudness} LUFS`);
-    await writeSound(voices, duration, sound, loudness);
-    await stages.made("sound", soundKey);
+    const how = await played.sound.write(sound);
+    await stages.made("sound", played.sound.key);
+    if (how) log(`  ${how}`);
     log(`  ${shown(sound)}`);
   }
 

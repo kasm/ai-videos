@@ -10,7 +10,7 @@ import { begunBy, timeIssues } from "./plan.ts";
 import type { Library, Schema } from "./plugin.ts";
 import { SAY, isBlock } from "./read.ts";
 import type { Shown } from "./shown.ts";
-import { valuesTaken, workOut, type WorkedLine } from "./values.ts";
+import { VOLUME, valuesTaken, workOut, type WorkedLine } from "./values.ts";
 
 /** The speaker nobody draws: its lines are said in the video's voice. */
 export const NARRATOR = "narrator";
@@ -193,11 +193,11 @@ export interface ScriptPlugin {
 }
 
 /**
- * A line checked: what is said, or one of the plugin's actions in plain numbers with its own length,
- * seconds, on its channels, or `open`. An action that is given how long it lasts, or is never fitted,
- * has that (`takes`), or the moment it arrives at.
+ * A line checked: what is said, and how loud, dB, or one of the plugin's actions in plain numbers with
+ * its own length, seconds, on its channels, or `open`. An action that is given how long it lasts, or is
+ * never fitted, has that (`takes`), or the moment it arrives at.
  */
-export type CheckedLine = Placed<Anchor> & { who: string; action: string } & ({ text: string } | { values: Plain; channels: string[]; length: number | "open"; takes?: Span; arrive?: Anchor });
+export type CheckedLine = Placed<Anchor> & { who: string; action: string } & ({ text: string; volume: number } | { values: Plain; channels: string[]; length: number | "open"; takes?: Span; arrive?: Anchor });
 
 /** A scene checked: how it begins, in plain numbers, its pauses (AGENTS.md, "Values"), and its lines and blocks. */
 export interface CheckedScene {
@@ -257,16 +257,17 @@ const pathOf = (path: ReadonlyArray<PropertyKey | { readonly key: PropertyKey }>
  * what the action takes, who speaks someone with a voice (`speakers`, the cast's names, or the
  * narrator), and a time for everything (plan.ts); then the plugin's own check, of the scenes' settings
  * and its actions against the library. It gives the scenario worked out, with the defaults it took
- * (`timing`, the video's pauses, among them), or every mistake with its line and a hint. The values
+ * (`timing`, the video's pauses, among them; `volumes` are the library's, dB, by whose they are), or
+ * every mistake with its line and a hint. The values
  * and the times are tried on a script whose every row reads, and the plugin's check runs only on one
  * with no mistake before it: it follows the lines in the order written, so one missing would mislead it.
  */
-export async function checkScenario(plugin: ScriptPlugin, script: WrittenScript, library: Library | undefined, speakers: string[], timing: Timing): Promise<Checked> {
+export async function checkScenario(plugin: ScriptPlugin, script: WrittenScript, library: Library | undefined, speakers: string[], timing: Timing, volumes?: Record<string, number>): Promise<Checked> {
   const issues = [...script.issues];
   const actions = [SAY, ...Object.keys(plugin.actions)];
   const { names = {}, constructions = {}, tables = [] } = plugin;
   const those = (how: "fits" | "open") => Object.keys(plugin.actions).filter((name) => plugin.actions[name]![how]);
-  const worked = workOut(script, { actions: valuesTaken(plugin.actions), fits: those("fits"), open: those("open"), names, constructions, tables, speakers, timing });
+  const worked = workOut(script, { actions: valuesTaken(plugin.actions), fits: those("fits"), open: those("open"), names, constructions, tables, speakers, timing, volumes });
   const workedLines = new Map(worked.scenes.flatMap((scene) => linesIn(scene.items)).map((line) => [line.line, line]));
   const taken: Omit<ActionLine, "begun">[][] = [];
   for (const [n, scene] of script.scenes.entries()) {
@@ -274,8 +275,8 @@ export async function checkScenario(plugin: ScriptPlugin, script: WrittenScript,
     for (const { line, who, action, values, text } of linesIn(scene.items)) {
       const issue = (message: string, hint: string, also: number[] = []) => void issues.push({ line, ...(also.length > 0 ? { also } : {}), message, hint });
       if (action === SAY) {
-        const named = Object.keys(values);
-        if (named.length > 0) issue(`${SAY} takes no ${listed(named)}`, `write only who says it, and the words: ${who} ${SAY}: Hello!`);
+        const named = Object.keys(values).filter((name) => name !== VOLUME);
+        if (named.length > 0) issue(`${SAY} takes no ${listed(named)}`, `write only who says it, how loud if it is not as the rest, and the words: ${who} ${SAY} ${VOLUME}=-6dB: Hello!`);
         if (text === undefined) issue(`${who} says nothing`, `write the words after a colon: ${who} ${SAY}: Hello!`);
         if (who !== NARRATOR && !speakers.includes(who)) {
           const near = nearest(who, [NARRATOR, ...speakers]);
@@ -332,9 +333,9 @@ export async function checkScenario(plugin: ScriptPlugin, script: WrittenScript,
     let next = 0;
     const check = (item: ScriptItem<WorkedLine>): ScriptItem<CheckedLine> => {
       if (isBlock(item)) return { ...item, items: item.items.map(check) };
-      const { values: _values, text, lasts, ...rest } = item;
+      const { values: _values, text, volume, lasts, ...rest } = item;
       const { line, action } = item;
-      if (action === SAY) return { ...rest, text: text! };
+      if (action === SAY) return { ...rest, text: text!, volume: volume! };
       const { values, length = NaN } = did[next++]!;
       const { channels, open } = plugin.actions[action]!;
       if (!isPlain(values)) throw wrong(`line ${line} values that are not numbers and names alone`);

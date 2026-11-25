@@ -70,9 +70,9 @@ test("the check gives the scenario worked out: what is said, and the plugin's ac
         pause: 0.4,
         tail: 1,
         items: [
-          { line: 5, who: "sq", action: "say", text: "Here I go!" },
+          { line: 5, who: "sq", action: "say", text: "Here I go!", volume: 0 },
           { line: 6, who: "sq", action: "slide", values: { x: 120 }, channels: ["place"], length: 1.5 },
-          { line: 7, who: "narrator", action: "say", text: "It went." },
+          { line: 7, who: "narrator", action: "say", text: "It went.", volume: 0 },
         ],
       },
     ],
@@ -80,6 +80,7 @@ test("the check gives the scenario worked out: what is said, and the plugin's ac
       { name: "lead", value: "0.6s", lines: [3] },
       { name: "pause", value: "0.4s", lines: [3] },
       { name: "tail", value: "1s", lines: [3] },
+      { name: "volume", value: "0dB", lines: [5, 7] },
       { name: "speed", value: "1, or what the words beside it take", lines: [6] },
     ],
   });
@@ -106,7 +107,8 @@ test("say is the tool's: its speaker has a voice or is the narrator, it has word
     { line: 5, message: '"sk" is neither the narrator nor a character with a voice', hint: "the characters with a voice are sq: did you mean sq?" },
   ]);
   assert.deepEqual((await issuesOf("sq say")).map((i) => i.message), ["sq says nothing"]);
-  assert.deepEqual((await issuesOf("sq say loud=2: Hi.")).map((i) => i.message), ["say takes no loud"]);
+  assert.deepEqual(await issuesOf("sq say loud=2: Hi."), [{ line: 5, message: "say takes no loud", hint: "write only who says it, how loud if it is not as the rest, and the words: sq say volume=-6dB: Hello!" }]);
+  assert.deepEqual((await issuesOf("sq say loud=2 volume=-6dB fast=1: Hi.")).map((i) => i.message), ["say takes no loud and fast"]);
   const nobody = await checkScenario(scripted(), written("mo say: Hi."), LIBRARY, [], TIMING);
   assert.ok("issues" in nobody);
   assert.equal(nobody.issues[0]!.hint, "no character has a voice");

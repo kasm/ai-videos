@@ -42,7 +42,7 @@ the voice model always stay in this tool.
 | Path | What it is |
 | --- | --- |
 | `scenes/clip/scene.html` | The scene template (a HyperFrames sub-composition with `{{placeholders}}`): the plugin's clip, muted, with the captions over it. |
-| `src/` | The pipeline: `video-file` (the file, its settings in layers, and the `script` the pipeline reads) → the plugin in its process (`plugin`, `make`, `host`): its plan → `tts` → `timeline` (and `fit` with `mouth`) → `sound` → the drawing (`moments`, `frames`, `clip`) → `compose` (with `bundle` and `captions`) → `render`; `page`, the web page; `stages` and `lock`, a make's cache and its lock (see The cache); `setup`, what the commands need on the disk; `prompt` and `import`, a story's prompt for a web chat and its reply taken in, and `story`, the two by the clipboard and the episodes made (see prompt, import, story); `read`, `scenario` with `names` and `labels`, `values` with `formula`, `plan` with `times` and `words`, `compile`, `shown` and `guide`, a video written as a script: its lines and blocks read and checked, what its values come to, when each begins and ends, compiled, what each frame of it shows, and how it is taught (see A script, Values, What happens at once); `random`, what every random test draws from, to say how many different scripts or plans it tried. |
+| `src/` | The pipeline: `video-file` (the file, its settings in layers, and the `script` the pipeline reads) → the plugin in its process (`plugin`, `make`, `host`): its plan → `tts` → `timeline` (and `fit` with `mouth`) → `sound` → the drawing (`moments`, `frames`, `clip`) → `compose` (with `bundle` and `captions`) → `render`; `page`, the web page; `stages` and `lock`, a make's cache and its lock (see The cache); `setup`, what the commands need on the disk; `prompt` and `import`, a story's prompt for a web chat and its reply taken in, and `story`, the two by the clipboard and the episodes made (see prompt, import, story); `loudness`, how loud a voice is (see How loud); `read`, `scenario` with `names` and `labels`, `values` with `formula`, `plan` with `times` and `words`, `compile`, `shown` and `guide`, a video written as a script: its lines and blocks read and checked, what its values come to, when each begins and ends, compiled, what each frame of it shows, and how it is taught (see A script, Values, What happens at once); `random`, what every random test draws from, to say how many different scripts or plans it tried. |
 | `cartoons/` | A project of the tool's, in this repo: the cartoon plugin (`cartoons/src/plugin.ts`), its library, videos and stories, and its notes, `cartoons/CLAUDE.md`. Its `episode` skill is the repo's, `.claude/skills/episode/`. |
 | `out/voice-samples/` | What `voices` writes. |
 | `.cache/tts/` | Narration audio, keyed by text, voice and speed. |
@@ -281,9 +281,9 @@ scenes:
   block's end. A cut voice has the frames it
   sounds in, and so its mouth, its captions and the voice itself stop there; a line whose block ends
   before it begins is not there (`make` says so).
-- **A said line** holds all of itself: its `text`, its voice's `file`, its `mouth` (how open, a
-  number for each of its frames, as in Fitting a clip to the voice; the example shows three) and
-  its `captions`. One caption shows at a time, for now: the one begun last, and of two that begin on
+- **A said line** holds all of itself: its `text`, its `volume` (decibels, see Values), its voice's
+  `file`, its `mouth` (how open, a number for each of its frames, as in Fitting a clip to the voice;
+  the example shows three) and its `captions`. One caption shows at a time, for now: the one begun last, and of two that begin on
   one frame the one written later. It stays up until the next one, a second after its words (a cut
   line's, to the cut), or the scene's end. `loudness` is the video's (see How loud).
 - **It holds plain values,** no name of a value, no formula and no construction: numbers, the lines' texts, file names (a voice's, in the tool's voice
@@ -304,7 +304,7 @@ scenes:
       "setting": { "background": "meadow", "characters": { "pip": { "at": [-250, 880], "facing": 1 } } },
       "lines": [
         { "line": 11, "who": "pip", "action": "walk", "from": 18, "frames": 67, "values": { "from": [-250, 880], "to": [960, 880] } },
-        { "line": 12, "who": "narrator", "action": "say", "from": 18, "frames": 67, "text": "This is Pip. Pip walks into the meadow.", "file": "88d4ac005a4a53dca76a.wav",
+        { "line": 12, "who": "narrator", "action": "say", "from": 18, "frames": 67, "text": "This is Pip. Pip walks into the meadow.", "volume": 0, "file": "88d4ac005a4a53dca76a.wav",
           "mouth": [0, 0.56, 0.96], "captions": [{ "text": "This is Pip. Pip walks into the meadow.", "from": 18, "frames": 79 }] }
       ]
     }
@@ -352,13 +352,15 @@ scenes:
 
 The laws:
 
-1. **A value** is a number (`150`, `0.5s`, `50%`), a name, or a formula of these, with `+ - * /` and
+1. **A value** is a number (`150`, `0.5s`, `-12dB`, `50%`), a name, or a formula of these, with `+ - * /` and
    parentheses (`src/formula.ts`). A name has dashes of its own, so a minus has a space on each side.
-   A time is in seconds: times add up, and are multiplied and divided by numbers. What it comes to is in
+   A time is in seconds and a volume in decibels: each adds up with its own kind, and is multiplied and
+   divided by numbers. What it comes to is in
    whole millionths, so `0.1 + 0.2 - 0.3` is 0. A name that nothing sets is itself (`middle`, a mark); a
    character's is the character, and no value has it.
 2. **Levels.** A line's own values, its block's, the block's around that, its scene's, the cartoon's;
-   above them the plugin's `names` and the video's `timing` (its `gap` is the `pause`). The nearest wins.
+   above them the plugin's `names`, the library's volumes and the video's `timing` (its `gap` is the
+   `pause`). The nearest wins.
 3. **For whom.** `speed` is for everything, `walk.speed` for an action, `pip.speed` for a character. Of
    one level, the character's goes over the action's, and both over everything's; a nearer level goes
    over all three. A line's own has no dot.
@@ -383,11 +385,13 @@ The laws:
    | `takes` | any level | an action's seconds |
    | `speed` | any level | times the action's own speed (2 is twice as fast) |
    | `arrive` | any level | the moment above that it ends at, as an anchor's, within `timing.moves` |
+   | `volume` | any level | how loud what is said is, decibels over any other voice's 0 (see How loud): from -60 to 12 |
 
    Given `takes` or `speed`, wherever they are set, an action keeps it and is fitted to nothing; one whose
    plugin says it is never fitted has its own speed, as if given `speed=1`. A voice and an open action
    take none of the three, and those set on a level are not for them; an action in an `ending together:`
-   takes no `arrive`. Beside these, what an action
+   takes no `arrive`. A `volume` is for what is said alone: no action has one, and `say.volume` is for all
+   that is said, as `radio.volume` is for one. Beside these, what an action
    takes (`to`) may be set on any level, and any name of the writer's that a formula reads.
 8. **`a.length`** is how long a line above lasts: one that is said, or an action given `takes` or
    `speed`, or never fitted. How long a fitted action lasts, an open one or a block, is known only once everything has
@@ -493,14 +497,17 @@ it as `speaker` (lowercase letters, digits and dashes); the narrator's names non
 characters:
   pip:
     voice: am_puck   # the tool's: Pip's voice, the cast's
+    volume: -4dB     # the tool's, optional: how loud Pip is, in a script
     parts: { … }     # the rest is the plugin's
 backgrounds: { … }
 ```
 
 - **Its keys:** each character's `voice` is the tool's, and every character has one. The tool takes
   them as the project's cast (see Settings in layers), and gives the plugin the rest, with the
-  file's path, for `check` (see Plugins). A mistake is reported against `library.yaml`: a voice
-  missing or a name the tool refuses by the tool, the rest by the plugin.
+  file's path, for `check` (see Plugins). So is its `volume`, in decibels, which it need not have: the
+  level a script's own volumes go over (see Values); a plan's sound has no volumes. A mistake is
+  reported against `library.yaml`: a voice missing, or a name or a volume the tool refuses, by the
+  tool, the rest by the plugin.
 - **A voice has one home:** a `cast` in the `package.json`'s `"ai-videos"` is refused, pointing
   here. A video file's own `cast:` still goes over the library's, speaker by speaker.
 - A project with no `library.yaml` has no library: its plugin gets none, and its cast is empty.
@@ -533,20 +540,20 @@ comes before the page: a step of its own when the video is made too, else the pa
 
 | Stage | Made from | What it makes, in `.cache/<name>/` |
 | --- | --- | --- |
-| The plan | the source, `use`, the library (but its voices), the plugin's code, its inputs | `plan.json`, and in `stages.json` the format, the picture, what was mended, the limits and the inputs |
+| The plan | the source, `use`, the library (but its voices and volumes), the plugin's code, its inputs | `plan.json`, and in `stages.json` the format, the picture, what was mended, the limits and the inputs |
 | The voices | each line's text, voice and `speed` (the tool's voice cache) | |
 | The fit | the plan, the voices, `fps`, `timing` | `clips/<name>-<format>.request.json` |
 | The sound | each line's voice and when it starts (the fit's timeline), the video's length, `loudness` | `sound.m4a` |
-| The drawing | the request, the source, the library (but its voices), the plugin's code, its inputs | `clips/<name>-<format>.mp4`, its `.json`, `.frames` and (drawn) `.svgs` |
+| The drawing | the request, the source, the library (but its voices and volumes), the plugin's code, its inputs | `clips/<name>-<format>.mp4`, its `.json`, `.frames` and (drawn) `.svgs` |
 | Check | the build (`build/<format>/`, but HyperFrames' own `.hyperframes/` and `renders/`), HyperFrames' version | |
 | The render | the build, `quality`, `fps` | `render.mp4` |
 | The video | the render's picture, the sound | `out/<name>.mp4`, written every time |
 | The page | the sound, the source, the library, the request, the plugin's code, or a recording plugin's clip | `out/<name>.html`, written every time |
 
 A script has no plan and no fit: its `compiled.json` is written every time (see A script). Its sound
-is made from the voices' frames, the video's frames and the loudness in it; its drawing from
-the rest but the words and the captions (`pictureOf`, `src/shown.ts`), the library (but its voices)
-and the plugin's code. The other stages are as any video's.
+is made from the voices' frames and volumes, the video's frames and the loudness in it; its drawing from
+the rest but the words and the captions (`pictureOf`, `src/shown.ts`), the library (but its voices and
+volumes) and the plugin's code. So a volume changed redoes the sound alone. The other stages are as any video's.
 
 - The plugin's code is every file in the plugin's folder (but `node_modules` and dot folders)
   and the tool's files it runs through (`DRAWING`, or a script's `PLAYING`, `src/stages.ts`): keep
@@ -760,11 +767,29 @@ them only when asked. A web chat writes no file at all: its reply to the prompt 
 
 ## How loud
 
-A video's soundtrack is the tool's own (`src/sound.ts`): each line's voice laid where the timeline
-starts it, on a track as long as the video, and brought once to the video's `loudness` (LUFS,
-default -14, the level YouTube and most platforms play at; -16 or -20 is quieter), its peaks 1.5 dB
-below full scale: stereo, the voice in both channels. A line's own level doesn't matter: this step
-sets the whole. A script's cut voice fades out in the 30 ms before its cut, and is silent after it. The video puts it with the render's picture, and the web page plays the same file.
+A video's soundtrack is the tool's own (`src/sound.ts`): each line's voice laid where it begins, on a
+track as long as the video, and brought once to the video's `loudness` (LUFS, default -14, the level
+YouTube and most platforms play at; -16 or -20 is quieter), its peaks 1.5 dB below full scale: stereo,
+the voice in both channels. The video puts it with the render's picture, and the web page plays the
+same file. How it is brought there differs:
+
+- **A plan's voices** are mixed as they are, and ffmpeg's `loudnorm` brings the mix to its loudness. A
+  line's own level doesn't matter: at -14 LUFS, where a voice's peaks have no room for one gain, it is
+  evened out with the rest.
+- **A script's voices** (`writeMix`) are first made as loud as each other, as Kokoro's are not (-17 LUFS
+  for `am_puck`, -23 for `am_michael`): each line is measured as LUFS are (`loudnessOf`,
+  `src/loudness.ts`, which says what ffmpeg's `ebur128` does; `loudnorm` says up to 0.8 LU less of
+  something short), so `volume` 0 is the same for any voice. Then each is at its volume (see
+  Values), and fades out in the 30 ms before its cut, when it is cut. The mix is brought to its loudness
+  by one gain for the whole (`levelMix`, `src/render.ts`), and a limiter, which lets go soon, takes only
+  the peaks; the gain makes up for what that takes, and is found in rounds. `make` says the gain, and
+  how far the highest peak was lowered.
+- So what is written quieter comes out as much quieter, and what is written louder a little less so: the
+  loudness is kept, and the limiter takes more of what is loud. On Kokoro's voices at -14 LUFS, -12 dB
+  comes out at -11.8, 6 at about 5, and 12 at about 10. Only differences are heard: a whole
+  video at -10 dB is as one at 0.
+
+`src/sound.test.ts` and `src/loudness.test.ts` show each.
 
 ## How timing works
 

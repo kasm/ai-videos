@@ -15,8 +15,11 @@ export class Wrong extends Error {
   }
 }
 
-/** A number's unit: seconds, or none. A share, `50%`, is the number 0.5. */
-export type Unit = "" | "s";
+/** A number's unit: seconds, decibels, or none. A share, `50%`, is the number 0.5. */
+export type Unit = "" | "s" | "dB";
+
+/** What a number with each unit is, as a mistake names it. */
+export const KINDS: Record<Unit, string> = { s: "a time", dB: "a volume", "": "a number without a unit" };
 
 /** A formula as it is read. */
 export type Formula =
@@ -31,7 +34,7 @@ export type Formula =
   | { is: "minus"; of: Formula }
   | { is: "+" | "-" | "*" | "/"; left: Formula; right: Formula };
 
-const FORMS = "a value is a number (2, 0.5s, 50%), a name (middle), or a formula of these: near * 2 + 20, a minus with a space on each side";
+const FORMS = "a value is a number (2, 0.5s, 50%, -12dB), a name (middle), or a formula of these: near * 2 + 20, a minus with a space on each side";
 const PARENTHESES = "what it is worked out from is in its parentheses, a comma between one and the next: left-of(pip, near)";
 const MOMENTS = "a moment is a.start, a.end, a.50% or a.word(mole), and seconds after it or before it: @ a.end - 0.5s; it is the last thing before the colon";
 
@@ -51,9 +54,9 @@ function tokensOf(text: string): Token[] {
     const token = found[0].trim();
     if (name !== undefined) tokens.push({ text: token, name });
     else if (mark !== undefined) tokens.push({ text: token, mark });
-    else if (unit === "" || unit === "s") tokens.push({ text: token, number: Number(number), unit });
+    else if (unit === "" || unit === "s" || unit === "dB") tokens.push({ text: token, number: Number(number), unit });
     else if (unit === "%") tokens.push({ text: token, number: Number(number) / 100, unit: "" });
-    else throw new Wrong(`"${token}" has no unit that is known`, "a time is in seconds (0.5s) and a share in hundredths (50%); any other number has no unit");
+    else throw new Wrong(`"${token}" has no unit that is known`, "a time is in seconds (0.5s), a volume in decibels (-12dB) and a share in hundredths (50%); any other number has no unit");
   }
   return tokens;
 }
@@ -168,23 +171,26 @@ export const minus = (amount: Amount): Amount => each(amount, -1);
 /** Two amounts added, taken away, multiplied or divided: what has no answer is refused. */
 export function calculate(op: "+" | "-" | "*" | "/", left: Amount, right: Amount): Amount {
   if (op === "+" || op === "-") {
-    if (left.unit !== right.unit) throw new Wrong("a time and a number without a unit do not add up", "write both in seconds, or neither: 2s + 0.5s");
+    if (left.unit !== right.unit) {
+      const [one, other] = (Object.keys(KINDS) as Unit[]).filter((unit) => unit === left.unit || unit === right.unit);
+      throw new Wrong(`${KINDS[one!]} and ${KINDS[other!]} do not add up`, "write both with one unit: 2s + 0.5s, 6dB + 3dB, 2 + 3");
+    }
     const added = op === "+" ? right : minus(right);
     const lengths = new Map(left.lengths);
     for (const [line, times] of added.lengths) lengths.set(line, (lengths.get(line) ?? 0) + times);
     return { unit: left.unit, number: left.number + added.number, lengths };
   }
-  const byNumber = "multiply or divide a time by a number without a unit: 0.5s * 2";
+  const byNumber = "multiply or divide by a number without a unit: 0.5s * 2, -6dB * 2";
   if (op === "*") {
-    if (left.unit === "s" && right.unit === "s") throw new Wrong("a time is not multiplied by a time", byNumber);
+    if (left.unit !== "" && right.unit !== "") throw new Wrong(`${KINDS[left.unit]} is not multiplied by ${KINDS[right.unit]}`, byNumber);
     if (left.lengths.size > 0 && right.lengths.size > 0) throw new Wrong("a length is not multiplied by a length", byNumber);
     const [long, by] = right.lengths.size > 0 ? [right, left] : [left, right];
-    return { ...each(long, by.number), unit: left.unit === "s" || right.unit === "s" ? "s" : "" };
+    return { ...each(long, by.number), unit: left.unit === "" ? right.unit : left.unit };
   }
   if (right.lengths.size > 0) throw new Wrong("nothing is divided by a line's length", "divide the length by a number: a.length / 2");
   if (exact(right.number) === 0) throw new Wrong("nothing is divided by 0", "divide by another number");
-  if (left.unit === "" && right.unit === "s") throw new Wrong("a number is not divided by a time", byNumber);
-  return { ...each(left, 1 / right.number), unit: left.unit === right.unit ? "" : "s" };
+  if (right.unit !== "" && left.unit !== right.unit) throw new Wrong(`${KINDS[left.unit]} is not divided by ${KINDS[right.unit]}`, byNumber);
+  return { ...each(left, 1 / right.number), unit: left.unit === right.unit ? "" : left.unit };
 }
 
 /** Seconds worked out: a number, or one with lines' lengths in it, each so many times, which are measured later. */

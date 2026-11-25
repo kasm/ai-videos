@@ -295,8 +295,8 @@ export async function importReply(file: string, log: (msg: string) => void): Pro
   if (episodes.size > 0) {
     let withAdded: Project;
     try {
-      const { library, cast } = libraryOf(label, merged);
-      withAdded = { ...project, library: project.libraryFile || added.size > 0 ? library : undefined, settings: { ...project.settings, cast } };
+      const { library, cast, volumes } = libraryOf(label, merged);
+      withAdded = { ...project, library: project.libraryFile || added.size > 0 ? library : undefined, volumes, settings: { ...project.settings, cast } };
     } catch (e) {
       for (const name of episodes.keys()) refused.set(name, message(e));
       episodes.clear();

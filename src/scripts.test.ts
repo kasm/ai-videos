@@ -72,6 +72,8 @@ const PLUGIN: ScriptPlugin = {
 };
 const SPEAKERS = ["pip", "mo", "tuk", "radio", "bird", "crowd"];
 const TIMING = { lead: 0.6, gap: 0.4, tail: 1 };
+/** The library's volumes, dB. */
+const VOLUMES = { pip: -2, radio: -8.5 };
 const MOVES = { slowest: 0.5, fastest: 2 };
 /** What a line of a script keeps busy, of its character: a row that is said, or that names an action. */
 const channelsOf = (who: string, action: string) => (action === "say" ? ["voice"] : PLUGIN.actions[action]!.channels).map((channel) => `${who} ${channel}`);
@@ -81,7 +83,7 @@ const WORDS = ["one", "two", "three", "four", "five", "six", "seven", "eight", "
 /** Rows with a mistake in them, formulas that are a mistake in some places or in all, and names that are none of a value. */
 const WRONG_ROWS = [
   ...["pip watch takes=1s", "pip watch speed=slow", "pip watch arrive=prev.end", "pip watch far=0"],
-  ...["pip", "pip walk left", "Pip say: Hi.", "pip say", "pip dance to=left", "nobody say: Hi.", "nobody walk to=left", "pip walk to=left: Whee!", "pip say loud=2: Hi.", "pip Walk to=left"],
+  ...["pip", "pip walk left", "Pip say: Hi.", "pip say", "pip dance to=left", "nobody say: Hi.", "nobody walk to=left", "pip walk to=left: Whee!", "pip say loud=2: Hi.", "pip say volume=2: Hi.", "pip walk volume=-6dB", "pip Walk to=left"],
   ...["pip walk to=left to=right", "pip walk to=", "pip walk pause=1s", "pip walk nobody=1", "pip walk pip.to=left", "pip walk to=up", "pip hop times=0", "pip walk far=2px", "pip walk far=1 takes=1s speed=2"],
   ...["together", "in order: pip say: Hi.", "par:", "under:", "  pip say: Hi.", "\tpip say: Hi.", "& & pip say: Hi.", "[prev] pip say: Hi.", "[A] pip say: Hi.", "[c] & pip say: Hi.", "[a] pip say: One, two and one.", "pip say @ prev.end beat: Hi."],
 ];
@@ -89,8 +91,9 @@ const WRONG = [
   ...["nobody", "far-off", "home", "takes", "pause", "speed", "beat", "near", "lag", "slow", "- beat", "0", "0s", "1", "1s", "1 / 0", "(0.1 + 0.2 - 0.3)", "2px", "2 *", "(1"],
   ...["a.end", "prev.word(one)", "a.length", "prev.length", "block.length", "2s / a.length", "a.length / 2s", "(a.length / 2s) * (a.length / 1s)"],
   ...["beside(left, 2)", "beside(left, 1) * 2", "beside(left, beside(right, 1))", "besid(left, 2)", "beside()", "beside(left)", "beside(left, 2", "beside(left 2)", "beside(left, 2s)", "between(left, a.length)", "between(a.end, left)", "between(nobody, left)", "left, right"],
+  ...["volume", "-6dB", "6dB", "hush", "3dB * 1s", "3dB + 1", "20dB", "-61dB", "a.length / 1s * 3dB", "6db"],
 ];
-const WRONG_NAMES = ["puase", "nobody.speed", "say.speed", "pip.pause", "lead", "Near", "pip.walk.far", "say.far", "narrator.beat", "walk.say", "watch.takes", "watch.speed"];
+const WRONG_NAMES = ["puase", "nobody.speed", "say.speed", "pip.pause", "lead", "Near", "pip.walk.far", "say.far", "narrator.beat", "walk.say", "watch.takes", "watch.speed", "walk.volume", "watch.volume", "sk.volume"];
 
 /** What has a label: a line that is said, its words; an action given its length; a block, and whether a row is in it still. */
 interface Above {
@@ -129,6 +132,15 @@ function randomFile({ int, chance, pick }: Random): string {
     if (deep === 0 || chance(0.7)) return pick(["left", "middle", "right", "home", "there"]);
     return chance(0.5) ? `beside(${somewhere(deep - 1)}, ${number(["near", "much"], 1)})` : `between(${somewhere(deep - 1)}, ${somewhere(deep - 1)})`;
   };
+  /** A volume, with the name it may read. */
+  const volume = (deep = 1): string => {
+    if (wrong(0.08)) return pick(WRONG);
+    if (deep === 0 || chance(0.6)) return pick(["-12dB", "-3.5dB", "0dB", "4dB", "hush"]);
+    const inner = () => volume(deep - 1);
+    return pick([() => `${inner()} * ${pick(["0.5", "50%", "two / 3"])}`, () => `${inner()} + ${inner()}`, () => `(${inner()} - 1dB) / 2`, () => `- ${inner()} / 3`, () => `${inner()} - ${inner()}`])();
+  };
+  /** How loud a line that is said is, where it says it itself. */
+  const loud = () => (chance(0.8) ? "" : ` volume=${volume()}`);
   /** What has a label above in the scene. */
   let above: Above[] = [];
   const measured = (names: string[]): string => {
@@ -152,8 +164,10 @@ function randomFile({ int, chance, pick }: Random): string {
     const told = new Set<string>();
     for (let k = 0; k < count; k++) {
       const whose = pick(["", "", "pip.", "mo.", "walk.", "hop.", "spin.", ...(chance(0.2) ? ["watch."] : [])]);
-      const name = pick(["beat", "lag", "near", "much", "far", "to", "times", "pause", "pause", "takes", "speed", "arrive", ...(level === "block" ? [] : ["lead", "tail"])]);
-      const key = ["pause", "lead", "tail"].includes(name) && !wrong(0.1) ? name : `${whose}${name}`;
+      const name = pick(["beat", "lag", "near", "much", "far", "to", "times", "pause", "pause", "takes", "speed", "arrive", "volume", "volume", "hush", ...(level === "block" ? [] : ["lead", "tail"])]);
+      // Only what is said has a volume.
+      const loudest = /^(walk|hop|spin|watch)/.test(whose) && !wrong(0.1) ? pick(["say.", "narrator."]) : whose;
+      const key = ["pause", "lead", "tail"].includes(name) && !wrong(0.1) ? name : `${name === "volume" ? loudest : whose}${name}`;
       if (wrong(0.08)) {
         values.set(pick(WRONG_NAMES), time(["beat"]));
         continue;
@@ -170,6 +184,8 @@ function randomFile({ int, chance, pick }: Random): string {
         key,
         name === "beat" ? pick(["0.2s", "0.4s", "0.35s", "1s"])
         : name === "lag" ? time(["beat"])
+        : name === "hush" ? pick(["-6dB", "-9.5dB", "-15dB"])
+        : name === "volume" ? volume()
         : name === "near" ? pick(["5", "10", "20", "7.5"])
         : name === "much" ? number(["near"])
         : name === "far" ? number(["near", "much"])
@@ -238,7 +254,7 @@ function randomFile({ int, chance, pick }: Random): string {
       }
       if (says) {
         const words = saying();
-        rows.push(`${margin}${own}${who} say${anchor}: ${spoken(words)}`);
+        rows.push(`${margin}${own}${who} say${loud()}${anchor}: ${spoken(words)}`);
         if (label) above.push(Object.assign(label, { words }));
         continue;
       }
@@ -259,7 +275,7 @@ function randomFile({ int, chance, pick }: Random): string {
     for (let k = 0; k < count; k++) {
       if (chance(0.05)) rows.push(pick(["", `${margin}# a note`]));
       if (wrong(0.03)) {
-        rows.push(`${margin}${pick(["pip", "pip walk left", "Pip say: Hi.", "pip say", "pip dance to=left", "nobody say: Hi.", "nobody walk to=left", "pip walk to=left: Whee!", "pip say loud=2: Hi.", "together", "in order: pip say: Hi.", "[prev] pip say: Hi.", "[A] pip say: Hi.", "pip walk to=left to=right", "pip walk to=", "pip walk pause=1s", "pip walk nobody=1", "pip walk pip.to=left", "pip walk to=up", "pip hop times=0", "pip walk far=2px", "pip walk far=1 takes=1s speed=2", "  pip say: Hi.", "& & pip say: Hi.", "par:", "under:", "pip say @ prev.end beat: Hi.", "\tpip say: Hi.", "[c] & pip say: Hi.", "pip Walk to=left", "[a] pip say: One, two and one."])}`);
+        rows.push(`${margin}${pick(["pip", "pip walk left", "Pip say: Hi.", "pip say", "pip dance to=left", "nobody say: Hi.", "nobody walk to=left", "pip walk to=left: Whee!", "pip say loud=2: Hi.", "pip say volume=2: Hi.", "pip walk volume=-6dB", "together", "in order: pip say: Hi.", "[prev] pip say: Hi.", "[A] pip say: Hi.", "pip walk to=left to=right", "pip walk to=", "pip walk pause=1s", "pip walk nobody=1", "pip walk pip.to=left", "pip walk to=up", "pip hop times=0", "pip walk far=2px", "pip walk far=1 takes=1s speed=2", "  pip say: Hi.", "& & pip say: Hi.", "par:", "under:", "pip say @ prev.end beat: Hi.", "\tpip say: Hi.", "[c] & pip say: Hi.", "pip Walk to=left", "[a] pip say: One, two and one."])}`);
         continue;
       }
       const last = k === count - 1;
@@ -301,7 +317,7 @@ function randomFile({ int, chance, pick }: Random): string {
         const who = chance(0.02) ? pick(SPEAKERS) : (under ?? pick(["pip", "mo", "tuk", "narrator"]));
         if (taken(busy, channelsOf(who, "say")) && anchor === "") continue;
         const words = saying();
-        rows.push(`${margin}${joined}${own}${who} say${anchor}: ${spoken(words)}`);
+        rows.push(`${margin}${joined}${own}${who} say${loud()}${anchor}: ${spoken(words)}`);
         if (label) above.push(Object.assign(label, { words }));
         continue;
       }
@@ -340,6 +356,8 @@ function randomFile({ int, chance, pick }: Random): string {
     ["near", pick(["10", "5", "12.50"])],
     ["much", chance(0.5) ? "near * 2" : number(["near"])],
     ["two", "2"],
+    ["hush", pick(["-10dB", "-4.5dB"])],
+    ["narrator.volume", "hush"],
     ["home", pick(["left", "right"])],
     ["there", pick(["home", "between(home, right)", "beside(home, near * 2)"])],
     ["to", "there"],
@@ -384,7 +402,7 @@ const TAKEN: Taken[] = [];
 const REFUSED: { text: string; issues: Issue[] }[] = [];
 for (const text of FILES) {
   try {
-    const checked = sent(await checkScenario(PLUGIN, sent(writtenScript(text)!), undefined, SPEAKERS, TIMING));
+    const checked = sent(await checkScenario(PLUGIN, sent(writtenScript(text)!), undefined, SPEAKERS, TIMING, VOLUMES));
     if ("issues" in checked) REFUSED.push({ text, issues: checked.issues });
     else TAKEN.push({ text, ...checked, fps: from.pick([24, 25, 30]), voices: saidIn(checked.scenes).map(() => 1 + from.int(from.chance(0.3) ? 200 : 60)) });
   } catch (e) {
@@ -531,7 +549,7 @@ test("random scripts: none throws, and a mistake is told once, at lines of its f
 });
 
 test("random scripts: there are many with no mistake, and everything a script can have is in them", (t) => {
-  const count = { placedInLine: 0, placedInSpots: 0, scenes: 0, lines: 0, onTwoChannels: 0, twoThingsAtOnce: 0, neverFitted: 0, surelyBegun: 0, open: 0, openInOrder: 0, openBeside: 0, openAnchored: 0, openEnding: 0, openNamed: 0, joined: 0, under: 0, anchored: 0, byWord: 0, byPrev: 0, byBlock: 0, takes: 0, arrives: 0, hurried: 0, slowed: 0, fastest: 0, slowest: 0, lengthsRead: 0, pauseOfLengths: 0, cutShort: 0, notThere: 0, waitedForItsChannel: 0, endingTogether: 0, begunLater: 0, endingLater: 0, setOnScene: 0, setOnBlock: 0, setOnLine: 0, forOne: 0, forAnAction: 0, defaults: 0 };
+  const count = { placedInLine: 0, placedInSpots: 0, scenes: 0, lines: 0, onTwoChannels: 0, twoThingsAtOnce: 0, neverFitted: 0, surelyBegun: 0, open: 0, openInOrder: 0, openBeside: 0, openAnchored: 0, openEnding: 0, openNamed: 0, joined: 0, under: 0, anchored: 0, byWord: 0, byPrev: 0, byBlock: 0, takes: 0, arrives: 0, hurried: 0, slowed: 0, fastest: 0, slowest: 0, lengthsRead: 0, pauseOfLengths: 0, cutShort: 0, notThere: 0, waitedForItsChannel: 0, endingTogether: 0, begunLater: 0, endingLater: 0, setOnScene: 0, setOnBlock: 0, setOnLine: 0, forOne: 0, forAnAction: 0, defaults: 0, quieter: 0, louder: 0, ofTheLibrary: 0, sayVolume: 0, oneVolume: 0, blockVolume: 0 };
   tried(t, (taken) => {
     const compiled = compiledOf(taken);
     count.placedInLine += /walk.* to=(beside|between)\(/.test(taken.text) ? 1 : 0;
@@ -542,6 +560,14 @@ test("random scripts: there are many with no mistake, and everything a script ca
     count.forOne += /(pip|mo)\.[a-z]+(=|:)/.test(taken.text) ? 1 : 0;
     count.forAnAction += /(walk|hop|spin)\.[a-z]+(=|:)/.test(taken.text) ? 1 : 0;
     count.defaults += taken.defaults.length > 0 ? 1 : 0;
+    count.sayVolume += /say\.volume(=|:)/.test(taken.text) ? 1 : 0;
+    count.oneVolume += /(pip|mo)\.volume(=|:)/.test(taken.text) ? 1 : 0;
+    count.blockVolume += /(in order|together|under)[^:]* volume=/.test(taken.text) ? 1 : 0;
+    for (const line of saidIn(taken.scenes)) {
+      if (line.volume < 0) count.quieter++;
+      if (line.volume > 0) count.louder++;
+      if (line.volume === (VOLUMES as Record<string, number>)[line.who]) count.ofTheLibrary++;
+    }
     for (const one of laid(taken, compiled, taken.voices)) {
       count.scenes++;
       for (const item of one.order) {
@@ -638,6 +664,44 @@ test("random scripts: each compiles to a whole scenario, of plain values, with s
       for (const { progress, into } of shownAt(picture, frame).actions) assert.ok(progress >= 0 && progress <= 1 && into >= 0, `frame ${frame} shows an action ${progress} through`);
     }
   });
+});
+
+test("random scripts: what is said is as loud as the nearest level has it, worked out by what its names are there", (t) => {
+  let set = 0;
+  tried(t, (taken) => {
+    const script = writtenScript(taken.text)!;
+    const compiled = new Map(compiledOf(taken).scenes.flatMap((scene) => scene.lines).map((line) => [line.line, line]));
+    const checked = new Map(saidIn(taken.scenes).map((line) => [line.line, line]));
+    const library = Object.fromEntries(Object.entries(VOLUMES).map(([who, dB]) => [`${who}.volume`, `${dB}dB`]));
+    const texts = (values: Record<string, { text: string }> = {}) => Object.fromEntries(Object.entries(values).map(([name, { text }]) => [name, text]));
+    /** A value's number: each name in it is what the nearest level has for it, the character's first, then what is said's. */
+    const worth = (name: string, who: string, levels: Record<string, string>[]): number => {
+      for (const level of levels) {
+        const key = [`${who}.${name}`, `say.${name}`, name].find((one) => Object.hasOwn(level, one));
+        if (key === undefined) continue;
+        const numbers = level[key]!.replace(/dB/g, "").replace(/([\d.]+)%/g, "($1 / 100)").replace(/[a-z][a-z0-9-]*/g, (one) => `(${worth(one, who, levels)})`);
+        return Function(`return ${numbers.replace(/-\s*-/g, "+").replace(/-\s*\(-/g, "+ (")}`)() as number;
+      }
+      throw new Error(`no level sets ${name}`);
+    };
+    const look = (items: ScriptItem[], levels: Record<string, string>[]) => {
+      for (const item of items) {
+        if (isBlock(item)) {
+          look(item.items, [item.values ?? {}, ...levels]);
+          continue;
+        }
+        if (item.action !== "say") continue;
+        const expected = worth("volume", item.who, [item.values, ...levels]);
+        const { volume } = checked.get(item.line)!;
+        assert.ok(Math.abs(volume - expected) < 1e-5, `line ${item.line} is at ${volume} dB, not ${expected}`);
+        const there = compiled.get(item.line);
+        if (there) assert.equal("volume" in there && there.volume, volume, `line ${item.line} as compiled`);
+        if (volume !== 0) set++;
+      }
+    };
+    for (const scene of script.scenes) look(scene.items, [texts(scene.values), texts(script.values), { ...library, volume: "0dB" }]);
+  });
+  assert.ok(set > FILES.length, `${set}`);
 });
 
 test("random scripts: without what is open, all the rest is where it was, but what waits for its channel", (t) => {

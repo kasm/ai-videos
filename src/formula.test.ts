@@ -1,10 +1,10 @@
 // A formula (formula.ts): what reads as one, what it is told when it does not, and its arithmetic, in
-// seconds and in numbers with no unit, with lines' lengths in it.
+// seconds, in decibels and in numbers with no unit, with lines' lengths in it.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { Wrong, calculate, minus, namesIn, readFormula, secondsOf, shownAs, spanOf, type Amount, type Formula } from "./formula.ts";
+import { Wrong, calculate, minus, namesIn, readFormula, secondsOf, shownAs, spanOf, type Amount, type Formula, type Unit } from "./formula.ts";
 
-const number = (n: number, unit: "" | "s" = ""): Formula => ({ is: "number", number: n, unit });
+const number = (n: number, unit: Unit = ""): Formula => ({ is: "number", number: n, unit });
 const name = (one: string): Formula => ({ is: "name", name: one });
 
 /** Why a formula does not read, with its hint. */
@@ -22,6 +22,8 @@ test("a formula is a number with its unit, a name, or + - * / over them, * and /
   assert.deepEqual(readFormula("2"), number(2));
   assert.deepEqual(readFormula("0.25s"), number(0.25, "s"));
   assert.deepEqual(readFormula("50%"), number(0.5));
+  assert.deepEqual(readFormula("6dB"), number(6, "dB"));
+  assert.deepEqual(readFormula("-4.5dB"), { is: "minus", of: number(4.5, "dB") });
   assert.deepEqual(readFormula("off-left"), name("off-left"));
   assert.deepEqual(readFormula("near * 2 + 20"), { is: "+", left: { is: "*", left: name("near"), right: number(2) }, right: number(20) });
   assert.deepEqual(readFormula("20+near*2"), { is: "+", left: number(20), right: { is: "*", left: name("near"), right: number(2) } });
@@ -88,8 +90,9 @@ test("what does not read is told why, with a hint", () => {
   assert.equal(wrong("Near")[0], '"Near" is not read');
   assert.equal(wrong('"middle"')[0], '""middle"" is not read');
   assert.equal(wrong("1.5.2")[0], '"." comes after what is a value already');
-  assert.deepEqual(wrong("150px"), ['"150px" has no unit that is known', "a time is in seconds (0.5s) and a share in hundredths (50%); any other number has no unit"]);
-  assert.match(wrong("near far")[1], /^a value is a number \(2, 0\.5s, 50%\), a name \(middle\), or a formula of these: near \* 2 \+ 20/);
+  assert.deepEqual(wrong("150px"), ['"150px" has no unit that is known', "a time is in seconds (0.5s), a volume in decibels (-12dB) and a share in hundredths (50%); any other number has no unit"]);
+  for (const text of ["12db", "12DB", "12d"]) assert.equal(wrong(`-${text}`)[0], `"${text}" has no unit that is known`);
+  assert.match(wrong("near far")[1], /^a value is a number \(2, 0\.5s, 50%, -12dB\), a name \(middle\), or a formula of these: near \* 2 \+ 20/);
 });
 
 test("the names a formula reads, those after a moment too", () => {
@@ -102,7 +105,7 @@ test("the names a formula reads, those after a moment too", () => {
 });
 
 /** An amount: a number, its unit, and lines' lengths by their lines. */
-const amount = (n: number, unit: "" | "s" = "", lengths: [number, number][] = []): Amount => ({ unit, number: n, lengths: new Map(lengths) });
+const amount = (n: number, unit: Unit = "", lengths: [number, number][] = []): Amount => ({ unit, number: n, lengths: new Map(lengths) });
 const refused = (op: "+" | "-" | "*" | "/", left: Amount, right: Amount) => {
   try {
     calculate(op, left, right);
@@ -124,9 +127,28 @@ test("numbers are worked out with their units: times add up, and are multiplied 
   assert.equal(refused("+", amount(2, "s"), amount(3)), "a time and a number without a unit do not add up");
   assert.equal(refused("-", amount(2), amount(3, "s")), "a time and a number without a unit do not add up");
   assert.equal(refused("*", amount(2, "s"), amount(3, "s")), "a time is not multiplied by a time");
-  assert.equal(refused("/", amount(2), amount(3, "s")), "a number is not divided by a time");
+  assert.equal(refused("/", amount(2), amount(3, "s")), "a number without a unit is not divided by a time");
   assert.equal(refused("/", amount(2, "s"), amount(0)), "nothing is divided by 0");
   assert.equal(refused("/", amount(2, "s"), amount(0.1 + 0.2 - 0.3)), "nothing is divided by 0", "a hair off it, as a computer's sums are");
+});
+
+test("volumes are worked out as times are: added up, and multiplied and divided by numbers, and never with a time", () => {
+  assert.deepEqual(calculate("+", amount(-12, "dB"), amount(3, "dB")), amount(-9, "dB"));
+  assert.deepEqual(calculate("-", amount(-12, "dB"), amount(3, "dB")), amount(-15, "dB"));
+  assert.deepEqual(calculate("*", amount(-6, "dB"), amount(2)), amount(-12, "dB"));
+  assert.deepEqual(calculate("*", amount(2), amount(-6, "dB")), amount(-12, "dB"));
+  assert.deepEqual(calculate("/", amount(-6, "dB"), amount(2)), amount(-3, "dB"));
+  assert.deepEqual(calculate("/", amount(-6, "dB"), amount(3, "dB")), amount(-2));
+  assert.deepEqual(minus(amount(6, "dB")), amount(-6, "dB"));
+  assert.equal(refused("+", amount(-6, "dB"), amount(3)), "a volume and a number without a unit do not add up");
+  assert.equal(refused("-", amount(3), amount(-6, "dB")), "a volume and a number without a unit do not add up");
+  assert.equal(refused("+", amount(-6, "dB"), amount(3, "s")), "a time and a volume do not add up");
+  assert.equal(refused("-", amount(3, "s"), amount(-6, "dB")), "a time and a volume do not add up");
+  assert.equal(refused("*", amount(-6, "dB"), amount(-6, "dB")), "a volume is not multiplied by a volume");
+  assert.equal(refused("*", amount(2, "s"), amount(-6, "dB")), "a time is not multiplied by a volume");
+  assert.equal(refused("/", amount(2, "s"), amount(-6, "dB")), "a time is not divided by a volume");
+  assert.equal(refused("/", amount(-6, "dB"), amount(2, "s")), "a volume is not divided by a time");
+  assert.equal(refused("/", amount(2), amount(-6, "dB")), "a number without a unit is not divided by a volume");
 });
 
 test("lines' lengths are added up and multiplied by numbers, and nothing is divided by one", () => {

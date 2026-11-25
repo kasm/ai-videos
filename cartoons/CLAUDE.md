@@ -287,8 +287,8 @@ scenes:
 A cartoon may be written as a script: each scene has a `script:`, a
 block of lines, in place of `beats:`. `videos/hello-script.yaml` is
 `hello` written so, and `videos/all-at-once.yaml` has what can happen at
-once: a chorus, an interruption, a radio, words that end with a walk, a
-murmur under a talk, its pauses all of one named value, its second
+once: a chorus, an interruption, words that end with a walk, a radio and a
+murmur lower than the talk over them, its pauses all of one named value, its second
 scene's places worked out from others, and in its third, several who act
 at once, one who walks, waves and talks, two who look at it all the way
 past them, and a background that changes at a word. The plan
@@ -399,6 +399,11 @@ scenes:
   places that go round as a scene begins; a construction the plugin has not,
   or without what it takes. A mistake in a place is not said again for what
   rests on it.
+- **How loud:** `volume`, in decibels, on a line that is said, or on a
+  block, a scene or the cartoon for all that is said in it
+  (`radio.volume`); a character's own is its `volume` in the library.
+  `0dB` is the same for every voice, and the nearest wins (the tool's
+  `AGENTS.md`, "How loud"). A cartoon in beats has none.
 - **How fast:** `walk to=left speed=slow`, `takes=2s` or `arrive=a.end`,
   on the line, or on a block, a scene or the cartoon for all in it
   (`walk.speed=slow`, `pip.speed=slow`). An action given its speed or its
@@ -430,13 +435,15 @@ scenes:
 
 `library.yaml`, beside `package.json`, draws what the cartoons name, each
 once: the characters and the backgrounds. The tool reads it, takes each
-character's `voice` (Voices, above), and gives the plugin the rest. A
-mistake in it is reported against `library.yaml`.
+character's `voice` (Voices, above) and its `volume`, when it has one (The
+script, above), and gives the plugin the rest. A mistake in it is reported
+against `library.yaml`.
 
 ```yaml
 characters:
   pip:
     voice: am_puck
+    volume: -4dB # optional
     shoulder: [100, -203]
     parts:
       body:
@@ -459,8 +466,9 @@ backgrounds:
 - **A shape** is a `rect` or an `ellipse`: `at` is its centre, `size` its
   width and height, `fill` its colour as `#rrggbb`. A `rect` may have
   `round`, its corners' radius.
-- **A character** is its `voice` and its named `parts` (body, arm, eyes,
-  mouth), each a list of shapes. Parts are drawn in the order written.
+- **A character** is its `voice`, a `volume` if it is louder or quieter than
+  the rest, and its named `parts` (body, arm, eyes, mouth), each a list of
+  shapes. Parts are drawn in the order written.
   Their shapes are measured from the point between the character's feet,
   so `[0, -170]` is 170 pixels above the ground. Draw a character
   **facing right**: a turn mirrors it. Three names mean something to the
