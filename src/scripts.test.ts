@@ -32,11 +32,16 @@ const xOf = (where: Worked): number | string => {
   if (typeof x === "string" || typeof other === "string") return typeof x === "string" ? x : `${shownAs(where)}: ${other}`;
   return where.construction === "beside" ? x + other : (x + other) / 2;
 };
-/** `walk` goes `to` a place, and takes longer the `far`ther it is; `hop` hops so many `times`. A scene's `spots` are places. */
+/**
+ * `walk` goes `to` a place, takes longer the `far`ther it is, and is fitted to words; `hop` hops so many
+ * `times`, and `spin` is on the walk's channel and another. A scene's `spots` are places. An action's
+ * values say which others have surely begun before its end.
+ */
 const PLUGIN: ScriptPlugin = {
   actions: {
-    walk: { description: "It walks.", example: "pip walk to=left", values: z.strictObject({ to: place, far: z.number().positive().max(5000).default(100) }) },
-    hop: { description: "It hops.", example: "pip hop", values: z.strictObject({ times: z.number().int().positive().max(20).default(1) }) },
+    walk: { description: "It walks.", example: "pip walk to=left", values: z.strictObject({ to: place, far: z.number().positive().max(5000).default(100) }), channels: ["place"], fits: true },
+    hop: { description: "It hops.", example: "pip hop", values: z.strictObject({ times: z.number().int().positive().max(20).default(1) }), channels: ["hop"] },
+    spin: { description: "It spins.", example: "pip spin", values: z.strictObject({}), channels: ["facing", "place"] },
   },
   names: { slow: 0.5, fast: 2 },
   constructions: { beside: { description: "Beside a place.", example: "beside(left, 2)" }, between: { description: "Between two.", example: "between(left, right)" } },
@@ -51,9 +56,11 @@ const PLUGIN: ScriptPlugin = {
     };
     const worked = scenes.map(({ line, setting, actions }) => ({
       setting: { at: [0, 1], spots: Object.fromEntries(Object.entries((setting.spots ?? {}) as Record<string, Worked>).map(([who, where]) => [who, at(line, where)])) },
-      actions: actions.map(({ line, values: taken }) => {
-        const values = taken as { times: number } | { to: Worked; far: number };
-        return "times" in values ? { values, length: values.times * 0.4 } : { values: { ...values, to: at(line, values.to) }, length: 0.5 + values.far / 200 };
+      actions: actions.map(({ line, values: taken, begun }) => {
+        const values = taken as { times: number } | { to: Worked; far: number } | object;
+        if ("times" in values) return { values: { ...values, begun }, length: values.times * 0.4 };
+        if ("to" in values) return { values: { ...values, to: at(line, values.to), begun }, length: 0.5 + values.far / 200 };
+        return { values: { begun }, length: 0.7 };
       }),
     }));
     const once = issues.filter((one, k) => issues.findIndex(({ line, message }) => line === one.line && message === one.message) === k);
@@ -64,6 +71,8 @@ const PLUGIN: ScriptPlugin = {
 const SPEAKERS = ["pip", "mo", "tuk", "radio", "bird", "crowd"];
 const TIMING = { lead: 0.6, gap: 0.4, tail: 1 };
 const MOVES = { slowest: 0.5, fastest: 2 };
+/** What a line of a script keeps busy, of its character: a row that is said, or that names an action. */
+const channelsOf = (who: string, action: string) => (action === "say" ? ["voice"] : PLUGIN.actions[action]!.channels).map((channel) => `${who} ${channel}`);
 
 const WORDS = ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty"];
 
@@ -139,7 +148,7 @@ function randomFile({ int, chance, pick }: Random): string {
     const values = new Map<string, string>();
     const told = new Set<string>();
     for (let k = 0; k < count; k++) {
-      const whose = pick(["", "", "pip.", "mo.", "walk.", "hop."]);
+      const whose = pick(["", "", "pip.", "mo.", "walk.", "hop.", "spin."]);
       const name = pick(["beat", "lag", "near", "much", "far", "to", "times", "pause", "pause", "takes", "speed", "arrive", ...(level === "block" ? [] : ["lead", "tail"])]);
       const key = ["pause", "lead", "tail"].includes(name) && !wrong(0.1) ? name : `${whose}${name}`;
       if (wrong(0.08)) {
@@ -177,11 +186,19 @@ function randomFile({ int, chance, pick }: Random): string {
   const labelled = (): Above | undefined => (chance(0.5) ? { label: wrong(0.1) ? pick(["a", "b", "z"]) : `${"abcdefgh"[labels % 8]}${labels++ < 8 ? "" : labels}` } : undefined);
   const saying = (): string[] => WORDS.slice(int(WORDS.length)).slice(0, 1 + int(chance(0.2) ? 20 : 5));
   const spoken = (words: string[]) => `${words.map((word, i) => `${word}${i < words.length - 1 && chance(0.2) ? pick([",", ".", ":", "!"]) : ""}`).join(" ")}.`;
-  /** What a walk or a hop takes besides its time. */
-  const takenBy = (action: string) => (action === "hop" ? pick(["", " times=2", " times=two + 1"]) : `${chance(0.5) ? "" : ` to=${somewhere()}`}${chance(0.6) ? "" : ` far=${number(["near", "much"])}`}`);
+  /** What an action takes besides its time. */
+  const takenBy = (action: string) =>
+    action === "spin" ? "" : action === "hop" ? pick(["", " times=2", " times=two + 1"]) : `${chance(0.5) ? "" : ` to=${somewhere()}`}${chance(0.6) ? "" : ` far=${number(["near", "much"])}`}`;
+  const anAction = () => pick(["walk", "walk", "hop", "spin"]);
+  /** Whether something is on one of these channels already; they are kept, unless it is so and a slip has it be. */
+  const taken = (busy: Set<string>, channels: string[]) => {
+    const twice = channels.some((channel) => busy.has(channel)) && !wrong(0.1);
+    if (!twice) channels.forEach((channel) => busy.add(channel));
+    return twice;
+  };
   /** The rows of a block that ends its lines together: lines alone, one that is said and one that is done by each, with no time of their own. */
   const writeEnding = (margin: string, under?: string) => {
-    const done = new Set<string>();
+    const busy = new Set<string>();
     for (let k = 0, count = 1 + int(4); k < count; k++) {
       const label = labelled();
       const own = `${k > 0 && wrong(0.05) ? "& " : ""}${label ? `[${label.label}] ` : ""}`;
@@ -192,24 +209,25 @@ function randomFile({ int, chance, pick }: Random): string {
       }
       const says = under !== undefined || chance(0.55);
       const who = under !== undefined && chance(0.7) ? under : says ? pick([...(under === undefined ? ["pip", "mo", "tuk"] : ["radio", "bird", "crowd"]), "narrator"]) : pick(["pip", "mo", "tuk"]);
-      if (done.has(`${who} ${says}`) && !wrong(0.1)) continue;
-      done.add(`${who} ${says}`);
+      const action = says ? "say" : anAction();
+      if (taken(busy, channelsOf(who, action))) continue;
       if (says) {
         const words = saying();
         rows.push(`${margin}${own}${who} say${anchor}: ${spoken(words)}`);
         if (label) above.push(Object.assign(label, { words }));
         continue;
       }
-      const action = pick(["walk", "walk", "hop"]);
       const given = chance(0.2) ? "" : wrong(0.1) ? ` arrive=${moment(k === 0)}` : pick([` takes=${measured(["beat", "lag", "pause"])}`, ` speed=${number(["slow", "fast"], 1)}`]);
       rows.push(`${margin}${own}${who} ${action}${takenBy(action)}${given}${anchor}`);
-      if (label) above.push(Object.assign(label, { given: given !== "" && !given.startsWith(" arrive") }));
+      if (label) above.push(Object.assign(label, { given: given !== "" ? !given.startsWith(" arrive") : action !== "walk" }));
     }
   };
-  /** The rows of a block; `under` is who speaks in it when it is under the rest, where nobody acts. */
-  const write = (margin: string, deep: number, under?: string) => {
+  /** The rows of a block, in order or all at once; `under` is who speaks in it when it is under the rest, where nobody acts. */
+  const write = (margin: string, deep: number, atOnce: boolean, under?: string) => {
     const count = 1 + int(4);
     let afterUnder = false;
+    /** What is busy with the rows that begin at once: all of a block together, or those that are joined. */
+    let busy = new Set<string>();
     for (let k = 0; k < count; k++) {
       if (chance(0.05)) rows.push(pick(["", `${margin}# a note`]));
       if (wrong(0.03)) {
@@ -218,6 +236,7 @@ function randomFile({ int, chance, pick }: Random): string {
       }
       const last = k === count - 1;
       const joined = k > 0 && (!afterUnder || wild) && chance(0.25) ? "& " : "";
+      if (!joined && !atOnce) busy = new Set();
       const label = labelled();
       const own = label ? `[${label.label}] ` : "";
       const anchor = chance(0.2) && (k > 0 || chance(0.2)) ? ` @ ${moment(k === 0)}` : "";
@@ -229,22 +248,24 @@ function randomFile({ int, chance, pick }: Random): string {
         if (label) above.push(Object.assign(label, { open: true }));
         const inner = `${margin}${" ".repeat(1 + int(4))}`;
         if (kind === "ending together") writeEnding(inner, under);
-        else write(inner, deep - 1, kind === "under" ? ["radio", "bird", "crowd"][unders++ % 3] : under);
+        else write(inner, deep - 1, kind === "together", kind === "under" ? ["radio", "bird", "crowd"][unders++ % 3] : under);
         if (label) label.open = false;
         afterUnder = kind === "under";
         continue;
       }
       if (chance(0.55) || (under !== undefined && !wrong(0.1))) {
         const who = chance(0.02) ? pick(SPEAKERS) : (under ?? pick(["pip", "mo", "tuk", "narrator"]));
+        if (taken(busy, channelsOf(who, "say")) && anchor === "") continue;
         const words = saying();
         rows.push(`${margin}${joined}${own}${who} say${anchor}: ${spoken(words)}`);
         if (label) above.push(Object.assign(label, { words }));
         continue;
       }
-      const action = pick(["walk", "walk", "hop"]);
+      const [who, action] = [pick(["pip", "mo", "tuk"]), anAction()];
+      if (taken(busy, channelsOf(who, action)) && anchor === "") continue;
       const given = chance(0.6) ? "" : pick([` takes=${measured(["beat", "lag", "pause"])}`, ` speed=${number(["slow", "fast"], 1)}`, ` arrive=${moment(k === 0)}`]);
-      rows.push(`${margin}${joined}${own}${pick(["pip", "mo", "tuk"])} ${action}${takenBy(action)}${given}${anchor}`);
-      if (label) above.push(Object.assign(label, { given: given !== "" && !given.startsWith(" arrive") }));
+      rows.push(`${margin}${joined}${own}${who} ${action}${takenBy(action)}${given}${anchor}`);
+      if (label) above.push(Object.assign(label, { given: given !== "" ? !given.startsWith(" arrive") : action !== "walk" }));
     }
   };
 
@@ -252,7 +273,7 @@ function randomFile({ int, chance, pick }: Random): string {
     rows.length = 0;
     above = [];
     labels = 0;
-    write("      ", 3);
+    write("      ", 3, false);
     const set = chance(0.5) ? [] : [...settings(1 + int(3), "scene")];
     // Between braces a comma ends a value: one with a comma is in quotes there, if it is not a mistake.
     const braced = (name: string, text: string) => `${name}: ${text.includes(",") && !wrong(0.2) ? `"${text}"` : text}`;
@@ -404,7 +425,8 @@ function laid({ scenes, fps }: Pick<Taken, "scenes" | "fps">, compiled: Compiled
     /** When a line's channel is free: where each line above it on that has ended, or what cuts it. */
     const freeOf = (line: CheckedLine): number[] => {
       const lines = order.filter((item): item is CheckedLine => !isBlock(item));
-      return lines.slice(0, lines.indexOf(line)).filter((other) => channelOf(other) === channelOf(line)).map((other) => uncutOf(cutBy(other, line).at(-1) ?? other));
+      const own = channelsOf(line.who, line.action);
+      return lines.slice(0, lines.indexOf(line)).filter(({ who, action }) => channelsOf(who, action).some((channel) => own.includes(channel))).map((other) => uncutOf(cutBy(other, line).at(-1) ?? other));
     };
     const momentOf = ({ of, at: where, plus }: Anchor, x: Item): number => {
       const w = named(of, x);
@@ -432,7 +454,6 @@ function laid({ scenes, fps }: Pick<Taken, "scenes" | "fps">, compiled: Compiled
 }
 type Laid = ReturnType<typeof laid>[number];
 const linesOf = ({ order }: Laid) => order.filter((item): item is CheckedLine => !isBlock(item));
-const channelOf = (line: CheckedLine) => `${line.who} ${"text" in line ? "voice" : "action"}`;
 
 /** The seconds and the moments a thing's time is worked out from. */
 const spansOf = (item: Item): Span[] => [item.anchor?.plus, isBlock(item) ? item.pause : undefined, !isBlock(item) && "values" in item ? item.takes : undefined, !isBlock(item) && "values" in item ? item.arrive?.plus : undefined].filter((span) => span !== undefined);
@@ -455,7 +476,7 @@ test("random scripts: none throws, and a mistake is told once, at lines of its f
 });
 
 test("random scripts: there are many with no mistake, and everything a script can have is in them", (t) => {
-  const count = { placedInLine: 0, placedInSpots: 0, scenes: 0, lines: 0, joined: 0, under: 0, anchored: 0, byWord: 0, byPrev: 0, byBlock: 0, takes: 0, arrives: 0, hurried: 0, slowed: 0, fastest: 0, slowest: 0, lengthsRead: 0, pauseOfLengths: 0, cutShort: 0, notThere: 0, waitedForItsChannel: 0, endingTogether: 0, begunLater: 0, endingLater: 0, setOnScene: 0, setOnBlock: 0, setOnLine: 0, forOne: 0, forAnAction: 0, defaults: 0 };
+  const count = { placedInLine: 0, placedInSpots: 0, scenes: 0, lines: 0, onTwoChannels: 0, twoThingsAtOnce: 0, neverFitted: 0, surelyBegun: 0, joined: 0, under: 0, anchored: 0, byWord: 0, byPrev: 0, byBlock: 0, takes: 0, arrives: 0, hurried: 0, slowed: 0, fastest: 0, slowest: 0, lengthsRead: 0, pauseOfLengths: 0, cutShort: 0, notThere: 0, waitedForItsChannel: 0, endingTogether: 0, begunLater: 0, endingLater: 0, setOnScene: 0, setOnBlock: 0, setOnLine: 0, forOne: 0, forAnAction: 0, defaults: 0 };
   tried(t, (taken) => {
     const compiled = compiledOf(taken);
     count.placedInLine += /walk.* to=(beside|between)\(/.test(taken.text) ? 1 : 0;
@@ -464,7 +485,7 @@ test("random scripts: there are many with no mistake, and everything a script ca
     count.setOnBlock += /(in order|together|under) [a-z.]+=/.test(taken.text) ? 1 : 0;
     count.setOnLine += /(walk|hop) [a-z]+=/.test(taken.text) ? 1 : 0;
     count.forOne += /(pip|mo)\.[a-z]+(=|:)/.test(taken.text) ? 1 : 0;
-    count.forAnAction += /(walk|hop)\.[a-z]+(=|:)/.test(taken.text) ? 1 : 0;
+    count.forAnAction += /(walk|hop|spin)\.[a-z]+(=|:)/.test(taken.text) ? 1 : 0;
     count.defaults += taken.defaults.length > 0 ? 1 : 0;
     for (const one of laid(taken, compiled, taken.voices)) {
       count.scenes++;
@@ -492,6 +513,11 @@ test("random scripts: there are many with no mistake, and everything a script ca
         else if (there.frames < one.lasts(item)) count.cutShort++;
         if (there && !item.anchor && !one.inOrder(one.parent.get(item)!) && !one.ending(one.parent.get(item)!) && there.from > one.startOf(one.parent.get(item)!)) count.waitedForItsChannel++;
         if ("text" in item) continue;
+        if (item.channels.length > 1) count.onTwoChannels++;
+        const beside = there ? linesOf(one).flatMap((other) => (other !== item && other.who === item.who ? (one.there(other) ?? []) : [])) : [];
+        if (there && beside.some((other) => other.from < there.from + there.frames && there.from < other.from + other.frames)) count.twoThingsAtOnce++;
+        if (item.action !== "walk" && item.takes === item.length) count.neverFitted++;
+        if ((item.values as { begun: number[] }).begun.length > 0) count.surelyBegun++;
         if (item.takes !== undefined) count.takes++;
         if (item.arrive) count.arrives++;
         if (item.takes !== undefined || !there) continue;
@@ -677,11 +703,45 @@ test("random scripts: a channel never does two things, and keeps the order writt
       for (const line of linesOf(one)) {
         const placed = one.there(line);
         if (!placed) continue;
-        assert.ok(placed.from >= (free.get(channelOf(line)) ?? 0), `line ${line.line} begins while ${channelOf(line)} is busy`);
-        free.set(channelOf(line), placed.from + placed.frames);
+        for (const channel of channelsOf(line.who, line.action)) {
+          assert.ok(placed.from >= (free.get(channel) ?? 0), `line ${line.line} begins while ${channel} is busy`);
+          free.set(channel, placed.from + placed.frames);
+        }
       }
     }
   });
+});
+
+test("random scripts: of two that begin a block together, or are joined, none is on a channel of the other", (t) => {
+  tried(t, (taken) => {
+    for (const { order, parent, isScene } of timings(taken)) {
+      for (const line of order) {
+        const block = parent.get(line)!;
+        if (isBlock(line) || line.anchor || isScene(block) || block.order !== "together") continue;
+        const own = channelsOf(line.who, line.action);
+        const above = block.items.slice(0, block.items.indexOf(line)).filter((other): other is CheckedLine => !isBlock(other));
+        for (const other of above) assert.ok(!channelsOf(other.who, other.action).some((channel) => own.includes(channel)), `line ${line.line} is on a channel of line ${other.line}`);
+      }
+    }
+  });
+});
+
+test("random scripts: what an action's check is told has surely begun before its end has, whatever the voices' lengths", (t) => {
+  let told = 0;
+  tried(t, (taken) => {
+    for (const one of timings(taken)) {
+      for (const line of linesOf(one)) {
+        if (!("values" in line)) continue;
+        const placed = one.there(line)!;
+        for (const begun of (line.values as { begun: number[] }).begun) {
+          const other = linesOf(one).find((one) => one.line === begun)!;
+          assert.ok(other !== line && "values" in other && one.there(other)!.from < placed.from + placed.frames, `line ${begun} has not begun when line ${line.line} ends`);
+          told++;
+        }
+      }
+    }
+  });
+  assert.ok(told > FILES.length, `${told}`);
 });
 
 test("random scripts: every line is where the laws have it, and no later", (t) => {

@@ -2,9 +2,9 @@
 // function of the scenario and the moment, so the same moment is the same text, and the same pixels.
 // The scenario names moves and poses; how each looks (the numbers below) is the plugin's. A cartoon
 // written as a script is drawn the same, from what a frame of its compiled scenario shows.
-import type { Library as LibraryFile, Shown } from "ai-videos/plugin";
-import { ARM, STAGE, moveOf, readLibrary, type Library, type Pose, type Scenario } from "./scenario.ts";
-import type { Setting, Walk } from "./script.ts";
+import type { Library as LibraryFile, Shown, ShownAction } from "ai-videos/plugin";
+import { ARM, PACE, STAGE, moveOf, readLibrary, type Library, type Pose, type Scenario } from "./scenario.ts";
+import type { Did, Setting } from "./script.ts";
 import type { Moment } from "./timeline.ts";
 
 type Point = [number, number];
@@ -29,8 +29,6 @@ const THIN = 0.04;
 const ARM_AT: Record<Pose, number> = { stand: 0, point: -90, wave: -155 };
 const SWING = 20;
 const WAVES = 2;
-/** How long an arm takes to reach a new pose, seconds. */
-const REACH = 0.3;
 
 /** The part that talks, and how tall it is when wide open, as a share of its width: nearly round. */
 const MOUTH = "mouth";
@@ -101,13 +99,30 @@ function walkAt(from: Point, to: Point, p: number): Point {
   return [from[0] + dx * way, from[1] + dy * way - BOUNCE * Math.abs(Math.sin(Math.PI * steps * way))];
 }
 
+/** Which way a turn from facing `from` has a character, `p` of the way through it: a cut-out turned round, its width going as the cosine, fastest edge-on, and never to nothing. */
+function turnAt(from: number, p: number): number {
+  const width = Math.cos(Math.PI * p);
+  return from * (Math.abs(width) < THIN ? (p < 0.5 ? THIN : -THIN) : width);
+}
+
+/** How high a jump of so many hops has a character, `p` of the way through it: whole hops, so it ends with the feet down. */
+function hopAt(times: number, p: number): number {
+  const hop = (p * times) % 1;
+  return JUMP * 4 * hop * (1 - hop);
+}
+
 /** A pose's arm angle at `time`: a wave swings around its own. */
 const armAt = (pose: Pose, time: number) => ARM_AT[pose] + (pose === "wave" ? SWING * Math.sin(2 * Math.PI * WAVES * time) : 0);
 
+/** The arm's angle at `time`, `p` of the way from one pose to another: a wave's swing fades with it, or comes. */
+function armBetween(was: Pose, pose: Pose, p: number, time: number): number {
+  const reached = ease(p);
+  return pose === was ? armAt(pose, time) : armAt(was, time) * (1 - reached) + armAt(pose, time) * reached;
+}
+
 /**
  * The scene of the moment's beat: its characters where the beats before left them, facing and posed
- * as those left them, and the moment's own beat part of the way. A jump is a whole number of hops,
- * so it ends with the feet down.
+ * as those left them, and the moment's own beat part of the way.
  */
 export function stagingAt(scenario: Scenario, moment: Pick<Moment, "beat" | "progress" | "time" | "into">): Staging {
   let first = 0; // the scene's first beat, counted through the scenario
@@ -137,23 +152,15 @@ export function stagingAt(scenario: Scenario, moment: Pick<Moment, "beat" | "pro
       const p = now ? moment.progress : 1;
       if (beat.walk) {
         one.at = walkAt(one.at, beat.walk.to, p);
-      } else if (beat.turn) {
-        // A cut-out turned round: its width goes as the cosine, fastest edge-on, and never to nothing.
-        const width = Math.cos(Math.PI * p);
-        one.facing *= p >= 1 ? -1 : Math.abs(width) < THIN ? (p < 0.5 ? THIN : -THIN) : width;
-      } else if (beat.jump && p < 1) {
-        const hop = (p * beat.jump.times) % 1;
-        one.at = [one.at[0], one.at[1] - JUMP * 4 * hop * (1 - hop)];
-      }
+      } else if (beat.turn) one.facing = turnAt(one.facing, p);
+      else if (beat.jump) one.at = [one.at[0], one.at[1] - hopAt(beat.jump.times, p)];
     }
     const background = backgroundOf(scenario, backdrop);
-    // The arm leaves its old pose and reaches the new one over REACH: a wave's swing fades with it.
-    const reached = ease(Math.min(1, moment.into / REACH));
     const characters = [...cast].map(([name, { at, facing, pose, was }]) => ({
       name,
       at,
       facing,
-      arm: pose === was ? armAt(pose, moment.time) : armAt(was, moment.time) * (1 - reached) + armAt(pose, moment.time) * reached,
+      arm: armBetween(was, pose, Math.min(1, moment.into / PACE.arm), moment.time),
       eyes: eyesAt(name, moment.time),
     }));
     return { background, characters };
@@ -170,19 +177,24 @@ function backgroundOf(library: Pick<Library, "backgrounds">, name: string): Back
 
 /**
  * What a frame of a compiled scenario shows (the tool's AGENTS.md, "A script"), as a staging: the
- * scene's characters where it begins, each then where its walks have it by now. Nothing turns a
- * character or moves its arm yet.
+ * scene's characters as it begins, and then as their actions have them by now, each on its own channel,
+ * whose actions are one after another: where a walk has it, how far round a turn, how high a jump over
+ * that, and where its arm is.
  */
 export function scriptStaging(library: Library, shown: Shown): Staging {
   const { background, characters } = shown.setting as unknown as Setting;
-  const at = new Map(Object.entries(characters).map(([name, one]) => [name, one.at]));
-  for (const { who, values, progress } of shown.actions) {
-    const { from, to } = values as unknown as Walk;
-    at.set(who, walkAt(from, to, progress));
+  const { time } = shown;
+  const cast = new Map(Object.entries(characters).map(([name, { at, facing }]) => [name, { at, facing: facing as number, high: 0, arm: armAt("stand", time) }]));
+  for (const { who, progress, ...did } of shown.actions as unknown as (Pick<ShownAction, "who" | "progress"> & Did)[]) {
+    const one = cast.get(who)!;
+    if (did.action === "walk") one.at = walkAt(did.values.from, did.values.to, progress);
+    else if (did.action === "turn") one.facing = turnAt(did.values.from, progress);
+    else if (did.action === "jump") one.high = hopAt(did.values.times, progress);
+    else one.arm = armBetween(did.values.from, did.values.to, progress, time);
   }
   return {
     background: backgroundOf(library, background),
-    characters: Object.entries(characters).map(([name, { facing }]) => ({ name, at: at.get(name)!, facing, arm: ARM_AT.stand, eyes: eyesAt(name, shown.time) })),
+    characters: [...cast].map(([name, { at: [x, y], facing, high, arm }]) => ({ name, at: [x, y - high], facing, arm, eyes: eyesAt(name, time) })),
   };
 }
 

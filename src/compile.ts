@@ -130,9 +130,10 @@ export function compile(scenes: CheckedScene[], voices: Voiced[], settings: Comp
   const lasting = (line: CheckedLine): Lasting => {
     const length = given.get(line.line);
     if ("text" in line) return { kind: "voice", length: length! };
-    if (length !== undefined) return { kind: "move", length };
+    const { channels } = line;
+    if (length !== undefined) return { kind: "move", channels, length };
     const own = Math.max(1, Math.round(line.length * fps));
-    return { kind: "move", length: { own, least: Math.ceil(own / moves.fastest - EPS), most: Math.floor(own / moves.slowest + EPS) }, arrive: line.arrive };
+    return { kind: "move", channels, length: { own, least: Math.ceil(own / moves.fastest - EPS), most: Math.floor(own / moves.slowest + EPS) }, arrive: line.arrive };
   };
   const { video, scenes: planned, items } = planOf(scenes, frames, lasting);
   const placed = times(video);

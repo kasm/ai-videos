@@ -16,11 +16,14 @@ const EXAMPLES = [...SCRIPT.matchAll(/```script\n([\s\S]*?)```/g)].map((m) => m[
 /** The files in the tool's part, each as it is written. */
 const FILES = [...SCRIPT.matchAll(/```yaml\n([\s\S]*?)```/g)].map((m) => m[1]!);
 
-/** `go` takes `to`, a name, and 2 seconds at its own speed. */
+/** `go` takes `to`, a name, and 2 seconds at its own speed, and is fitted to words; `nod` takes its 2 seconds. */
 const to: Schema = { "~standard": { version: 1, vendor: "test", validate: (values) => ({ value: values }), jsonSchema: { input: () => ({ properties: { to: {} } }), output: () => ({}) } } };
 /** A plugin that draws nothing. */
 const bare: ScriptPlugin = {
-  actions: { go: { description: "One goes somewhere.", example: "ann go to=pond", values: to } },
+  actions: {
+    go: { description: "One goes somewhere.", example: "ann go to=pond", values: to, channels: ["place"], fits: true },
+    nod: { description: "One nods.", example: "ann nod", values: to, channels: ["head"] },
+  },
   guide: "Nothing is drawn.",
   check: (scenes) => ({ scenes: scenes.map(({ actions }) => ({ setting: {}, actions: actions.map(() => ({ values: {}, length: 2 })) })) }),
   draw: () => () => "<svg/>",
@@ -48,11 +51,11 @@ async function compiled(example: string): Promise<(CompiledLine & { end: number 
 /** The example that has this in it. */
 const example = (said: string) => EXAMPLES.find((text) => text.includes(said))!;
 
-test("the tool's part shows scripts the tool takes, with no action but its own and one made up for values, and they compile", async () => {
-  assert.equal(EXAMPLES.length, 8);
+test("the tool's part shows scripts the tool takes, with no action but its own and two made up, and they compile", async () => {
+  assert.equal(EXAMPLES.length, 9);
   for (const text of EXAMPLES) {
     assert.ok((await compiled(text)).length > 0);
-    assert.deepEqual(new Set(linesIn(readScript(text).items).map(({ action }) => action)), new Set(text.includes(" go to=") ? ["say", "go"] : ["say"]));
+    assert.deepEqual(new Set(linesIn(readScript(text).items).map(({ action }) => action)), new Set(["say", ...["go", "nod"].filter((action) => text.includes(` ${action}`))]));
   }
   assert.equal(FILES.length, 1);
   // They show every kind of block, and what joins, labels and anchors.
@@ -65,7 +68,7 @@ test("the tool's part shows scripts the tool takes, with no action but its own a
     item.items.forEach(look);
   };
   for (const text of EXAMPLES) readScript(text).items.forEach(look);
-  assert.deepEqual([...seen].sort(), ["&", "end", "ending together", "in order", "label", "together", "under", "word"]);
+  assert.deepEqual([...seen].sort(), ["&", "end", "ending together", "in order", "label", "start", "together", "under", "word"]);
 });
 
 test("in order: a line begins when the one above has ended, after the pause", async () => {
@@ -100,6 +103,14 @@ test("ending together: the words end as somebody arrives, at their own pace, and
   assert.equal(narrator!.end, cat!.end);
   assert.ok(narrator!.from > cat!.from + 20, "the words wait");
   assert.equal(ann!.from, cat!.end + 12);
+});
+
+test("channels: one goes, nods and talks at once, and another nods a second later", async () => {
+  const [go, nod, says, later, answer] = await compiled(example("ann nod"));
+  assert.deepEqual([go!.from, nod!.from, says!.from, later!.from], [18, 18, 18, 48]);
+  // The words are 39 letters, 39 frames: what is fitted ends with them, and what is not keeps its 2 seconds.
+  assert.deepEqual([go!.frames, nod!.frames, says!.frames, later!.frames], [39, 60, 39, 60]);
+  assert.equal(answer!.from, later!.end + 12, "the next line waits for all of it");
 });
 
 test("an anchor: one breaks in at a word, and one a little before the end", async () => {
@@ -151,6 +162,11 @@ test("what the tool's part says is refused, is refused", async () => {
   assert.equal(await refused("in order one=two two=one:", "  ann go to=pond takes=one"), 1);
   assert.equal(await refused("ann go to=pond takes=2s speed=2"), 1);
   assert.equal(await refused("[a] ann go to=pond", "ben go to=pond takes=a.length"), 1);
+  assert.equal(await refused("[a] ann nod", "ben go to=pond takes=a.length"), 0);
+  assert.equal(await refused("together:", "  ann say: One.", "  ann say: Two."), 1);
+  assert.equal(await refused("ann go to=pond", "& ann go to=hill"), 1);
+  assert.equal(await refused("ann go to=pond", "& ann nod"), 0);
+  assert.equal(await refused("together:", "  ann say: One.", "  ann say @ prev.end: Two.", "  in order:", "    ben say: Three.", "    ann say: Four."), 0);
   assert.equal(await refused("[a] in order:", "  ann say: One.", "ben go to=pond takes=a.length"), 1);
   // The forms its text names are read.
   assert.equal(await refused("[a] ann say: A mole by a mole.", "under @ a.50%:", "  radio say: One.", "ann say: Two.", "together @ prev.end - 1s:", "  ann say @ block.start + 0.5s: Three.", "  ben say @ a.word(mole by): Four."), 0);
@@ -158,13 +174,14 @@ test("what the tool's part says is refused, is refused", async () => {
 });
 
 test("the tool's part says what a script has: a line's form, say, blocks, joining, labels and anchors", () => {
-  for (const said of ["`script: |`", "`narrator`", "`say`", "`name=value`", "a colon and the words", "in order", "`#`", "`together:`", "`ending together:`", "`in order:`", "`under:`", "`&`", "`@`", "`prev`", "`block`", "`a.word(mole)`", "`- 0.5s`", "`values:`", "`50%`", "`pause`", "`lead`", "`tail`", "`takes=2s`", "`speed=0.5`", "`arrive=a.end - 0.5s`", "`a.length`", "`ann.speed`", "`go.speed`"]) {
+  for (const said of ["`script: |`", "`narrator`", "`say`", "`name=value`", "a colon and the words", "in order", "on its channel `voice`", "One channel does one thing at a time", "`#`", "`together:`", "`ending together:`", "`in order:`", "`under:`", "`&`", "`@`", "`prev`", "`block`", "`a.word(mole)`", "`- 0.5s`", "`values:`", "`50%`", "`pause`", "`lead`", "`tail`", "`takes=2s`", "`speed=0.5`", "`arrive=a.end - 0.5s`", "`a.length`", "`ann.speed`", "`go.speed`"]) {
     assert.ok(SCRIPT.includes(said), said);
   }
 });
 
 test("a plugin's guide: the tool's part, the plugin's, each action and construction described once with its example, and its names for numbers", () => {
-  const square = { guide: "\nA square slides to a side.\n", actions: { slide: { description: "The square slides to a side.", example: "sq slide to=right" } }, constructions: {} };
+  const slide = { description: "The square slides to a side.", example: "sq slide to=right", channels: ["place"], fits: true };
+  const square = { guide: "\nA square slides to a side.\n", actions: { slide }, constructions: {} };
   const guide = guideOf({ ...square, names: {} });
   const names = { slow: 0.6, fast: 1.6 };
   assert.match(guideOf({ ...square, names }), /sq slide to=right`\n\nThese names stand for numbers in any value: `slow` is 0\.6 and `fast` is 1\.6\.\n$/);
@@ -174,6 +191,8 @@ test("a plugin's guide: the tool's part, the plugin's, each action and construct
   assert.match(constructed, /sq slide to=right`\n\n## The constructions\n\nA value may be worked out from others by a construction: its name, and in parentheses .*\n\n- \*\*beside\*\*: Beside a place\. For example: `beside\(mo, 2\)`\n\nThese names stand/);
   assert.match(guide, /^## A script\n\nA scene's `script` says what happens in it/);
   assert.match(guide, /\n## The format\n\nA square slides to a side\.\n\n## The actions\n\n/);
-  assert.match(guide, /\n- \*\*say\*\*: The character says the words after the colon.* For example: `narrator say: Once upon a time\.`\n/);
-  assert.match(guide, /\n- \*\*slide\*\*: The square slides to a side\. For example: `sq slide to=right`\n$/);
+  assert.match(guide, /\n- \*\*say\*\*: The character says the words after the colon.* Channel: `voice`\. For example: `narrator say: Once upon a time\.`\n/);
+  assert.match(guide, /\n- \*\*slide\*\*: The square slides to a side\. Channel: `place`; it is fitted\. For example: `sq slide to=right`\n$/);
+  const spin = { description: "It spins.", example: "sq spin", channels: ["place", "facing"] };
+  assert.match(guideOf({ ...square, actions: { spin }, names: {} }), /\n- \*\*spin\*\*: It spins\. Channels: `place` and `facing`\. For example: `sq spin`\n$/);
 });

@@ -108,7 +108,7 @@ A background the library lacks is drawn under library: backgrounds:, when no bac
  * with it.
  */
 export const SCRIPT_GUIDE = `
-A cartoon is drawn on one stage, 1920 by 1080 pixels, with characters made of flat rectangles and ellipses. They stand on the ground in front of a background; they walk, blink and talk, several of them at once where the story has it so. A cartoon written as a script shows no more than that yet: what the story has besides, the narrator says in a few words, or it is left out. Never invent a key, a mark or an action: the tool refuses it.
+A cartoon is drawn on one stage, 1920 by 1080 pixels, with characters made of flat rectangles and ellipses. They stand on the ground in front of a background; they walk, turn round, hop, wave, point, blink and talk, several of them at once where the story has it so, and one of them several things at once. A cartoon has no props, no faces that change, and nobody who sits, lies down, climbs, flies or swims: what the story has besides, the narrator says in a few words, or it is left out. Never invent a key, a mark or an action: the tool refuses it.
 
 ### An episode
 
@@ -123,14 +123,20 @@ scenes:
     script: |
       pip walk to=middle
       & narrator say: It is morning in the meadow, and Pip is early.
-      [hello] pip say: Hello, Mo! Have you heard the news today?
+      pip wave
+      & [hello] pip say: Hello, Mo! Have you heard the news today?
       mo say @ hello.word(news): What news?
+      & pip stand
       together:
         radio say: And now the news. The pond is frozen, and it will stay so all week.
         in order pause=beat / 2:
           pip say: There it is!
           mo say: Hush, I want to hear.
-      mo say: We can skate!
+      together:
+        mo jump times=2
+        mo say: We can skate!
+        pip turn @ block.start + 1s
+        pip point @ prev.end
   - background: night                      # a new scene: everyone placed anew
     places:                                # a place with a comma in it is on a row of its own
       pip: off-left
@@ -149,6 +155,7 @@ scenes:
         pip say: Good night, Mo.
       together:
         pip walk to=off-right speed=slow
+        pip wave
         narrator say: And Pip goes home.
 \`\`\`
 
@@ -161,10 +168,19 @@ scenes:
 - In a place worked out, a character's name is where the rows above leave that character, whichever blocks they are in: below pip walk to=right, to=left-of(pip, near) is beside where Pip's walk ends. Nothing below moves it.
 - Use a mark unless the story says more: who comes up to somebody goes to left-of(mo, near) or right-of(mo, near), whichever side it comes from, and who steps between two to midpoint(pip, mo).
 - Two characters never stand on one spot of the stage, as a scene begins or after a walk: a character may cover at most 0.3 of another, of the smaller one's width. So nobody goes to=mo, where Mo stands: they go beside Mo.
-- Everyone faces right, as drawn, unless the scene's faces says left. A walk turns nobody: a character walks the way it faces, so who walks left begins the scene facing left. Two who talk face each other.
+- Who goes where another stands is refused, unless that other has surely left by then, however long the voices turn out to be. Write the row that takes the other away above, or join the two by &.
+- Everyone faces right, as drawn, unless the scene's faces says left, or a turn. A walk turns nobody: a character walks the way it faces. To go back the way it came, it turns first; who comes in from the right begins the scene facing left. Two who talk face each other. Work out each character's facing row by row.
 - A character the scene does not place may speak too: it is a voice off stage. So may a name the file's cast gives a voice: cast: { radio: am_michael }, on top, beside use. Nobody else is drawn for it.
 - A walk is over before the next row, unless it is joined to words or together with them: then it lasts as long as they do, within reason. Join a walk to the line that tells of it. To have the words end as somebody arrives, write the two in an ending together: the walk keeps its own pace, and the words wait. That is for a walk that ends on the stage: one that leaves it is out of sight before it ends.
 - Leave a walk's speed and time out, unless the story has somebody hurry or dawdle: a walk that is given one keeps it, and the next row waits. Set pip.speed on a scene for somebody who is slow all through it, or walk.speed for everybody.
+
+### Several things at once
+
+- A character's place, its hop, its facing, its arm and its voice are channels: it walks, hops, turns, waves and talks at once, and each is a row of its own, joined by & or in a together.
+- Only a walk is fitted to words. A jump, a turn and the arm keep their own pace: join them to the words they go with.
+- Who does something a little later begins by a moment: @ block.start + 1s, or at a word, @ hello.word(news).
+- A wave or a point goes on until the character's arm does something else, through the rows after it. Put it back with stand when its moment is over, or a wave goes on waving; a new scene begins with everyone's arm hanging.
+- A point goes straight ahead, so the pointer faces what it points at. It and a wave need the character's arm.
 
 ### Lines
 

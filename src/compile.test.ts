@@ -16,7 +16,7 @@ const SCENES: CheckedScene[] = [
     setting: { colour: "#d04040", at: [20, 30] },
     ...PAUSES,
     items: [
-      { line: 5, who: "sq", action: "slide", values: { from: [20, 30], to: [120, 30] }, length: 1.5 },
+      { line: 5, who: "sq", action: "slide", values: { from: [20, 30], to: [120, 30] }, channels: ["place"], length: 1.5 },
       { line: 6, who: "sq", action: "say", text: "Here I am." },
     ],
   },
@@ -92,7 +92,7 @@ test("captions are on whole frames: a long line's in proportion, each up to the 
 });
 
 test("a line lasts a frame at least, and pauses go to the nearest frame", () => {
-  const quick: CheckedScene[] = [{ line: 1, setting: {}, lead: 0.6, pause: 0.4, tail: 1, items: [{ line: 2, who: "sq", action: "slide", values: {}, length: 0.01 }, { line: 3, who: "sq", action: "say", text: "Hi." }] }];
+  const quick: CheckedScene[] = [{ line: 1, setting: {}, lead: 0.6, pause: 0.4, tail: 1, items: [{ line: 2, who: "sq", action: "slide", values: {}, channels: ["place"], length: 0.01 }, { line: 3, who: "sq", action: "say", text: "Hi." }] }];
   const { frames, scenes } = compile(quick, [{ file: "a.wav", duration: 0.001, mouth: [0] }], { ...SETTINGS, fps: 24 }, "sq.yaml");
   // 0.6 s is 14.4 frames, 0.4 s is 9.6.
   assert.deepEqual(scenes[0]!.lines.map((l) => [l.from, l.frames]), [[14, 1], [25, 1]]);
@@ -110,7 +110,7 @@ test("what is at once: a joined action fitted to the words, a voice over another
       setting: {},
       ...PAUSES,
       items: [
-        { line: 2, order: "together", joined: true, items: [{ line: 2, who: "sq", action: "slide", values: { x: 1 }, length: 2 }, say(3, "narrator", "It slides.")] },
+        { line: 2, order: "together", joined: true, items: [{ line: 2, who: "sq", action: "slide", values: { x: 1 }, channels: ["place"], length: 2 }, say(3, "narrator", "It slides.")] },
         {
           line: 4,
           order: "in order",
@@ -145,7 +145,7 @@ test("what is at once: a joined action fitted to the words, a voice over another
 
 test("an action joined to words is no faster than the video's fastest and no slower than its slowest, and alone goes at its own speed", () => {
   const joined = (length: number, frames: number, moves = SETTINGS.moves) => {
-    const slide = { line: 2, who: "sq", action: "slide", values: {}, length };
+    const slide = { line: 2, who: "sq", action: "slide", values: {}, channels: ["place"], length };
     const scenes: CheckedScene[] = [{ line: 1, setting: {}, ...PAUSES, items: [{ line: 2, order: "together", joined: true, items: [slide, say(3, "sq", "Go.")] }, { ...slide, line: 4 }] }];
     return compile(scenes, [voiced("go.wav", frames)], { ...SETTINGS, moves }, "sq.yaml").scenes[0]!.lines.filter((line) => line.action === "slide").map((line) => line.frames);
   };
@@ -155,6 +155,22 @@ test("an action joined to words is no faster than the video's fastest and no slo
   assert.deepEqual(joined(2.1, 3), [11, 21], "21 frames, at most twice as fast: 10.5, and no faster");
   assert.deepEqual(joined(2, 3, { slowest: 1, fastest: 1 }), [20, 20]);
   assert.deepEqual(joined(2, 99, { slowest: 1, fastest: 1 }), [20, 20]);
+});
+
+test("actions on other channels go on at once, each as long as it is, and two on one channel are one after the other", () => {
+  const act = (line: number, action: string, channels: string[], more: object = {}) => ({ line, who: "sq", action, values: {}, channels, length: 2, ...more });
+  const items: CheckedScene["items"] = [
+    {
+      line: 2,
+      order: "together",
+      items: [act(3, "slide", ["place"]), act(4, "wave", ["arm"], { takes: 0.3 }), { ...act(5, "spin", ["place", "facing"], { takes: 1 }), anchor: { of: "block", at: "start", plus: 0.5 } }, say(6, "sq", "Whee!")],
+    },
+  ];
+  const { scenes } = compile([{ line: 1, setting: {}, ...PAUSES, items }], [voiced("whee.wav", 30)], SETTINGS, "sq.yaml");
+  // The slide is fitted to the words; the spin, told to begin within it, waits for it: both are the place's.
+  assert.deepEqual(scenes[0]!.lines.map((line) => [line.action, line.from, line.frames]), [["slide", 5, 30], ["wave", 5, 3], ["spin", 35, 10], ["say", 5, 30]]);
+  // A compiled line has no channels: its times are what they came to.
+  assert.deepEqual(Object.keys(scenes[0]!.lines[0]!), ["line", "who", "action", "from", "frames", "values"]);
 });
 
 test("captions of what is said at once: one shows, the line's begun last, and a cut line's goes with its voice", () => {

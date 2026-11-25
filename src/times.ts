@@ -79,7 +79,7 @@ export type Refusal =
   | { why: "held"; item: Line; by: Line; channel: string }
   /** A move that would be cut: it would leave its character where only the voices know. */
   | { why: "cut"; item: Line }
-  /** `item` and `by`, above it, do two things on one channel in a block whose lines end at once. */
+  /** `item` and `by`, above it, do two things on one channel in a block whose lines end at once, or begin at once and `item` has no start of its own. */
   | { why: "twice"; item: Line; by: Line; channel: string }
   /** `item` has its times in itself and not by its `block`, whose lines end at once: a block, a line that is anchored, or a move that is told when to arrive. */
   | { why: "own"; item: Item; block: Block }
@@ -90,6 +90,10 @@ export type Refusal =
 interface Term {
   reads: Cell[];
   work: () => number;
+  /** Cells it is no earlier than, whatever the lengths. */
+  over: Cell[];
+  /** It is the latest of those, and nothing more: no pause after them, no share of them, and no length. */
+  only?: boolean;
 }
 
 /** A start or an end: its formula, and its value once worked out. */
@@ -98,12 +102,24 @@ interface Cell extends Term {
   value: number;
 }
 
-/** A cell's value, and `frames` after it. */
-const after = (read: Cell, frames = 0): Term => ({ reads: [read], work: () => read.value + frames });
-const later = ({ reads, work }: Term, frames: number): Term => ({ reads, work: () => work() + frames });
+/** A cell's value. */
+const when = (read: Cell): Term => ({ reads: [read], work: () => read.value, over: [read], only: true });
+/** `frames` after it: 0 or more, and how many is nothing to what it is surely over. */
+const later = ({ reads, work, over }: Term, frames: number): Term => ({ reads, work: () => work() + frames, over });
+/** `frames` before it. */
+const before = ({ reads, work }: Term, frames: number): Term => ({ reads, work: () => work() - frames, over: [] });
 const readsOf = (terms: Term[]) => terms.flatMap(({ reads }) => reads);
-const latest = (terms: Term[]): Term => ({ reads: readsOf(terms), work: () => Math.max(...terms.map(({ work }) => work())) });
-const earliest = (terms: Term[]): Term => ({ reads: readsOf(terms), work: () => Math.min(...terms.map(({ work }) => work())) });
+const latest = (terms: Term[]): Term => ({
+  reads: readsOf(terms),
+  work: () => Math.max(...terms.map(({ work }) => work())),
+  over: terms.flatMap(({ over }) => over),
+  only: terms.every(({ only }) => only),
+});
+const earliest = (terms: Term[]): Term => ({
+  reads: readsOf(terms),
+  work: () => Math.min(...terms.map(({ work }) => work())),
+  over: terms[0]!.over.filter((cell) => terms.every(({ over }) => over.includes(cell))),
+});
 
 const isBlock = (item: Item): item is Block => item.kind === "block";
 
@@ -139,7 +155,7 @@ function graphOf(plan: Block) {
   const withBlocks = (item: Item): Item[] => [item, ...around.get(item)!];
 
   const refused: Refusal[] = [];
-  const cells = () => new Map(order.map((item): [Item, Cell] => [item, { item, reads: [], work: () => 0, value: 0 }]));
+  const cells = () => new Map(order.map((item): [Item, Cell] => [item, { item, reads: [], work: () => 0, value: 0, over: [] }]));
   const [starts, ends] = [cells(), cells()];
   const start = (item: Item) => starts.get(item)!;
   const end = (item: Item) => ends.get(item)!;
@@ -160,12 +176,13 @@ function graphOf(plan: Block) {
     const x = of === "block" ? around.get(y)![0] : order.slice(0, order.indexOf(y)).findLast(({ name }) => name === of);
     if (!x) return void refused.push({ why: "below", item: y, name: of });
     const from = start(x);
-    if (at === "start") return after(from, Math.max(0, plus));
-    const to = at === "end" ? earliest([x, ...cutBy(x, y)].map((item) => after(end(item)))) : after(end(x));
+    if (at === "start") return later(when(from), Math.max(0, plus));
+    const to = at === "end" ? earliest([x, ...cutBy(x, y)].map((item) => when(end(item)))) : when(end(x));
     const share = at === "end" ? 1 : at;
     return {
       reads: [from, ...to.reads],
       work: () => Math.max(from.value, from.value + Math.round(share * (to.work() - from.value)) + plus),
+      over: [from],
     };
   };
 
@@ -180,9 +197,12 @@ function graphOf(plan: Block) {
       // What is cut holds its channel until its block ends, however long it lasts itself.
       const until = cutBy(y, x).at(-1);
       const block = around.get(x)![0];
-      if (endsTogether(block) && around.get(y)![0] === block) twice = { why: "twice", item: x, by: y, channel };
+      const inOne = around.get(y)![0] === block;
+      if (inOne && endsTogether(block)) twice = { why: "twice", item: x, by: y, channel };
       else if (until && withBlocks(x).includes(until)) held = { why: "held", item: x, by: y, channel };
-      else terms.push(after(end(until ?? y)));
+      // Both would begin with the block: the second would wait for the first, against its word.
+      else if (inOne && block?.order === "together" && !x.at) twice = { why: "twice", item: x, by: y, channel };
+      else terms.push(when(end(until ?? y)));
     }
     if (held) refused.push(held);
     if (twice) refused.push(twice);
@@ -192,14 +212,14 @@ function graphOf(plan: Block) {
 
   /** A start: the latest of its block's start, its own anchor or its block's rule, and its channels. */
   const startOf = (x: Item, block: Block): Term => {
-    const terms = [after(start(block)), ...free.get(x)!];
+    const terms = [when(start(block)), ...free.get(x)!];
     const above = block.items.slice(0, block.items.indexOf(x)).filter((item) => !isLeft(item));
     const anchor = x.at && moment(x.at, x);
     const length = lengthIn(x);
     if (anchor) terms.push(anchor);
-    else if (endsTogether(block) && length !== undefined) terms.push(after(end(block), -(block.tail ?? 0) - length));
-    else if (block.order === "in order" && above.length > 0) terms.push(...above.map((item) => after(end(item), block.pause ?? 0)));
-    else if (block.order === "in order") terms.push(after(start(block), block.lead ?? 0));
+    else if (endsTogether(block) && length !== undefined) terms.push(before(when(end(block)), (block.tail ?? 0) + length));
+    else if (block.order === "in order" && above.length > 0) terms.push(...above.map((item) => later(when(end(item)), block.pause ?? 0)));
+    else if (block.order === "in order" && block.lead !== undefined) terms.push(later(when(start(block)), block.lead));
     return latest(terms);
   };
 
@@ -211,22 +231,23 @@ function graphOf(plan: Block) {
   const endOfBlock = (x: Block): Term => {
     const ends = x.items.flatMap((item): Term[] => {
       if (isLeft(item)) return [];
-      if (!endsTogether(x)) return [after(end(item))];
+      if (!endsTogether(x)) return [when(end(item))];
       const length = lengthIn(item);
-      return length === undefined ? [] : [later(latest([after(start(x)), ...free.get(item)!]), length)];
+      return length === undefined ? [] : [later(latest([when(start(x)), ...free.get(item)!]), length)];
     });
-    return later(latest([after(start(x)), ...ends]), x.tail ?? 0);
+    return later(latest([when(start(x)), ...ends]), x.tail ?? 0);
   };
 
   /** A line's end: its length after its start, or where what it is fitted to ends, within its limits, or its block's end. */
   const endOfLine = (x: Line, block: Block): Term => {
-    if (x.length === "open") return latest([after(start(x)), after(end(block))]);
+    if (x.length === "open") return latest([when(start(x)), when(end(block))]);
     if (x.kind === "move" && cutBy(x).length > 0) refused.push({ why: "cut", item: x });
-    if (typeof x.length === "number") return after(start(x), x.length);
+    const lasting = (frames: number) => later(when(start(x)), frames);
+    if (typeof x.length === "number") return lasting(x.length);
     const { own, least, most, arrive } = x.length;
     const voices = block.order === "together" && !x.at ? voicesOf(block) : [];
-    const target = arrive ? moment(arrive, x) : voices.length > 0 ? latest(voices.map((voice) => after(end(voice)))) : undefined;
-    return target ? earliest([latest([target, after(start(x), least)]), after(start(x), most)]) : after(start(x), own);
+    const target = arrive ? moment(arrive, x) : voices.length > 0 ? latest(voices.map((voice) => when(end(voice)))) : undefined;
+    return target ? earliest([latest([target, lasting(least)]), lasting(most)]) : lasting(own);
   };
 
   for (const x of order) {
@@ -235,6 +256,13 @@ function graphOf(plan: Block) {
     if (block) Object.assign(start(x), startOf(x, block));
     if (isBlock(x)) Object.assign(end(x), endOfBlock(x));
     else if (block) Object.assign(end(x), endOfLine(x, block));
+  }
+  // The lines that end at once do: each after any other has begun, and their block no earlier than they.
+  for (const block of order) {
+    if (!isBlock(block) || !endsTogether(block)) continue;
+    const ended = block.items.filter((item) => !isLeft(item));
+    for (const item of ended) end(item).over.push(...ended.map(start));
+    end(block).over.push(...ended.map(end));
   }
   return { order, start, end, cutBy, refused };
 }
@@ -291,6 +319,26 @@ function workOut(plan: Block): { intervals: Map<Item, Interval>; refused: Refusa
 
 /** Why the plan has no timing, every reason; none when it has one. No length changes the answer. */
 export const refusals = (plan: Block): Refusal[] => workOut(plan).refused;
+
+/**
+ * Whether one thing of a plan has surely begun before a line ends (by the time it does, if it is open),
+ * whatever the lengths, the pauses and the seconds after a moment turn out to be, for a plan that is
+ * accepted. Where it is not sure, they decide it, or it is not seen: times.md says what is.
+ */
+export function surelyBegun(plan: Block): (item: Item, before: Line) => boolean {
+  const { start, end } = graphOf(plan);
+  const below = new Map<Cell, Set<Cell>>();
+  /** The cells that a cell is surely no earlier than, itself among them. */
+  const belowOf = (cell: Cell): Set<Cell> => {
+    const found = below.get(cell) ?? new Set([cell]);
+    if (below.has(cell)) return found;
+    for (const one of found) one.over.forEach((other) => found.add(other));
+    below.set(cell, found);
+    return found;
+  };
+  const noLater = (cell: Cell, than: Set<Cell>): boolean => than.has(cell) || (cell.only === true && cell.over.every((one) => noLater(one, than)));
+  return (item, before) => noLater(start(item), new Set(end(before).over.flatMap((cell) => [...belowOf(cell)])));
+}
 
 /** When everything in the plan happens. A plan that is refused (`refusals`) is a mistake of the caller's. */
 export function times(plan: Block): Map<Item, Interval> {

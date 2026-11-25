@@ -1,8 +1,9 @@
 // Where the characters of a scene stand, in a cartoon written as a script (CLAUDE.md, "The script"): a
 // place worked out as its x on the ground, from marks, points, who stands where and how wide each is
-// drawn, as the scene begins and then walk by walk in the order written; and how near two may stand.
-// The tool has read each place and worked out the numbers in it.
-import { listed, nearest, shownAs, type ConstructionOf, type Worked } from "ai-videos/plugin";
+// drawn, as the scene begins and then walk by walk in the order written; and how near two may stand,
+// whenever each is there. The tool has read each place, worked out the numbers in it, and told of each
+// walk which others have surely begun before its end.
+import { listed, nearest, shownAs, type ActionLine, type ConstructionOf, type Worked } from "ai-videos/plugin";
 import { z } from "zod";
 import { MARKS, STAGE, type Library, type Mark } from "./scenario.ts";
 
@@ -48,12 +49,26 @@ function widthOf(character: Library["characters"][string] | undefined): number {
 /** How near two of these widths may stand, whole px from middle to middle: nearer, one covers too much of the other. */
 const apart = (a: number, b: number) => Math.ceil((a + b) / 2 - COVER * Math.min(a, b) - 0.5);
 
+/** A walk's line, as the tool gives it. */
+type WalkLine = Pick<ActionLine, "line" | "who" | "begun">;
+
+/** Where a character stands from when a walk brings it there, or the scene begins, until its next walk; nowhere, when its place is a mistake. */
+interface Stay {
+  who: string;
+  x: number | undefined;
+  by?: { walk: WalkLine; where: Worked };
+  until?: WalkLine;
+}
+
+/** Whether one who stays has surely left when the other comes, however long the voices turn out to be. */
+const leavesBefore = (stay: Stay, other: Stay) => stay.until !== undefined && other.by?.walk.begun.includes(stay.until.line) === true;
+
 /**
  * The stage of a scene that begins with these places: where each character stands, its x, whole px. A
  * character's name in a place is where that character stands by then; a mark, a point and a place
  * worked out have no width. A mistake is said with its line: the scene's, or a walk's.
  */
-export function stageOf(scene: number, places: Record<string, Worked>, { characters }: Pick<Library, "characters">, say: (line: number, message: string, hint: string) => void) {
+export function stageOf(scene: number, places: Record<string, Worked>, { characters }: Pick<Library, "characters">, say: (line: number, message: string, hint: string, also?: number[]) => void) {
   const placed = Object.keys(places);
   const stands = new Map<string, number>();
   /** Those whose place is a mistake: it is said once, and not for what rests on it. */
@@ -117,31 +132,55 @@ export function stageOf(scene: number, places: Record<string, Worked>, { charact
     }
   };
 
-  /** Says it when `who`, at `x`, is on one spot of the stage with one of the others. */
-  const alone = (line: number, who: string, x: number, others: string[], what: (there: string) => string) => {
-    const near = (other: string) => Math.abs(x - stands.get(other)!) < apart(width(who), width(other));
-    const there = onStage(x) ? others.find((other) => onStage(stands.get(other)!) && near(other)) : undefined;
-    if (there === undefined) return;
-    say(line, what(there), `${there} is at ${stands.get(there)} and ${who} at ${x}: they keep ${apart(width(who), width(there))} px apart or more, middle to middle, so that neither covers much of the other; left-of(${there}, near) is beside ${there}`);
-  };
-
   for (const who of placed) at(who, []);
-  for (const [n, who] of placed.entries()) {
-    if (stands.has(who)) alone(scene, who, stands.get(who)!, placed.slice(0, n).filter((other) => stands.has(other)), (there) => `"${there}" and "${who}" begin on one spot`);
+  /** Where everyone stays, those that begin there and then walk by walk, in the order written. */
+  const stays = placed.map((who): Stay => ({ who, x: stands.get(who) }));
+
+  /** Whether two stay on one spot of the stage: so near that one covers too much of the other. */
+  const onOneSpot = (one: Stay, other: Stay) => one.x !== undefined && other.x !== undefined && onStage(one.x) && onStage(other.x) && Math.abs(one.x - other.x) < apart(width(one.who), width(other.who));
+  const keepApart = (there: Stay, who: string, x: number) => `${there.who} is at ${there.x} and ${who} at ${x}: they keep ${apart(width(who), width(there.who))} px apart or more, middle to middle, so that neither covers much of the other; left-of(${there.who}, near) is beside ${there.who}`;
+  for (const [n, stay] of stays.entries()) {
+    const there = stays.slice(0, n).find((other) => onOneSpot(stay, other));
+    if (there) say(scene, `"${there.who}" and "${stay.who}" begin on one spot`, keepApart(there, stay.who, stay.x!));
   }
 
   return {
     /** Where each stands as the scene begins: those whose place is no mistake. */
     begins: new Map(stands),
-    /** A walk by a character of the scene, on this line: from where it stands, to a place, where it stands then. None when one of the two is a mistake, which is said. */
-    walk(line: number, who: string, where: Worked): { from: number; to: number } | undefined {
+    /** A walk by a character of the scene: from where it stands, to a place, where it stands then. None when one of the two is a mistake, which is said. */
+    walk(walk: WalkLine, where: Worked): { from: number; to: number } | undefined {
+      const { line, who } = walk;
       const from = stands.get(who);
-      const to = from === undefined ? undefined : worked(line, who, "walks to", where);
-      if (from === undefined || to === undefined) return undefined;
-      if (to === from) say(line, `"${who}" stands at ${shownAs(where)} already`, "walk to another place, or leave the line out");
-      else alone(line, who, to, [...stands.keys()].filter((other) => other !== who), (there) => `"${who}" walks to ${shownAs(where)}, where "${there}" stands`);
+      if (from === undefined) return undefined;
+      const to = worked(line, who, "walks to", where);
+      if (to === from) {
+        say(line, `"${who}" stands at ${shownAs(where)} already`, "walk to another place, or leave the line out");
+        return { from, to };
+      }
+      stays.findLast((stay) => stay.who === who)!.until = walk;
+      stays.push({ who, x: to, by: { walk, where } });
+      if (to === undefined) return undefined;
       stands.set(who, to);
       return { from, to };
+    },
+    /**
+     * Says it of each walk that ends on one spot with another: one who begins there, or whom a walk above
+     * brings there, and who has not surely left it by the time this one comes. The walk that takes it away
+     * may be written below: at once is at once. Nothing written below a walk has surely come and gone before
+     * its end. Once all have walked.
+     */
+    spots(): void {
+      for (const [n, stay] of stays.entries()) {
+        const { who, x, by } = stay;
+        const there = by && stays.slice(0, n).find((other) => other.who !== who && onOneSpot(stay, other) && !leavesBefore(other, stay));
+        if (!there) continue;
+        const { line } = by.walk;
+        const walks = `"${who}" walks to ${shownAs(by.where)}, where "${there.who}"`;
+        const { until } = there;
+        if (!until) say(line, `${walks} stands`, keepApart(there, who, x!));
+        else if (until.line > line) say(line, `${walks} stands`, `${there.who} leaves it at line ${until.line}: write that line above this one, or the two at once, joined by & and with no anchor; or walk beside ${there.who}`, [until.line]);
+        else say(line, `${walks} may still stand`, `${there.who} leaves it at line ${until.line}, and only the voices say whether that begins before ${who} is there: write this line below that one, in order, or the two at once, joined by & and with no anchor`, [until.line]);
+      }
     },
   };
 }

@@ -17,7 +17,7 @@ import { readFormula } from "./formula.ts";
 import type { Call } from "./make.ts";
 import type { DrawingPlugin, EventLimits as Limits, Library, Plan, Plugin, RecordingPlugin, Schema } from "./plugin.ts";
 import { SAY, isBlock, readScript } from "./read.ts";
-import { checkScenario, type Checked, type ScriptPlugin, type Timing, type WrittenScript } from "./scenario.ts";
+import { checkScenario, type Action, type Checked, type ConstructionOf, type ScriptPlugin, type Timing, type WrittenScript } from "./scenario.ts";
 import { EventLimits, FORMATS, slug } from "./script.ts";
 import { pictureOf, shownAt } from "./shown.ts";
 import { OWN, plainValues, valuesTaken } from "./values.ts";
@@ -61,8 +61,8 @@ export interface Described {
   guide: string;
   /** Each command's description and example (its schema stays in the plugin's process). */
   commands: Record<string, { description: string; example: unknown }>;
-  /** Its part of a script, when its videos may be written as one: its guide, each action's and construction's description and example, and its names for numbers. */
-  script?: { guide: string; actions: Record<string, { description: string; example: string }>; names: Record<string, number>; constructions: Record<string, { description: string; example: string }> };
+  /** Its part of a script, when its videos may be written as one: its guide, each action's description, example, channels and whether it is fitted, each construction's description and example, and its names for numbers. */
+  script?: { guide: string; actions: Record<string, Omit<Action, "values">>; names: Record<string, number>; constructions: Record<string, ConstructionOf> };
 }
 
 /** What a job did: the drawing's frames, what was mended, and for the plan its limits and the files it is made from. */
@@ -121,6 +121,8 @@ const PluginShape = z
             description: z.string().min(1),
             example: z.string().min(1),
             values: z.custom<Schema>(isSchema, "give a schema with ~standard.validate and ~standard.jsonSchema (as zod 4's have)"),
+            channels: z.array(slug, "give what of its character it keeps busy: its channels, as [\"place\"]").min(1, "name one channel at least"),
+            fits: z.boolean().optional(),
           }),
         ),
         names: z.record(slug, z.number()).optional(),
@@ -425,7 +427,7 @@ if (import.meta.main) {
     const commands = Object.fromEntries(Object.entries(plugin.commands).map(([name, { description, example }]) => [name, { description, example }]));
     const script = plugin.script && {
       guide: plugin.script.guide,
-      actions: Object.fromEntries(Object.entries(plugin.script.actions).map(([name, { description, example }]) => [name, { description, example }])),
+      actions: Object.fromEntries(Object.entries(plugin.script.actions).map(([name, { values: _values, ...described }]) => [name, described])),
       names: plugin.script.names ?? {},
       constructions: Object.fromEntries(Object.entries(plugin.script.constructions ?? {}).map(([name, { description, example }]) => [name, { description, example }])),
     };

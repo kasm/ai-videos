@@ -21,11 +21,11 @@ const taking = (properties: Record<string, { default?: unknown }>): Schema => ({
   },
 });
 
-/** `slide` goes \`far\`, a number, \`to\` a side, in 2 seconds; \`hop\` hops so many \`times\`, a second each. */
+/** `slide` goes \`far\`, a number, \`to\` a side, in 2 seconds, and is fitted; \`hop\` hops so many \`times\`, a second each, and is not. */
 const PLUGIN: ScriptPlugin = {
   actions: {
-    slide: { description: "It slides.", example: "sq slide to=right", values: taking({ far: {}, to: {} }) },
-    hop: { description: "It hops.", example: "sq hop", values: taking({ times: { default: 1 } }) },
+    slide: { description: "It slides.", example: "sq slide to=right", values: taking({ far: {}, to: {} }), channels: ["place"], fits: true },
+    hop: { description: "It hops.", example: "sq hop", values: taking({ times: { default: 1 } }), channels: ["hop"] },
   },
   names: { slow: 0.5, fast: 2 },
   guide: "It slides.",
@@ -118,8 +118,8 @@ test("a block's setting reaches its lines, and those of the blocks in it and joi
 test("one character's setting reaches only its own, one action's only its own, and a level is nearer than whose it is", async () => {
   const rows = ["sq slide", "mo slide", "sq hop", "mo hop"];
   const speeds = (levels: Levels) => takes(rows, levels);
-  // Own length: a slide 2 seconds, a hop 1.
-  assert.deepEqual(await speeds({ cartoon: { "sq.speed": "slow" } }), [4, "own", 2, "own"]);
+  // Own length: a slide 2 seconds, a hop 1, which is never fitted and so has its own without being given it.
+  assert.deepEqual(await speeds({ cartoon: { "sq.speed": "slow" } }), [4, "own", 2, 1]);
   assert.deepEqual(await speeds({ cartoon: { "hop.speed": "slow" } }), ["own", "own", 2, 2]);
   assert.deepEqual(await speeds({ cartoon: { speed: "slow" } }), [4, 4, 2, 2]);
   // Of one level: the character's over the action's, and both over everything's.
@@ -253,10 +253,27 @@ test("a default taken is said: what it is, and the lines that take it", async ()
     { name: "lead", value: "0.5s", lines: [200] },
     { name: "pause", value: "0.3s", lines: [200, 4] },
     { name: "tail", value: "1s", lines: [200] },
-    { name: "speed", value: "1, or what the words beside it take", lines: [1, 2, 3] },
+    { name: "speed", value: "1, or what the words beside it take", lines: [1] },
     { name: "hop times", value: "1", lines: [2] },
+    { name: "speed", value: "1", lines: [2, 3] },
   ]);
   assert.deepEqual((await checked(rows, { cartoon: { pause: "1s", lead: "1s", tail: "1s", speed: "1", "hop.times": "3" } })).defaults, []);
+});
+
+test("an action that is not fitted takes its own length, whatever is said beside it, and the length it is given", async () => {
+  const beside = async (row: string, levels?: Levels) => (await frames([row, `& mo say: ${TEN}${TEN}${TEN}`], levels))[1];
+  assert.deepEqual([await beside("sq slide"), await beside("sq hop"), await beside("sq hop times=2")], [[5, 30], [5, 10], [5, 20]]);
+  assert.deepEqual([await beside("sq hop takes=0.5s"), await beside("sq hop speed=slow"), await beside("sq hop", { scene: { "hop.speed": "fast" } })], [[5, 5], [5, 20], [5, 5]]);
+  // Told when to arrive, it is hurried or slowed to that, as any.
+  assert.deepEqual(await frames([`[a] mo say: ${TEN}5678`, "& sq hop arrive=a.end"]), { 1: [5, 14], 2: [5, 14] });
+  // In an `ending together:` it ends with the rest, as any.
+  assert.deepEqual(await frames(["ending together:", "  sq hop", `  mo say: ${TEN}${TEN}`]), { 2: [15, 10], 3: [5, 20] });
+  // So it waits for no words, and they may wait for its end; and how long it lasts is read.
+  assert.deepEqual(await frames(["together:", "  [h] sq hop", `  narrator say: ${TEN}${TEN}`, `  mo say @ h.end: ${TEN}`]), { 2: [5, 10], 3: [5, 20], 4: [15, 10] });
+  assert.deepEqual(await frames(["[h] sq hop times=3", "mo slide takes=h.length / 2"]), { 1: [5, 30], 2: [38, 15] });
+  assert.deepEqual(await takes(["sq hop times=3", "sq slide"]), [3, "own"]);
+  // Its speed is a default too.
+  assert.deepEqual((await checked(["sq hop times=1"])).defaults.filter(({ name }) => name === "speed"), [{ name: "speed", value: "1", lines: [1] }]);
 });
 
 test("a.length is how long a line above lasts: one that is said, or an action given its length", async () => {
@@ -285,7 +302,8 @@ test("a length that is known only once everything has its place is not read, and
   assert.deepEqual(await why([`[b] sq say: ${TEN}`, "[a] sq slide arrive=b.end + 1s", "mo slide takes=a.length"]), [[3, [2], `takes=a.length: how long line 2 lasts is what it needs to arrive, ${known}`]]);
   assert.deepEqual(await why(["[a] in order:", "  sq say: Hi.", "mo slide takes=a.length"]), [[3, [1], "takes=a.length: how long the block of line 1 lasts is known only once all in it has its place"]]);
   assert.deepEqual(await why(["sq say: Hi.", "mo slide takes=block.length"]), [[2, [], "takes=block.length: how long the scene lasts is known only once all in it has its place"]]);
-  assert.match(await hint(["[a] sq slide", "mo slide takes=a.length"]), /^a line that is said, or an action given its length/);
+  assert.match(await hint(["[a] sq slide", "mo slide takes=a.length"]), /^a line that is said, or an action given its length \(takes, speed\) or never fitted, /);
+  assert.deepEqual(await why([`[b] sq say: ${TEN}`, "[a] sq hop arrive=b.end + 1s", "mo slide takes=a.length"]), [[3, [2], `takes=a.length: how long line 2 lasts is what it needs to arrive, ${known}`]]);
   // Nothing from below, from another scene, or of nobody.
   assert.deepEqual(await why(["mo slide takes=a.length", "[a] sq say: Hi."]), [[1, [2], '"a" is below, at line 2: a length is read of a line above']]);
   assert.deepEqual(await why(["[a] sq say: Hi.", "mo slide takes=aa.length"]), [[2, [], 'nothing above is called "aa"']]);
@@ -384,7 +402,7 @@ test("a compiled scenario holds numbers only: no name and no formula is in it", 
 
 test("the values an action takes are those its JSON Schema names, and an example's are plain", () => {
   assert.deepEqual(valuesTaken(PLUGIN.actions), { slide: { far: {}, to: {} }, hop: { times: { default: 1 } } });
-  const bare = { description: "It goes.", example: "sq go", values: { "~standard": { ...taking({})["~standard"], jsonSchema: { input: () => ({}), output: () => ({}) } } } };
+  const bare = { description: "It goes.", example: "sq go", channels: ["place"], values: { "~standard": { ...taking({})["~standard"], jsonSchema: { input: () => ({}), output: () => ({}) } } } };
   assert.deepEqual(valuesTaken({ go: bare }), { go: {} });
   assert.deepEqual(plainValues({ to: "left", far: "2 * 3" }), { to: "left", far: 6 });
   assert.deepEqual(plainValues({ to: "beside(mo, near * 2)" }, { near: 3 }), { to: { construction: "beside", of: ["mo", 6] } });

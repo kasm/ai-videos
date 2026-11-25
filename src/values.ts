@@ -28,7 +28,7 @@ export interface WorkedLine extends Placed<Anchor> {
   text?: string;
   /** What its action is given, by name, and the line of the file that sets it; none when one of them has no answer. */
   values?: Record<string, { value: Worked; line: number }>;
-  /** None for what is said, and for an action that is given no length. */
+  /** None for what is said, and for an action that is given no length and is fitted. */
   lasts?: Lasts;
 }
 
@@ -47,6 +47,8 @@ export interface WorkedScene {
 export interface Given {
   /** The values each action takes, by name, each with its default when the action gives one. */
   actions: Record<string, Record<string, { default?: unknown }>>;
+  /** The actions that are fitted to words when they are given no length: each is, when they are not given. Any other takes its own. */
+  fits?: string[];
   /** The plugin's names for numbers. */
   names: Record<string, number>;
   /** The plugin's constructions, by name, each with its example: any is taken when they are not given. */
@@ -210,7 +212,10 @@ export function workOut(script: WrittenScript, given: Given): { scenes: WorkedSc
     return [...new Set(names)];
   };
 
-  /** How many times a cell has the length of what `of` names: a line that is said, or an action that is given its length. */
+  /** Whether an action that is given no length may be fitted to the words it is together with. */
+  const fits = (action: string) => given.fits?.includes(action) ?? true;
+
+  /** How many times a cell has the length of what `of` names: a line that is said, or an action whose length does not wait for what is beside it. */
   const lengthOf = (of: string, found: Found, { place }: Cell): Amount => {
     const n = all.findIndex((places) => place !== undefined && places.includes(place));
     if (!place) throw refused(found, `${valueOf(found)}: no line is above the scene's own values`, "set it on a block, or on a line");
@@ -220,11 +225,12 @@ export function workOut(script: WrittenScript, given: Given): { scenes: WorkedSc
       throw new Refused(found.set.line === issue.line ? issue : { ...issue, line: found.set.line, also: [issue.line, ...(issue.also ?? [])], message: `${valueOf(found)}: for line ${issue.line}, ${issue.message}` });
     }
     const whose = target === "scene" ? "the scene" : nameOf(target.item);
-    const label = "a line that is said, or an action given its length (takes, speed), has a length that is known before everything has its place: label one of those";
+    const label = "a line that is said, or an action given its length (takes, speed) or never fitted, has a length that is known before everything has its place: label one of those";
     if (target === "scene" || isBlock(target.item)) throw refused(found, `${valueOf(found)}: how long ${whose} lasts is known only once all in it has its place`, label, target === "scene" ? [] : [target.item.line]);
     const { line, action } = target.item;
     const told = lengthsOf(cellOf.get(target.item)!);
-    if (action !== SAY && !told.some(({ key }) => !key.endsWith("arrive"))) {
+    const own = told.length === 0 && !fits(action);
+    if (action !== SAY && !own && !told.some(({ key }) => !key.endsWith("arrive"))) {
       throw refused(found, `${valueOf(found)}: how long ${whose} lasts is ${told.length > 0 ? "what it needs to arrive" : "its own, or what the words beside it take"}, known only once they have their place`, label, [line]);
     }
     return { unit: "s", number: 0, lengths: new Map([[line, 1]]) };
@@ -352,8 +358,8 @@ export function workOut(script: WrittenScript, given: Given): { scenes: WorkedSc
     const told = lengthsOf(cell);
     const [found, another] = told;
     if (!found) {
-      byDefault("speed", endingOf(cell) ? "1" : "1, or what the words beside it take", line.line);
-      return {};
+      byDefault("speed", endingOf(cell) || !fits(line.action) ? "1" : "1, or what the words beside it take", line.line);
+      return fits(line.action) ? {} : { lasts: { speed: 1 } };
     }
     const lasts = attempt(line.line, (): Lasts => {
       if (another) {

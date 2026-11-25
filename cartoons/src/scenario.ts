@@ -25,9 +25,10 @@ export const GROUND = 880;
 /**
  * A beat's length when it does not say, at the scenario's own pace: a walk at `walk` px a second,
  * a turn in `turn` seconds, a jump in `hop` seconds a hop, and a hold as long as its words take to
- * say, `word` seconds each, and at least `hold`. The tool stretches a beat to its lines anyway.
+ * say, `word` seconds each, and at least `hold`. The tool stretches a beat to its lines anyway. An arm
+ * reaches a new pose in `arm` seconds, whatever its beat lasts.
  */
-export const PACE = { walk: 320, turn: 0.5, hop: 0.6, word: 0.3, hold: 1 } as const;
+export const PACE = { walk: 320, turn: 0.5, hop: 0.6, word: 0.3, hold: 1, arm: 0.3 } as const;
 
 export const name = z.string().regex(/^[a-z][a-z0-9-]*$/, "use lowercase letters, digits and dashes, a letter first");
 const point = z.tuple([z.number(), z.number()]);

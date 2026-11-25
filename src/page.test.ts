@@ -168,7 +168,7 @@ test("a script's clip and its page are drawn from the compiled scenario and the 
       setting: { colour: "red", x: 20 },
       ...pauses,
       items: [
-        { line: 5, who: "sq", action: "slide", values: { x: 120 }, length: 0.4 },
+        { line: 5, who: "sq", action: "slide", values: { x: 120 }, channels: ["place"], length: 0.4 },
         { line: 6, who: "sq", action: "say", text: "Here I am." },
       ],
     },

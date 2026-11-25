@@ -26,7 +26,7 @@ const side: Schema<{ to: "left" | "right" }> = {
 
 /** A square that slides to a side: its scene names its colour, which the library has. */
 const scripted = (seen: SceneActions[][] = []): ScriptPlugin => ({
-  actions: { slide: { description: "The square slides to a side.", example: "sq slide to=right", values: side } },
+  actions: { slide: { description: "The square slides to a side.", example: "sq slide to=right", values: side, channels: ["place"], fits: true } },
   guide: "A square slides to a side, and speaks.",
   check(scenes, library) {
     seen.push(scenes);
@@ -71,7 +71,7 @@ test("the check gives the scenario worked out: what is said, and the plugin's ac
         tail: 1,
         items: [
           { line: 5, who: "sq", action: "say", text: "Here I go!" },
-          { line: 6, who: "sq", action: "slide", values: { x: 120 }, length: 1.5 },
+          { line: 6, who: "sq", action: "slide", values: { x: 120 }, channels: ["place"], length: 1.5 },
           { line: 7, who: "narrator", action: "say", text: "It went." },
         ],
       },
@@ -84,7 +84,7 @@ test("the check gives the scenario worked out: what is said, and the plugin's ac
     ],
   });
   // The plugin gets each scene's own keys, and its own actions with what their schema gave.
-  assert.deepEqual(seen, [[{ line: 3, setting: { colour: "red" }, actions: [{ line: 6, who: "sq", action: "slide", values: { to: "right" } }] }]]);
+  assert.deepEqual(seen, [[{ line: 3, setting: { colour: "red" }, actions: [{ line: 6, who: "sq", action: "slide", values: { to: "right" }, begun: [] }] }]]);
 });
 
 test("an unknown action is refused with its line, the actions there are, and the nearest", async () => {

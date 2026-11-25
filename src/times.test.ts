@@ -1,9 +1,9 @@
-// What happens at once (times.ts): when each line of a plan begins and ends, what is refused, and,
-// on random plans, every property that times.md proves.
+// What happens at once (times.ts): when each line of a plan begins and ends, what is refused, what has
+// surely begun before something ends, and, on random plans, every property that times.md proves.
 import assert from "node:assert/strict";
 import { test, type TestContext } from "node:test";
 import { different, random, type Random } from "./random.ts";
-import { refusals, times, type Block, type Fitted, type Interval, type Item, type Line, type Moment } from "./times.ts";
+import { refusals, surelyBegun, times, type Block, type Fitted, type Interval, type Item, type Line, type Moment } from "./times.ts";
 
 type More<T> = Partial<Omit<T, "kind" | "items">>;
 
@@ -157,10 +157,10 @@ test("a channel does one thing at a time, in the order written, in whichever blo
   const plan = scene(together("both", [inOrder("left", [voice("one", "pip", 40), voice("two", "mo", 40)]), inOrder("right", [voice("three", "mo", 30), voice("four", "pip", 10)])]));
   assert.deepEqual(only(plan, "two", "three", "four"), [[70, 110], [110, 140], [152, 162]]);
   // One that never began frees nothing: what is written below it waits for all above on the channel.
-  const gone = scene(together("both", [voice("news", "radio", 60), together("short", [voice("jingle", "radio", 20, { cut: true }), voice("one", "pip", 10)]), voice("more", "radio", 30)]));
+  const gone = scene(together("both", [voice("news", "radio", 60), together("short", [voice("jingle", "radio", 20, { cut: true }), voice("one", "pip", 10)]), inOrder("then", [voice("more", "radio", 30)])]));
   assert.deepEqual(only(gone, "news", "short", "jingle", "more"), [[18, 78], [18, 28], [78, 78], [78, 108]]);
   // Two channels taken by one line: it waits for both.
-  const two = scene(together("both", [voice("sings", "pip", 50), { kind: "move", name: "nods", on: ["pip head"], length: 20 }, { kind: "move", name: "bows", on: ["pip head", "pip voice"], length: 10 }]));
+  const two = scene(together("both", [voice("sings", "pip", 50), { kind: "move", name: "nods", on: ["pip head"], length: 20 }, inOrder("then", [{ kind: "move", name: "bows", on: ["pip head", "pip voice"], length: 10 }])]));
   assert.deepEqual(only(two, "bows"), [[68, 78]]);
 });
 
@@ -266,6 +266,69 @@ test("ending together: refused, two on one channel, and what has its times in it
   const loop = (walk: More<Line>) => why(scene(together("all", [move("walk", "pip", 40, walk), ending("both", [move("back", "pip", 40), voice("words", "mo", 30)])])));
   assert.deepEqual(loop({}), ["loop: walk, words, both"]);
   assert.deepEqual(loop({ length: 40 }), []);
+});
+
+test("together: refused, two on one channel that would both begin with the block", () => {
+  assert.deepEqual(why(scene(together("both", [voice("one", "pip", 40), voice("two", "mo", 30), voice("three", "pip", 20)]))), ["twice: three and one (pip voice)"]);
+  assert.deepEqual(why(scene(together("both", [voice("one", "pip", 40), voice("two", "pip", 30), voice("three", "pip", 20)]))), ["twice: two and one (pip voice)", "twice: three and two (pip voice)"]);
+  const nod: Line = { kind: "move", name: "nod", on: ["pip head"], length: 10 };
+  assert.deepEqual(why(scene(together("both", [nod, { kind: "move", name: "bow", on: ["pip place", "pip head"], length: 10 }]))), ["twice: bow and nod (pip head)"]);
+  // One that is told when to end has no start of its own.
+  assert.deepEqual(why(scene(voice("a", "mo", 40), together("both", [move("walk", "pip", 30), move("back", "pip", 30, { length: { ...fitted(30), arrive: at("a", "end") } })]))), ["twice: back and walk (pip place)"]);
+  // With one, it begins when that and its channel let it, whatever the other begins by.
+  const own = (where: Moment) => only(scene(together("both", [move("walk", "pip", 40), move("back", "pip", 30, { at: where })])), "walk", "back");
+  assert.deepEqual([own(at("walk", "end", 6)), own(at("walk", 0.5)), own(at("block", "start"))], [[[18, 58], [64, 94]], [[18, 58], [58, 88]], [[18, 58], [58, 88]]]);
+  assert.deepEqual(why(scene(together("both", [move("walk", "pip", 40, { at: at("block", "start", 9) }), move("back", "pip", 30)]))), ["twice: back and walk (pip place)"]);
+  // In blocks of their own, or in order, one follows the other.
+  assert.deepEqual(why(scene(together("both", [inOrder("left", [voice("one", "pip", 40)]), inOrder("right", [voice("two", "pip", 30)]), voice("three", "mo", 10)]))), []);
+  assert.deepEqual(why(scene(together("both", [inOrder("left", [voice("one", "pip", 40)]), voice("two", "pip", 30)]))), []);
+  assert.deepEqual(why(scene(voice("one", "pip", 40), voice("two", "pip", 30))), []);
+  // What is cut or open holds its channel, and is told so.
+  assert.deepEqual(why(scene(together("both", [voice("radio", "radio", 100, { cut: true }), voice("more", "radio", 30), voice("one", "pip", 30)]))), ["held: more by radio (radio voice)"]);
+  assert.deepEqual(why(scene(together("both", [look("looks", "mo"), look("away", "mo"), voice("one", "pip", 30)]))), ["held: away by looks (mo eyes)"]);
+});
+
+/** What has surely begun before something ends, of a plan's lines. */
+const sure = (plan: Block) => {
+  const begun = surelyBegun(plan);
+  const { lines } = written(plan);
+  return lines.flatMap((y) => lines.filter((x) => x !== y && begun(x, y)).map((x) => `${x.name} by ${y.name}`));
+};
+
+test("surely begun: in order, what is above by the end of what is below; at once, each by the end of each", () => {
+  assert.deepEqual(sure(scene(voice("a", "pip", 40), move("b", "mo", 30), voice("c", "tuk", 10))), ["a by b", "a by c", "b by c"]);
+  // Fitted or not, joined to words or not.
+  assert.deepEqual(sure(scene(together("both", [move("a", "pip", 40), move("b", "mo", 30, { length: 30 }), voice("c", "tuk", 10)]))), ["b by a", "c by a", "a by b", "c by b", "a by c", "b by c"]);
+  assert.deepEqual(sure(scene(ending("both", [move("a", "pip", 40), voice("b", "tuk", 10)]))), ["b by a", "a by b"]);
+  assert.deepEqual(sure(scene(ending("both", [move("a", "pip", 40), voice("b", "tuk", 10), look("c", "mo")]), move("d", "mo", 20))), ["b by a", "c by a", "a by b", "c by b", "a by c", "b by c", "a by d", "b by d", "c by d"]);
+  // The first of a block in order begins with it, with no lead; what comes after a voice, when the voice says.
+  const tracks = (more: More<Block>) => sure(scene(together("both", [inOrder("left", [move("a", "pip", 40), voice("b", "pip", 10), move("c", "pip", 20)], more), move("d", "mo", 30)])));
+  assert.deepEqual(tracks({}), ["d by a", "a by b", "d by b", "a by c", "b by c", "d by c", "a by d"]);
+  assert.deepEqual(tracks({ lead: 0 }), ["d by a", "a by b", "d by b", "a by c", "b by c", "d by c"], "a lead may be any");
+});
+
+test("surely begun: a moment of something is no earlier than that begins, and how much later is not known", () => {
+  for (const where of [at("a", "start", 30), at("a", 0.5), at("a", "end", -12), at("a", "end")]) {
+    assert.deepEqual(sure(scene(voice("a", "pip", 40), voice("b", "mo", 30, { at: where }))), ["a by b"]);
+    assert.deepEqual(sure(scene(together("both", [voice("a", "pip", 40), voice("b", "mo", 30, { at: where }), voice("c", "tuk", 10)]))), ["c by a", "a by b", "c by b", "a by c"]);
+  }
+  // By the start of a block, and in a block that is anchored.
+  assert.deepEqual(sure(scene(voice("a", "pip", 40), together("both", [voice("b", "mo", 30), voice("c", "tuk", 10)], { at: at("a", "end") }))), ["a by b", "c by b", "a by c", "b by c"]);
+});
+
+test("surely begun: a line that waits for its channel has when what it waits for surely ends by then", () => {
+  // The walk before the block is over as the block begins. One beside it may be over later than the third ends; and who waits for it begins as it ends, and not before.
+  assert.deepEqual(sure(scene(move("a", "pip", 40), together("both", [move("b", "pip", 20), move("c", "mo", 20)]))), ["a by b", "c by b", "a by c", "b by c"]);
+  assert.deepEqual(sure(scene(together("both", [inOrder("left", [move("a", "pip", 40)]), inOrder("right", [move("b", "pip", 20)]), move("c", "mo", 20)]))), ["c by a", "a by b", "c by b", "a by c"]);
+  // What ended together before the block is over too, as the block begins.
+  const after = sure(scene(ending("both", [move("a", "pip", 40), voice("b", "tuk", 10)]), together("then", [move("c", "pip", 20), move("d", "mo", 20)])));
+  assert.ok(after.includes("c by d") && after.includes("d by c"), `${after}`);
+  // Two whose walks end at once, and one of them goes on as they do: that is not before the other ends.
+  const onward = sure(scene(together("all", [ending("both", [move("a", "pip", 40), move("b", "mo", 30)]), inOrder("then", [move("c", "pip", 20)])])));
+  assert.deepEqual(onward, ["b by a", "a by b", "a by c", "b by c"]);
+  // What is cut lets go of its channel when its block ends.
+  const cut = scene(together("both", [voice("a", "radio", 40, { cut: true }), voice("b", "pip", 10)]), together("then", [voice("c", "radio", 10), move("d", "mo", 20)]));
+  assert.ok(sure(cut).includes("c by d"));
 });
 
 test("what is refused, with who is in it, for any lengths", () => {
@@ -554,6 +617,44 @@ test("random plans: what is refused is refused for any lengths, and what is not 
     assert.deepEqual(why(plan), before, shown(plan));
     if (before.length === 0) for (const [item, { start, end, uncut }] of times(plan)) assert.ok([start, end, uncut].every((n) => Number.isInteger(n) && n >= 0), `${item.name}; ${shown(plan)}`);
   }
+});
+
+test("random plans: what has surely begun before a line ends has, whatever the lengths, the pauses and the seconds of the moments", (t) => {
+  const { int, pick } = random(3);
+  const count = { sure: 0, notSure: 0, notBegun: 0 };
+  for (const plan of tried(t, PLANS.slice(0, 2500))) {
+    const begun = surelyBegun(plan);
+    const { lines } = written(plan);
+    const pairs = lines.flatMap((x, k) => lines.flatMap((y, n) => (k === n ? [] : [{ k, n, sure: begun(x, y), later: false }])));
+    for (let tries = 0; tries < 4; tries++) {
+      const other = structuredClone(plan);
+      const { order, lines: others } = written(other);
+      const some = () => 1 + int(pick([3, 60, 400]));
+      const moved = (one: Moment | undefined) => one && Object.assign(one, { plus: int(400) - 200, ...(typeof one.at === "number" ? { at: int(101) / 100 } : {}) });
+      for (const item of order) {
+        moved(item.at);
+        if (item.kind === "block") Object.assign(item, { pause: int(60), ...(item.lead === undefined ? {} : { lead: int(60) }), ...(item.tail === undefined ? {} : { tail: int(60) }) });
+        else if (typeof item.length === "number") item.length = some();
+        else if (typeof item.length === "object") {
+          moved(item.length.arrive);
+          Object.assign(item.length, fitted(some()));
+        }
+      }
+      const worked = times(other);
+      for (const pair of pairs) {
+        const [x, y] = [others[pair.k]!, others[pair.n]!];
+        // An open one may end as it begins.
+        if (worked.get(x)!.start < worked.get(y)!.uncut + (y.length === "open" ? 1 : 0)) continue;
+        pair.later = true;
+        assert.ok(!pair.sure, `${x.name} has not begun when ${y.name} ends; ${shown(other)}`);
+      }
+    }
+    count.sure += pairs.filter((pair) => pair.sure).length;
+    count.notSure += pairs.filter((pair) => !pair.sure).length;
+    count.notBegun += pairs.filter((pair) => pair.later).length;
+  }
+  t.diagnostic(JSON.stringify(count));
+  assert.ok(count.sure > 10000 && count.notBegun > 10000, JSON.stringify(count));
 });
 
 // A plain solver, written apart from the cells: the laws as they read, over and over until nothing changes.

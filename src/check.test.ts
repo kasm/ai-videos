@@ -47,7 +47,7 @@ export default {
   }),
   frame: () => "<svg/>",
   script: {
-    actions: { slide: { description: "The square slides to a side.", example: "sq slide to=right", values: side } },
+    actions: { slide: { description: "The square slides to a side.", example: "sq slide to=right", values: side, channels: ["place"], fits: true } },
     guide: "A square slides to a side, and speaks.",
     check(scenes, library) {
       const colours = library?.raw?.colours ?? {};
@@ -127,7 +127,7 @@ test("check refuses an unknown action, a wrong value and an unknown name, each w
   );
 });
 
-test("check refuses a name from below, a loop, and a voice that follows a cut one in its block, each with both lines and a hint", async () => {
+test("check refuses a name from below, a loop, a voice that follows a cut one in its block, and two on one channel at once, each with its lines and a hint", async () => {
   const refused = async (name: string, lines: string[]) => {
     const file = await video(name, script(lines));
     const { code, stdout, stderr } = await cli(["check", file]);
@@ -165,9 +165,22 @@ test("check refuses a name from below, a loop, and a voice that follows a cut on
       "1 mistake in cut.yaml:",
       "",
       "cut.yaml:9: sq say: Four.",
-      "  sq is busy with line 7, which goes on under the rest to the end of the block both are in",
+      "  sq's voice is busy with line 7, which goes on under the rest to the end of the block both are in",
       "  cut.yaml:7: sq say: One, two, three.",
       "  Hint: write it after that block, or in the same under:, below that line",
+      "",
+    ].join("\n"),
+  );
+  assert.equal(
+    await refused("twice", ["together:", "  sq slide to=right", "  sq say: One.", "  sq slide to=left"]),
+    [
+      "1 mistake in twice.yaml:",
+      "",
+      "twice.yaml:8: sq slide to=left",
+      "  sq's place is busy with line 6, and the two would begin at once",
+      "  twice.yaml:5: together:",
+      "  twice.yaml:6: sq slide to=right",
+      "  Hint: write the two one after the other, in an in order: there, or begin this one by the end of the other (@ prev.end, or its label)",
       "",
     ].join("\n"),
   );
@@ -193,7 +206,7 @@ test("check refuses, in a block that ends its lines together, a voice twice, a l
       "  Hint: leave its anchor out, or begin the whole block by it: ending together @ a.50%:",
       "",
       "ending.yaml:8: sq say: Three.",
-      "  sq is busy with line 6, which ends when this does: the block of line 5 ends its lines together",
+      "  sq's voice is busy with line 6, which ends when this does: the block of line 5 ends its lines together",
       "  ending.yaml:5: ending together:",
       "  ending.yaml:6: [a] sq say: One.",
       "  Hint: write one of the two before that block or after it, or give it to another",

@@ -14,9 +14,9 @@ const SCENES: CheckedScene[] = [
     setting: { colour: "#d04040" },
     ...PAUSES,
     items: [
-      { line: 5, who: "sq", action: "slide", values: { x: 120 }, length: 1 },
+      { line: 5, who: "sq", action: "slide", values: { x: 120 }, channels: ["place"], length: 1 },
       { line: 6, who: "sq", action: "say", text: "Here I am." },
-      { line: 7, who: "sq", action: "slide", values: { x: 20 }, length: 0.5 },
+      { line: 7, who: "sq", action: "slide", values: { x: 20 }, channels: ["place"], length: 0.5 },
     ],
   },
   { line: 9, setting: { colour: "#4040d0" }, ...PAUSES, items: [{ line: 11, who: "narrator", action: "say", text: "And it stays." }] },

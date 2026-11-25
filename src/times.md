@@ -1,8 +1,8 @@
 # Why the laws of time hold
 
 The laws are in `AGENTS.md`, "What happens at once"; the code is `times.ts`. This note proves the
-five things they promise. `times.test.ts` tries each on random plans, and `scripts.test.ts` on random
-scripts, compiled.
+five things they promise, and what is said to have surely begun (6). `times.test.ts` tries each on random
+plans, and `scripts.test.ts` on random scripts, compiled.
 
 ## The formulas
 
@@ -42,9 +42,10 @@ cuts(x)))`. A line is **there** when `stop(x) > s(x)`.
 The lengths, `pause`, `lead`, `tail` and `plus` are whole frames, a length 1 or more and the pauses 0
 or more; `least <= own <= most`; `0 <= p <= 1`. One that is worked out from the lengths of lines above
 is a number by then too (`compile.ts`). A plan is **accepted** when it has none of the six refusals: a
-name that nothing above has, a channel held, a cut move, a loop; and in a closing block, a channel
-twice, and what has its times in itself (a block, an anchor, an arrival). So all that is directly in a
-closing block is lines, with no moment of their own, no two on one channel.
+name that nothing above has, a channel held, a cut move, a loop; a channel twice, directly in a closing
+block, or in one together, the later line with no anchor; and in a closing block, what has its times in
+itself (a block, an anchor, an arrival). So all that is directly in a closing block is lines, with no
+moment of their own, no two on one channel.
 
 **A closing block ends its lines together.** Let `i` be in the closing block `B`, not left. By its E,
 `e(B) - tail` is at least `max(s(B), free(i)) + L(i)`. So of the terms of `s(i)`, the rule's, `e(B) -
@@ -131,7 +132,48 @@ older one that still sounds. ∎
 
 Why a held channel is refused: `x` is in `C`, and would begin after `C` has ended. If `C` waits for
 it, that is a loop; if not, it is never there. A channel twice in a closing block would be a loop too:
-the block's end reads when the channel of `x` is free, `e(y)`, and `y` begins by the block's end.
+the block's end reads when the channel of `x` is free, `e(y)`, and `y` begins by the block's end. In a
+block together it would be none, and nothing here needs it refused: `x` would wait for `y`. But the block
+says that it begins with it, and it does not.
+
+## 6. What has surely begun
+
+`surelyBegun(x, y)` says that `s(x) < e(y)` in an accepted plan, for a line `y` (`<=` for an open one),
+whatever the lengths, the pauses, the leads and tails, the shares and the `plus` of its moments. It is
+sound: what it says is so. It does not see all that is so, and where it says nothing, nothing is claimed.
+
+It goes by two facts of each formula, neither of which reads a length.
+
+*Over:* cells that a cell is no earlier than. A formula is `max`, `min`, `+` and `-` of cells.
+
+- `max` of terms is no earlier than what any of them is no earlier than, and `min` of terms than what all
+  of them are.
+- A term with frames of 0 or more added (a length, `pause`, `lead`, `tail`, `least`, `most`) is no earlier
+  than the cell it adds them to. One with frames taken away (a closing block's rule) is over nothing.
+- A moment is no earlier than `s(w)`, in all three forms.
+- A fitted end is so over `s(x)`: both sides of its `min` are `s(x)` and more. What it is fitted to is on
+  one side alone.
+- In a closing block, `e(i) = e(B) - tail` for all `i` that are not left (above), so `e(B)` is over each
+  `e(i)`, and each `e(i)` is over the start of every other, which is before that one's end.
+
+*Only:* a cell that is the latest of those cells, with nothing added. It is a start whose every term is a
+cell: its block's start, its channels, and no pause, lead or moment; and the end of what is open.
+
+Let `below(c)` be all that is reached from `c` by *over*: each is `<= c`, and `s(plan)` is always one of
+them, as every start is over its block's. Then `a <= c` when `a` is in
+`below(c)`; or when `a` is *only*, and each cell it is the latest of is `<= c` by the same two. The second
+goes round nowhere, as a formula reads only cells that are worked out before it (1).
+
+`surelyBegun(x, y)` is this, of `s(x)` and one of the cells that `e(y)` is over, or, when `s(x)` is *only*,
+of each of its cells and one of those. `y` is a line: when it is not open, those are its own start, and in
+a closing block the others'. A line lasts a frame at least, so each is before its own line's end, and that
+is `e(y)`. ∎
+
+That an end is not among them is what makes it *before*: of two whose walks end at once, the one who goes
+on as they do has not left when the other comes.
+
+So of two that begin with one block together, each has surely begun by the end of the other, when what it
+waits for on its channels is surely over by then: what is before the block is, as `s(B)` is over it.
 
 ## The plain solver
 

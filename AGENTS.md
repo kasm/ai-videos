@@ -114,7 +114,10 @@ A project's plugin draws its videos: a module the tool runs in a child process o
       `description`, an `example` (one line of a script that names it: `pip walk to=middle`) and
       `values`, a schema of the values a line gives it. An example that is no such line, or fails
       its schema, is refused when the plugin loads. A value its JSON Schema names may be set on any
-      level (see Values); one with a name of the tool's own is refused.
+      level (see Values); one with a name of the tool's own is refused. It names its `channels`, one
+      at least: what of its character it keeps busy (`["place"]`; `voice` is what is said with), each
+      of which does one thing at a time (see What happens at once). With `fits: true` it is fitted
+      to the words it is together with, when it is given no length; any other takes its own.
     - `names`, optional: its names for numbers (`slow: 0.6`), which any value may use. One that is a
       value's name is refused.
     - `constructions`, optional: the values it works out from others (`left-of(pip, near)`), by name,
@@ -128,8 +131,9 @@ A project's plugin draws its videos: a module the tool runs in a child process o
     - `check(scenes, library)`: the script checked against the library, and worked out. It gets
       each scene's line in the file, its own keys (what is in its `tables` worked out, the rest as
       written), and its lines that name one of the
-      plugin's actions, in order, each with its line and its values, worked out, as the action's
-      schema gave them. It gives each scene's `setting` (how it begins) and each action's `values` and own
+      plugin's actions, in order, each with its line, its values, worked out, as the action's
+      schema gave them, and `begun`, the lines of the scene's other actions that have surely begun before
+      its end (see What happens at once). It gives each scene's `setting` (how it begins) and each action's `values` and own
       `length`, seconds, all in plain numbers: numbers and names, in lists and tables. Or it gives
       `issues`, each `{ line, message, hint }`.
     - `draw(library)`: its picture. It gives a function, `(shown, size)` to SVG, that draws what a
@@ -269,8 +273,8 @@ scenes:
   video's `fps`: `from`, the frame of the video it begins on, and `frames`, how many it lasts.
   They are laid by the laws of What happens at once, each scene in order, with the `lead`, `pause` and
   `tail` that Values gives it, and each block's `pause`. A voice lasts the frames it sounds in, and an
-  action the length it is given, its own (the plugin's) when it is given none, to the nearest frame, or
-  what it is fitted to takes, within `timing.moves`. A cut voice has the frames it
+  action the length it is given, its own (the plugin's) when it is given none, to the nearest frame, or,
+  one that is fitted, what it is fitted to takes, within `timing.moves`. A cut voice has the frames it
   sounds in, and so its mouth, its captions and the voice itself stop there; a line whose block ends
   before it begins is not there (`make` says so).
 - **A said line** holds all of itself: its `text`, its voice's `file`, its `mouth` (how open, a
@@ -313,8 +317,8 @@ scenes:
 - **The build** (see make) has the clip and the captions, each on its own frames, and no voices: the
   video's sound is the tool's one track (see How loud), silent when nobody speaks.
 - **The guide** to writing a script (`guideOf`, `src/guide.ts`) is the tool's part (a line's form,
-  `say`, blocks, joining, anchors, values, what is refused), the plugin's `script.guide`, the actions
-  and the constructions, each with its description and example, and the plugin's names for numbers. Each part's examples are compiled by a test. The prompt for
+  `say`, blocks, joining, channels, anchors, values, what is refused), the plugin's `script.guide`, the actions
+  and the constructions, each with its description and example, an action with its channels and whether it is fitted, and the plugin's names for numbers. Each part's examples are compiled by a test. The prompt for
   a web chat does not teach scripts yet.
 
 `src/read.test.ts`, `src/formula.test.ts`, `src/values.test.ts`, `src/scenario.test.ts`,
@@ -374,11 +378,12 @@ The laws:
    | `speed` | any level | times the action's own speed (2 is twice as fast) |
    | `arrive` | any level | the moment above that it ends at, as an anchor's, within `timing.moves` |
 
-   Given `takes` or `speed`, wherever they are set, an action keeps it and is fitted to nothing. A voice
+   Given `takes` or `speed`, wherever they are set, an action keeps it and is fitted to nothing; one whose
+   plugin says it is never fitted has its own speed, as if given `speed=1`. A voice
    takes none of them, and an action in an `ending together:` no `arrive`. Beside these, what an action
    takes (`to`) may be set on any level, and any name of the writer's that a formula reads.
 8. **`a.length`** is how long a line above lasts: one that is said, or an action given `takes` or
-   `speed`. How long a fitted action lasts, or a block, is known only once everything has its place, and
+   `speed`, or never fitted. How long a fitted action lasts, or a block, is known only once everything has its place, and
    is not read. A length is read by a time alone (`takes`, `pause`, an anchor's), and what that comes to
    is kept in bounds: `5s - a.length` is a frame at least for an action, and none at least for a pause.
 9. **Said:** the defaults taken, with their lines, by `check` and `make`. **Refused,** each at the line
@@ -390,12 +395,13 @@ The laws:
 
 When each line of a scenario begins and ends is worked out from the measured lengths by these laws
 (`src/times.ts`), from a plan of lines and blocks written as data. `planOf` (`src/plan.ts`) makes it
-from a script (see A script for the words): a character's voice is one channel and its actions
-another, for now, so it does one at a time. `compile` lays it. `src/times.md` proves what the laws
-promise, below; `src/times.test.ts` tries it on random plans, and `src/scripts.test.ts` on random scripts.
+from a script (see A script for the words): what a character says is on its channel `voice`, and an
+action on the channels the plugin names (see Plugins). `compile` lays it. `src/times.md` proves what the
+laws promise, below; `src/times.test.ts` tries it on random plans, and `src/scripts.test.ts` on random scripts.
 
 - **A line** is one thing that lasts: a voice, a sound, or a move (any of the plugin's actions). It
-  keeps its **channels** busy: a character's voice, its place.
+  keeps its **channels** busy: a character's voice, its place, its arm. Lines on other channels go on at
+  once, one character's too.
 - **A block** holds lines and blocks, **in order** or **together**, or lines alone, **ending
   together**; it is used as a line is. A scene is a block in order, and so is the video, of its scenes.
 
@@ -415,10 +421,11 @@ The laws:
    share of it is of its whole length.
 4. **An end** is the start plus the length.
    - Fixed: measured, given, or worked out from such lengths above.
-   - Fitted: a move given no length, directly in a block together. It ends with the last voice the
-     block waits for, no faster than its `fastest` and no slower than its `slowest`. Told when to
-     arrive, it is fitted to that moment instead. In order, ending together, with a start of its own, or
-     with no voice to fit to, it takes its own length.
+   - Fitted: a move that may be (its action `fits`), given no length, directly in a block together. It ends
+     with the last voice the block waits for, no faster than its `fastest` and no slower than its
+     `slowest`. In order, ending together, with a start of its own, or with no voice to fit to, it takes
+     its own length. Any other move given no length does, anywhere. Told when to arrive, either is fitted
+     to that moment instead.
    - Open (a look, a loop): until its block ends.
 5. **A block** ends with the last of what it waits for: all but the cut and the open. One ending
    together ends when the last of these would, if each began as soon as the block has and its own
@@ -433,8 +440,9 @@ The laws:
    - Only voices and sounds are cut, never a move: where a move leaves its character must be known
      before the voices.
 7. **Refused**, for any lengths, and so before the voices: an anchor to something that is not above;
-   what follows a cut or open thing on its channel, in that thing's block; a cut move; in a block
-   ending together, two lines on one channel, and what has its times in itself (a block, an anchored
+   what follows a cut or open thing on its channel, in that thing's block; a cut move; two lines on one
+   channel, directly in one block together, the later with no start of its own, or in one ending together;
+   in a block ending together, what has its times in itself (a block, an anchored
    line, a move told when to arrive); and a loop, whole. A voice that waits for the end of its own
    block's fitted move is a loop: it goes after the block, or the move is given a length.
 
@@ -445,6 +453,13 @@ They promise:
 - a block ends after all it waits for;
 - what is cut ends with its block, and its length moves nothing but what names it;
 - a channel never does two things, and keeps the written order.
+
+**Surely begun.** Whether one thing has begun before another ends is known before the voices, where
+the laws make it so whatever the lengths, the pauses and the seconds after a moment turn out to be
+(`surelyBegun`): what is above in order, what begins or ends at once, what something is anchored to, and
+what follows from these. A plugin's check is told it of its actions (`begun`), so what may depend on the
+voices can be refused too: two who may meet on one spot. Where it is not sure, the lengths decide it, or
+it is not seen: a walk anchored a second into another is not sure to have begun when that ends.
 
 ### The cast
 

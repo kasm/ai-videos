@@ -6,7 +6,7 @@
 // It needs none of the tool's packages: plugin.ts gives it to the plugins' tests.
 import { shownAs, type Span } from "./formula.ts";
 import { listed, nearest } from "./names.ts";
-import { timeIssues } from "./plan.ts";
+import { begunBy, timeIssues } from "./plan.ts";
 import type { Library, Schema } from "./plugin.ts";
 import { SAY, isBlock } from "./read.ts";
 import type { Shown } from "./shown.ts";
@@ -107,6 +107,13 @@ export interface Action {
    * (`takes`, `speed`, `arrive`) are not among them.
    */
   values: Schema;
+  /**
+   * What of its character it keeps busy while it lasts (`place`, `arm`), one at least: each does one
+   * thing at a time (AGENTS.md, "What happens at once"). `voice` is what is said with.
+   */
+  channels: string[];
+  /** Whether one that is given no length lasts as long as the words it is together with, within the video's limits: any other takes its own. */
+  fits?: boolean;
 }
 
 /** One of a plugin's constructions, described once: a value worked out from others, `left-of(pip, near)`. */
@@ -123,6 +130,8 @@ export interface ActionLine {
   who: string;
   action: string;
   values: unknown;
+  /** The lines of its scene's other actions that have surely begun before it ends, however long the voices turn out to be. */
+  begun: number[];
 }
 
 /** A scene as the plugin's check gets it: its own keys as written, what is in the plugin's tables worked out, and its lines with one of the plugin's actions, in order. */
@@ -182,9 +191,10 @@ export interface ScriptPlugin {
 
 /**
  * A line checked: what is said, or one of the plugin's actions in plain numbers with its own length,
- * seconds. An action that is given how long it lasts has that (`takes`), or the moment it arrives at.
+ * seconds, on its channels. An action that is given how long it lasts, or is never fitted, has that
+ * (`takes`), or the moment it arrives at.
  */
-export type CheckedLine = Placed<Anchor> & { who: string; action: string } & ({ text: string } | { values: Plain; length: number; takes?: Span; arrive?: Anchor });
+export type CheckedLine = Placed<Anchor> & { who: string; action: string } & ({ text: string } | { values: Plain; channels: string[]; length: number; takes?: Span; arrive?: Anchor });
 
 /** A scene checked: how it begins, in plain numbers, its pauses (AGENTS.md, "Values"), and its lines and blocks. */
 export interface CheckedScene {
@@ -252,11 +262,12 @@ export async function checkScenario(plugin: ScriptPlugin, script: WrittenScript,
   const issues = [...script.issues];
   const actions = [SAY, ...Object.keys(plugin.actions)];
   const { names = {}, constructions = {}, tables = [] } = plugin;
-  const worked = workOut(script, { actions: valuesTaken(plugin.actions), names, constructions, tables, speakers, timing });
+  const fits = Object.keys(plugin.actions).filter((name) => plugin.actions[name]!.fits);
+  const worked = workOut(script, { actions: valuesTaken(plugin.actions), fits, names, constructions, tables, speakers, timing });
   const workedLines = new Map(worked.scenes.flatMap((scene) => linesIn(scene.items)).map((line) => [line.line, line]));
-  const acted: SceneActions[] = [];
+  const taken: Omit<ActionLine, "begun">[][] = [];
   for (const [n, scene] of script.scenes.entries()) {
-    const own: ActionLine[] = [];
+    const own: (typeof taken)[number] = [];
     for (const { line, who, action, values, text } of linesIn(scene.items)) {
       const issue = (message: string, hint: string, also: number[] = []) => void issues.push({ line, ...(also.length > 0 ? { also } : {}), message, hint });
       if (action === SAY) {
@@ -279,27 +290,29 @@ export async function checkScenario(plugin: ScriptPlugin, script: WrittenScript,
       const hint = `as in: ${known.example}`;
       if (text !== undefined) issue(`${action} takes no words after a colon: only ${SAY} does`, hint);
       // What has no answer is said where it is worked out: the rest is not held to the schema without it.
-      const taken = workedLines.get(line)?.values;
-      if (!taken) continue;
-      const checked = await known.values["~standard"].validate(Object.fromEntries(Object.entries(taken).map(([name, { value }]) => [name, value])));
+      const given = workedLines.get(line)?.values;
+      if (!given) continue;
+      const checked = await known.values["~standard"].validate(Object.fromEntries(Object.entries(given).map(([name, { value }]) => [name, value])));
       if (checked.issues) {
         for (const found of checked.issues) {
           const name = pathOf(found.path);
-          const value = Object.hasOwn(taken, name) ? taken[name] : undefined;
+          const value = Object.hasOwn(given, name) ? given[name] : undefined;
           issue(`${action}${name ? `, ${name}${value ? `=${shownAs(value.value)}` : ""}` : ""}: ${found.message}`, hint, value && value.line !== line ? [value.line] : []);
         }
         continue;
       }
       own.push({ line, who, action, values: checked.value });
     }
-    acted.push({ line: scene.line, setting: worked.scenes[n]!.setting, actions: own });
+    taken.push(own);
   }
   // A row that does not read may be the one a label or a value is on.
-  if (script.issues.length === 0) issues.push(...worked.issues, ...timeIssues(worked.scenes));
+  if (script.issues.length === 0) issues.push(...worked.issues, ...timeIssues(worked.scenes, plugin.actions));
   // One line may make a mistake twice, as where it begins and where it arrives: it is said once.
   const once = issues.filter((one, k) => issues.findIndex(({ line, message }) => line === one.line && message === one.message) === k);
   if (once.length > 0) return { issues: once };
 
+  const begun = begunBy(worked.scenes, plugin.actions);
+  const acted = worked.scenes.map(({ line, setting }, n): SceneActions => ({ line, setting, actions: taken[n]!.map((one) => ({ ...one, begun: begun.get(one.line)! })) }));
   const result = plugin.check(acted, library);
   if ("issues" in result) {
     if (result.issues.length === 0) throw new Error("the plugin's check of the script refused it with no mistake named");
@@ -324,7 +337,7 @@ export async function checkScenario(plugin: ScriptPlugin, script: WrittenScript,
       if (!(Number.isFinite(length) && length > 0)) throw wrong(`line ${line} the length ${length}: an action's own length is seconds, above 0`);
       // A speed is so many times its own, so it says how long it lasts too.
       const how = lasts && ("speed" in lasts ? { takes: length / lasts.speed } : lasts);
-      return { ...rest, values, length, ...how };
+      return { ...rest, values, channels: plugin.actions[action]!.channels, length, ...how };
     };
     return { ...scene, setting, items: items.map(check) };
   });

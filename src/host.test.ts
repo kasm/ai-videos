@@ -360,7 +360,7 @@ const SCRIPTED = PLUGIN.replace(
 };
 export default {
   script: {
-    actions: { slide: { description: "The square slides to a side.", example: "sq slide to=right", values: side } },
+    actions: { slide: { description: "The square slides to a side.", example: "sq slide to=right", values: side, channels: ["place"], fits: true } },
     names: { slow: 0.5 },
     constructions: { between: { description: "Between two.", example: "between(left, right)" } },
     tables: ["spots"],
@@ -393,7 +393,7 @@ test("a plugin with a script: its guide and actions come with it, and a script's
     assert.match(said[0]!, /^Plugin: square, .*plugin\.mjs \(its commands: colour; a script's actions: slide\)$/);
     assert.deepEqual(host.script, {
       guide: "A square slides to a side, and speaks.",
-      actions: { slide: { description: "The square slides to a side.", example: "sq slide to=right" } },
+      actions: { slide: { description: "The square slides to a side.", example: "sq slide to=right", channels: ["place"], fits: true } },
       names: { slow: 0.5 },
       constructions: { between: { description: "Between two.", example: "between(left, right)" } },
     });
@@ -414,7 +414,7 @@ test("a plugin with a script: its guide and actions come with it, and a script's
           pause: 0.8,
           tail: 1,
           items: [
-            { line: 5, who: "sq", action: "slide", values: { x: 120 }, length: 1.5, takes: 3 },
+            { line: 5, who: "sq", action: "slide", values: { x: 120 }, channels: ["place"], length: 1.5, takes: 3 },
             { line: 6, who: "sq", action: "say", text: "Here I am.", anchor: { of: "prev", at: "end", plus: { seconds: -0.4, lengths: [{ line: 5, times: 0.5 }] } } },
           ],
         },
@@ -456,7 +456,7 @@ test("a script's clip is drawn from its compiled scenario and the library, with 
       pause: 0.2,
       tail: 0.2,
       items: [
-        { line: 5, who: "sq", action: "slide", values: { x: 120 }, length: 0.4 },
+        { line: 5, who: "sq", action: "slide", values: { x: 120 }, channels: ["place"], length: 0.4 },
         { line: 6, who: "sq", action: "say", text: "Here I am." },
       ],
     },
@@ -515,6 +515,11 @@ test("a plugin with no script takes none; an action's example is a line that nam
   }
   const broken = async (name: string, edit: (text: string) => string) => loadPlugin(path.join(await project(name, () => edit(SCRIPTED)), "src", "plugin.mjs"));
   await assert.rejects(broken("example-value", (t) => t.replace("sq slide to=right", "sq slide to=up")), /the action "slide" fails its own example, sq slide to=up:\n {2}to: it is left or right/);
+  // An action names its channels, one at least, and may be fitted.
+  await assert.rejects(broken("no-channels", (t) => t.replace(', channels: ["place"]', "")), /is not a plugin[\s\S]*channels[\s\S]*script\.actions\.slide\.channels/);
+  await assert.rejects(broken("empty-channels", (t) => t.replace('channels: ["place"]', "channels: []")), /name one channel at least[\s\S]*script\.actions\.slide\.channels/);
+  await assert.rejects(broken("named-channels", (t) => t.replace('channels: ["place"]', 'channels: ["His Place"]')), /is not a plugin[\s\S]*script\.actions\.slide\.channels/);
+  await assert.rejects(broken("fits-how", (t) => t.replace("fits: true", "fits: 2")), /is not a plugin[\s\S]*script\.actions\.slide\.fits/);
   // The tool's own values are no action's, and a name for a number is no value's.
   const naming = (name: string, properties: string) => (t: string) => t.replace("names: { slow: 0.5 }", `names: { ${name}: 2 }`).replace("jsonSchema: { input: () => ({})", `jsonSchema: { input: () => ({ properties: { ${properties} } })`);
   await assert.rejects(broken("named-pause", naming("pause", "to: {}")), /"pause" is a value of the tool's, and no name for a number/);

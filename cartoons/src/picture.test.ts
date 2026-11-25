@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { frameSvg, stagingAt } from "./picture.ts";
-import { checkScenario } from "./scenario.ts";
+import { checkScenario as checkScript, compile, pictureOf, readScript, shownAt } from "ai-videos/plugin";
+import { frameSvg, scriptStaging, stagingAt, type Actor } from "./picture.ts";
+import plugin from "./plugin.ts";
+import { checkScenario, readLibrary } from "./scenario.ts";
 
 const scenario = checkScenario(
   {
@@ -177,6 +179,7 @@ test("a turn mirrors the character: narrow halfway and never nothing, then facin
   assert.equal(bo(TURNS).facing, 1);
   near(bo(TURNS, { progress: 0.25 }).facing, Math.SQRT1_2);
   assert.equal(Math.abs(bo(TURNS, { progress: 0.5 }).facing), 0.04, "edge-on: thin, not gone");
+  assert.deepEqual([0.49, 0.51].map((progress) => bo(TURNS, { progress }).facing), [0.04, -0.04], "before it one way, after it the other");
   near(bo(TURNS, { progress: 0.75 }).facing, -Math.SQRT1_2);
   assert.equal(bo(TURNS, { progress: 1 }).facing, -1);
   assert.equal(bo(WAVES).facing, -1);
@@ -227,6 +230,7 @@ test("a pose turns the arm around the shoulder: down to stand, forward to point,
 test("in the beat that changes a pose the arm takes 0.3 s to get there, from where the pose before had it", () => {
   near(bo(WAVES, { time: 0.5, into: 0 }).arm, 0, "from standing");
   near(bo(WAVES, { time: 0.5, into: 0.15 }).arm, -77.5, "halfway up");
+  near(bo(WAVES, { time: 0.5, into: 0.075 }).arm, -155 * (0.5 - 0.5 * Math.cos(Math.PI / 4)), "a quarter of the time: slow at both ends");
   near(bo(WAVES, { time: 0.5, into: 0.3 }).arm, -155);
   near(bo(WAVES, { time: 0.125, into: 2 }).arm, -135, "then it swings");
   // The swing comes in with the reach: halfway up, half of it.
@@ -269,6 +273,95 @@ test("eyes blink once in every 3.2 s, shut for a frame or two, the same in every
 test("each character blinks at its own times", () => {
   // The first scenario's night scene has Pip and Mo. Neither has eyes drawn; the staging still says when.
   assert.notDeepEqual(blinks(eyes(32, 0, scenario, 2)), blinks(eyes(32, 1, scenario, 2)));
+});
+
+// A script's pictures: what its actions show at once, each on its own channel. Three of one drawing, with an arm.
+const puppet = { shoulder: [40, -150], parts: { body: [{ shape: "rect", at: [0, -100], size: [100, 200], fill: "#f2a33a" }], arm: [{ shape: "rect", at: [40, -110], size: [20, 100], fill: "#d9861f" }] } };
+const puppets = { file: "library", raw: { characters: { bo: puppet, pip: puppet, mo: puppet }, backgrounds: { day: { fill: "#bfe3ff" } } } };
+
+/**
+ * A scene's frames at 30 a second, its rows laid as the tool lays them: everyone of it in each frame, by
+ * name. Bo begins at the left, Pip at 700 and Mo at 900; its lines last these seconds.
+ */
+async function staged(rows: string[], ...voices: number[]): Promise<Record<string, Actor>[]> {
+  const { items, issues } = readScript(rows.join("\n"));
+  const script = { scenes: [{ line: 100, setting: { background: "day", places: { bo: "left", pip: 700, mo: 900 } }, items }], issues };
+  const checked = await checkScript(plugin.script, script, puppets, ["bo", "pip", "mo"], { lead: 0.6, gap: 0.4, tail: 1 });
+  assert.ok("scenes" in checked, JSON.stringify(checked));
+  const voiced = voices.map((duration, n) => ({ file: `${n}.wav`, duration, mouth: [] }));
+  const picture = pictureOf(compile(checked.scenes, voiced, { fps: 30, loudness: -14, moves: { slowest: 0.5, fastest: 2 } }, "x.yaml"));
+  const library = readLibrary(puppets);
+  return Array.from({ length: picture.frames }, (_, frame) => Object.fromEntries(scriptStaging(library, shownAt(picture, frame)).characters.map((one) => [one.name, one])));
+}
+/** The frames in which something of somebody moves: the first from which it is another in the next, and the one it is there in. */
+const moves = (frames: Record<string, Actor>[], who: string, of: (actor: Actor) => number): [number, number] => {
+  const values = frames.map((one) => of(one[who]!));
+  return [values.findIndex((value, k) => k + 1 < values.length && values[k + 1] !== value), values.findLastIndex((value, k) => k > 0 && values[k - 1] !== value)];
+};
+const X = ({ at }: Actor) => at[0];
+const HIGH = ({ at }: Actor) => 880 - at[1];
+const FACING = ({ facing }: Actor) => facing;
+
+const AT_ONCE = ["together:", "  bo walk to=right", "  pip jump times=2", "  mo turn @ block.start + 1s", "  narrator say: Bo walks, and Pip hops."];
+
+test("in a script, one walks from a block's start while another hops and a third turns a second later", async () => {
+  const frames = await staged(AT_ONCE, 3);
+  // The block begins after the lead, 18 frames. 960 px at 320 a second are 90 frames, as the words are.
+  assert.deepEqual(moves(frames, "bo", X), [18, 108]);
+  assert.deepEqual(moves(frames, "pip", HIGH), [18, 54], "two hops of 0.6 s");
+  assert.deepEqual(moves(frames, "mo", FACING), [48, 63], "half a second, a second later");
+  near(X(frames[63]!.bo!), 960, "half-way, Bo");
+  near(HIGH(frames[18 + 9]!.pip!), 120, "the top of the first hop");
+  near(HIGH(frames[18 + 27]!.pip!), 120, "the top of the second");
+  assert.equal(HIGH(frames[54]!.pip!), 0);
+  assert.deepEqual([47, 48, 63, 100].map((frame) => frames[frame]!.mo!.facing), [1, 1, -1, -1]);
+  near(frames[53]!.mo!.facing, 0.5, "a third through, Mo");
+  // Nobody does what another does, and nobody does anything else.
+  for (const one of frames) {
+    assert.deepEqual([X(one.pip!), X(one.mo!), HIGH(one.mo!), one.bo!.facing, one.pip!.facing], [700, 900, 0, 1, 1]);
+    assert.deepEqual([one.bo!.arm, one.pip!.arm, one.mo!.arm], [0, 0, 0]);
+  }
+});
+
+test("in a script, one walks while it waves, each action with its own start and length, and the wave goes on", async () => {
+  const frames = await staged(["together:", "  bo walk to=right", "  bo wave @ block.start + 0.5s", "  narrator say: Bo has seen somebody.", "bo stand"], 3);
+  assert.deepEqual(moves(frames, "bo", X), [18, 108]);
+  const arm = (frame: number) => frames[frame]!.bo!.arm;
+  for (let frame = 0; frame <= 33; frame++) assert.equal(arm(frame), 0, `it hangs in frame ${frame}`);
+  assert.ok(arm(36) < 0 && arm(36) > -60, "on its way up");
+  // Up 0.3 s after it began, and swinging 20 degrees each way around 155, twice a second by the video's time, on the way and after it.
+  const swung = (frame: number) => -155 + 20 * Math.sin(2 * Math.PI * 2 * (frame / 30));
+  for (let frame = 42; frame <= 120; frame++) near(arm(frame), swung(frame), `the arm in frame ${frame}`);
+  // The next line is after both: 12 frames after the walk, in 9 the arm hangs again.
+  for (let frame = 129; frame < frames.length; frame++) near(arm(frame), 0, `the arm in frame ${frame}`);
+  assert.equal(frames.length, 129 + 30);
+
+  // A hop and a turn on the way: the walk goes on as it does without them, and the hop's height is over the steps'.
+  const rows = (...more: string[]) => ["together:", "  bo walk to=right", ...more, "  narrator say: Bo is glad."];
+  const [walking, acting] = [await staged(rows(), 3), await staged(rows("  bo jump", "  bo turn @ block.start + 1s"), 3)];
+  assert.deepEqual(acting.map((one) => X(one.bo!)), walking.map((one) => X(one.bo!)));
+  for (let frame = 0; frame < acting.length; frame++) {
+    const through = Math.min(1, Math.max(0, frame - 18) / 18);
+    near(HIGH(acting[frame]!.bo!) - HIGH(walking[frame]!.bo!), 120 * 4 * through * (1 - through), `the hop in frame ${frame}`);
+  }
+  assert.deepEqual(moves(acting, "bo", FACING), [48, 63]);
+});
+
+test("in a block stretched by its lines, the actions keep their order: who begins, and who is done, before whom", async () => {
+  const rows = ["together:", "  bo walk to=right", "  bo wave", "  pip jump times=2", "  mo turn @ block.start + 1s", "  in order:", "    narrator say: Bo walks and waves.", "    narrator say: And Pip hops.", "bo stand"];
+  const timed = async (...voices: number[]) => {
+    const frames = await staged(rows, ...voices);
+    const arm = frames.map((one) => one.bo!.arm);
+    const up = arm.findIndex((angle) => angle !== 0) - 1;
+    return { walk: moves(frames, "bo", X), jump: moves(frames, "pip", HIGH), turn: moves(frames, "mo", FACING), up };
+  };
+  // The lines take 2.4 s, 3.4 s, and 6.4 s with the pause between: the walk, 3 s of its own, is hurried to them, or slowed, and no more than to twice its time.
+  assert.deepEqual(await timed(1, 1), { walk: [18, 90], jump: [18, 54], turn: [48, 63], up: 18 });
+  assert.deepEqual(await timed(2, 1), { walk: [18, 120], jump: [18, 54], turn: [48, 63], up: 18 });
+  assert.deepEqual(await timed(4, 2), { walk: [18, 198], jump: [18, 54], turn: [48, 63], up: 18 });
+  // Beside no words at all, each at its own pace.
+  const alone = await staged(rows.filter((row) => !row.includes("narrator") && !row.includes("in order")));
+  assert.deepEqual([moves(alone, "bo", X), moves(alone, "pip", HIGH), moves(alone, "mo", FACING)], [[18, 108], [18, 54], [48, 63]]);
 });
 
 test("a blink closes the eyes towards the middle line of the whole part, and a character with no eyes part stays", () => {

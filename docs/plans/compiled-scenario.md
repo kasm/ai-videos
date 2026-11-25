@@ -148,7 +148,36 @@
 - Left by step 6: for step 7, who stands where is followed in the order
   written, so two who walk to one spot at different times are told by that
   order alone.
-- **Next: step 7, act on channels.**
+- **Step 7 done 2026-11-25**, its laws and `all-at-once`'s third scene
+  accepted by the user that day. The user's picks: a walk may end where
+  another stands only if that one has surely left, however long the voices
+  turn out to be; two rows on one channel that would begin at once are
+  refused, words too, in a `together:` or joined by `&`; the arm's actions
+  are `wave`, `point` and `stand`, a pose that stays; a plugin says which
+  of its actions may be fitted, and only the walk is. "Surely left" is
+  before the other arrives, not as it does: else two who arrive at once
+  pass, if one goes on at once, by the order they are written in. The step
+  touches the tool too: its actions name their channels, and law 7 grew.
+  Checked: `npm test` and `npm run typecheck` here and in `cartoons/`;
+  RayCraft's media typecheck and `test:libs`, no file of it changed;
+  `make --fit` of the ten gives requests equal to the baseline, byte for
+  byte, and the seven cartoons draw the same 6,942 frames; `hello-script`
+  compiles to the same bytes as before, and `all-at-once`'s first two
+  scenes too, but for their line numbers; `all-at-once` made whole has the
+  frames compiled (1,321), the page's own drawing gives the video's
+  `.svgs`, and its 23 voices are in its sound at their compiled times;
+  40,000 different random scripts, 20,562 of them with no mistake, neither
+  throw nor break a compiled scenario; of 180,000 with the cartoon plugin,
+  130,635 are taken, and in none do two ever stand on one spot, or a channel
+  go on from anywhere but where it was left; each of 166 rules broken on
+  purpose fails a test. Not tried: the guide on a fresh `claude -p`.
+- Left by step 7: the spot's check is safe, not exact. Of 3,087 small
+  shapes, 1,306 are refused for a spot alone, and 58 of those no voice
+  lengths tried spoil (the ones looked at have walks anchored part-way into
+  one another, or to one's end). For step 13, a script cannot change the
+  background within a scene, which `sundown` and `the-shy-visitor` do, in
+  two beats each.
+- **Next: step 8, look at someone who moves.**
 
 
 ## Goal

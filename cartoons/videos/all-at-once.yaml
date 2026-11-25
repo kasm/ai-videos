@@ -2,9 +2,10 @@
 # interruption at a word, a talk over a radio that is waited for, words that end as a walk does, and a
 # murmur of two lines under three others, cut where they end. All its pauses are one beat, and the
 # radio's two: beat changed times all of it anew. In the second scene Mo stands beside the reeds, a
-# point of the scene's own, and Tuk comes between Pip and Mo, then up to Pip. The format is in CLAUDE.md
-# ("The script"); the characters and the backgrounds are drawn in library.yaml, and the radio is only
-# heard.
+# point of the scene's own, and Tuk comes between Pip and Mo, then up to Pip. In the third, the badger
+# walks in while Tuk hops and Mo, a second later, turns to look and points, and Pip walks up waving and
+# talking. The format is in CLAUDE.md ("The script"); the characters and the backgrounds are drawn in
+# library.yaml, and the radio is only heard.
 use: cartoon
 outputs: { web: true } # its page too, beside the video
 cast: { radio: am_michael }
@@ -52,3 +53,24 @@ scenes:
         pip say: And which one?
       tuk walk to=right-of(pip, near)
       & narrator say: That, only the badger knows.
+  - background: night
+    places: { tuk: 520, mo: 800, badger: off-right, pip: 240 }
+    faces: { mo: left, badger: left }
+    script: |
+      together:
+        badger walk to=right
+        tuk jump times=2
+        mo turn @ block.start + 1s
+        mo point @ prev.end
+        narrator say: And then the badger comes out of the reeds.
+      together:
+        pip walk to=left-of(badger, near)
+        pip wave
+        pip say: Good evening, badger! It was me who saw you!
+        mo stand
+      badger say: I asked to be left alone.
+      & pip stand
+      badger turn
+      badger walk to=off-right
+      & pip wave
+      & narrator say: And the badger goes home again.
