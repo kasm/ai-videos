@@ -1,7 +1,8 @@
 // What happens at once (times.ts): when each line of a plan begins and ends, what is refused, and,
-// on seeded random plans, every property that times.md proves.
+// on random plans, every property that times.md proves.
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test, type TestContext } from "node:test";
+import { different, random, type Random } from "./random.ts";
 import { refusals, times, type Block, type Fitted, type Interval, type Item, type Line, type Moment } from "./times.ts";
 
 type More<T> = Partial<Omit<T, "kind" | "items">>;
@@ -217,52 +218,39 @@ test("what is refused, with who is in it, for any lengths", () => {
 
 // Random plans.
 
-/** Numbers from 0 to 1, the same for the same seed (mulberry32). */
-function random(seed: number): () => number {
-  let a = seed;
-  return () => {
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 /** A random plan of a scene: blocks three deep, four voices, and everything a line or an anchor can be. */
-function randomPlan(seed: number): Block {
-  const next = random(seed);
-  const int = (from: number, to: number) => from + Math.floor(next() * (to - from + 1));
-  const pick = <T>(from: T[]): T => from[int(0, from.length - 1)]!;
+function randomPlan({ int, chance, pick }: Random): Block {
+  const between = (least: number, most: number) => least + int(most - least + 1);
   const names: string[] = [];
-  const moment = (): Moment => ({ of: next() < 0.1 ? "block" : pick(names), at: pick<Moment["at"]>(["start", 0.25, 0.5, "end", "end"]), plus: pick([0, 0, -20, -5, 5, 12]) });
+  const moment = (): Moment => ({ of: chance(0.1) ? "block" : pick(names), at: pick<Moment["at"]>(["start", 0.25, 0.5, "end", "end"]), plus: pick([0, 0, -20, -5, 5, 12]) });
   const placed = (): Pick<Line, "name" | "at"> => {
-    const anchor = names.length > 0 && next() < 0.2 ? moment() : undefined;
+    const anchor = names.length > 0 && chance(0.2) ? moment() : undefined;
     const name = `x${names.length}`;
     names.push(name);
     return { name, ...(anchor ? { at: anchor } : {}) };
   };
   const lineOf = (inCut: boolean): Line => {
     const who = pick(["pip", "mo", "tuk", "radio"]);
-    const arrive = names.length > 0 && next() < 0.25 ? moment() : undefined;
+    const arrive = names.length > 0 && chance(0.25) ? moment() : undefined;
     const own = placed();
-    const kind = next();
-    const cut = next() < 0.15 ? { cut: true } : {};
-    if (kind < 0.55) return { kind: "voice", ...own, on: [`${who} voice`], length: int(1, 40), ...cut };
-    if (kind < 0.65) return { kind: "sound", ...own, on: [pick(["bell", "music"])], length: next() < 0.3 ? "open" : int(1, 40), ...cut };
-    const on = next() < 0.1 ? [`${who} place`, `${who} arm`] : [`${who} ${pick(["place", "arm"])}`];
-    if (inCut || kind < 0.72) return { kind: "move", ...own, on, length: "open" };
-    const length = kind < 0.8 ? int(1, 40) : { ...fitted(int(4, 40)), ...(arrive ? { arrive } : {}) };
+    const kind = int(100);
+    const cut = chance(0.15) ? { cut: true } : {};
+    if (kind < 55) return { kind: "voice", ...own, on: [`${who} voice`], length: between(1, 40), ...cut };
+    if (kind < 65) return { kind: "sound", ...own, on: [pick(["bell", "music"])], length: chance(0.3) ? "open" : between(1, 40), ...cut };
+    const on = chance(0.1) ? [`${who} place`, `${who} arm`] : [`${who} ${pick(["place", "arm"])}`];
+    if (inCut || kind < 72) return { kind: "move", ...own, on, length: "open" };
+    const length = kind < 80 ? between(1, 40) : { ...fitted(between(4, 40)), ...(arrive ? { arrive } : {}) };
     return { kind: "move", ...own, on, length };
   };
   const blockOf = (deep: number, inCut: boolean): Block => {
     const own = placed();
-    const cut = next() < 0.12 ? { cut: true } : {};
-    const items = Array.from({ length: int(1, 3) }, () => itemOf(deep, inCut || "cut" in cut));
-    return { kind: "block", ...own, ...cut, order: next() < 0.5 ? "in order" : "together", pause: 12, items };
+    const cut = chance(0.12) ? { cut: true } : {};
+    const items = Array.from({ length: between(1, 3) }, () => itemOf(deep, inCut || "cut" in cut));
+    return { kind: "block", ...own, ...cut, order: chance(0.5) ? "in order" : "together", pause: 12, items };
   };
-  const itemOf = (deep: number, inCut: boolean): Item => (deep > 0 && next() < 0.4 ? blockOf(deep - 1, inCut) : lineOf(inCut));
+  const itemOf = (deep: number, inCut: boolean): Item => (deep > 0 && chance(0.4) ? blockOf(deep - 1, inCut) : lineOf(inCut));
   names.push("scene");
-  return { kind: "block", name: "scene", order: "in order", lead: 18, pause: 12, tail: 30, items: Array.from({ length: int(1, 4) }, () => itemOf(3, false)) };
+  return { kind: "block", name: "scene", order: "in order", lead: 18, pause: 12, tail: 30, items: Array.from({ length: between(1, 4) }, () => itemOf(3, false)) };
 }
 
 /** A plan as written: each thing, the block it is in, and the blocks around it. */
@@ -285,15 +273,22 @@ const left = (item: Item) => item.cut === true || (item.kind !== "block" && item
 const there = ({ start, end }: Interval) => end > start;
 /** The moments a thing names: its anchor, and where it arrives. */
 const named = (item: Item): Moment[] => [item.at, item.kind !== "block" && typeof item.length === "object" ? item.length.arrive : undefined].filter((one) => one !== undefined);
-/** The plan as text, for a failure to show. */
-const shown = (seed: number, plan: Block) => `seed ${seed}: ${JSON.stringify(plan)}`;
+/** The plan as text: what makes it another, and what a failure shows. */
+const shown = (plan: Block) => JSON.stringify(plan);
 
-const SEEDS = Array.from({ length: 15000 }, (_, k) => k + 1);
-const PLANS = SEEDS.map((seed) => ({ seed, plan: randomPlan(seed) })).filter(({ plan }) => refusals(plan).length === 0);
+const from = random(1);
+const DRAWN = different(15000, () => randomPlan(from), shown);
+/** Those that are accepted. */
+const PLANS = DRAWN.filter((plan) => refusals(plan).length === 0);
+/** Plans for a test to try, which says how many different ones they are. */
+const tried = (t: TestContext, plans = PLANS) => {
+  t.diagnostic(`${plans.length} different plans`);
+  return plans;
+};
 
-test("random plans: there are many, and everything the laws speak of is in them", () => {
+test("random plans: there are many, and everything the laws speak of is in them", (t) => {
   const count = { plans: PLANS.length, lines: 0, anchored: 0, cutShort: 0, notThere: 0, hurried: 0, slowed: 0, arriving: 0, waitedForItsChannel: 0 };
-  for (const { plan } of PLANS) {
+  for (const plan of tried(t)) {
     const { lines, parent } = written(plan);
     const worked = times(plan);
     for (const line of lines) {
@@ -314,53 +309,53 @@ test("random plans: there are many, and everything the laws speak of is in them"
   for (const [what, n] of Object.entries(count)) assert.ok(n >= 100, `${what}: ${n} in ${JSON.stringify(count)}`);
 });
 
-test("random plans: nothing begins before what it comes after", () => {
-  for (const { seed, plan } of PLANS) {
+test("random plans: nothing begins before what it comes after", (t) => {
+  for (const plan of tried(t)) {
     const { order, parent } = written(plan);
     const worked = times(plan);
     for (const x of order) {
       const block = parent.get(x);
       if (!block) continue;
       const { start } = worked.get(x)!;
-      assert.ok(start >= worked.get(block)!.start, `${x.name} before its block; ${shown(seed, plan)}`);
+      assert.ok(start >= worked.get(block)!.start, `${x.name} before its block; ${shown(plan)}`);
       for (const { of } of x.at ? [x.at] : []) {
         const named = of === "block" ? block : order.find(({ name }) => name === of)!;
-        assert.ok(start >= worked.get(named)!.start, `${x.name} before ${of}, which it names; ${shown(seed, plan)}`);
+        assert.ok(start >= worked.get(named)!.start, `${x.name} before ${of}, which it names; ${shown(plan)}`);
       }
       if (x.at || block.order === "together") continue;
-      for (const y of block.items.slice(0, block.items.indexOf(x))) if (!left(y)) assert.ok(start >= worked.get(y)!.uncut + 12, `${x.name} before the pause after ${y.name}; ${shown(seed, plan)}`);
+      for (const y of block.items.slice(0, block.items.indexOf(x))) if (!left(y)) assert.ok(start >= worked.get(y)!.uncut + 12, `${x.name} before the pause after ${y.name}; ${shown(plan)}`);
     }
   }
 });
 
-test("random plans: a block ends after all it waits for", () => {
-  for (const { seed, plan } of PLANS) {
+test("random plans: a block ends after all it waits for", (t) => {
+  for (const plan of tried(t)) {
     const { order, parent } = written(plan);
     const worked = times(plan);
     for (const x of order) {
       const block = parent.get(x);
       if (!block || left(x)) continue;
-      assert.ok(worked.get(block)!.uncut >= worked.get(x)!.uncut, `${block.name} before ${x.name}; ${shown(seed, plan)}`);
-      if (there(worked.get(x)!)) assert.ok(worked.get(block)!.end >= worked.get(x)!.end, `${block.name} stops before ${x.name}; ${shown(seed, plan)}`);
+      assert.ok(worked.get(block)!.uncut >= worked.get(x)!.uncut, `${block.name} before ${x.name}; ${shown(plan)}`);
+      if (there(worked.get(x)!)) assert.ok(worked.get(block)!.end >= worked.get(x)!.end, `${block.name} stops before ${x.name}; ${shown(plan)}`);
     }
   }
 });
 
-test("random plans: what is cut ends with its block", () => {
-  for (const { seed, plan } of PLANS) {
+test("random plans: what is cut ends with its block", (t) => {
+  for (const plan of tried(t)) {
     const { order, parent, isIn } = written(plan);
     const worked = times(plan);
     for (const z of order) {
       const block = parent.get(z);
       if (!block || !left(z)) continue;
-      for (const x of order) if (isIn(x, z) && there(worked.get(x)!)) assert.ok(worked.get(x)!.end <= worked.get(block)!.uncut, `${x.name} past ${block.name}; ${shown(seed, plan)}`);
+      for (const x of order) if (isIn(x, z) && there(worked.get(x)!)) assert.ok(worked.get(x)!.end <= worked.get(block)!.uncut, `${x.name} past ${block.name}; ${shown(plan)}`);
     }
   }
 });
 
-test("random plans: what is cut moves nothing else, however long it is", () => {
+test("random plans: what is cut moves nothing else, however long it is", (t) => {
   let changed = 0;
-  for (const { seed, plan } of PLANS) {
+  for (const plan of tried(t)) {
     const { order, parent, isIn, lines } = written(plan);
     const before = times(plan);
     for (const z of order) {
@@ -372,7 +367,7 @@ test("random plans: what is cut moves nothing else, however long it is", () => {
       for (const other of [1, 500]) {
         for (const line of measured) line.length = other;
         const now = times(plan);
-        for (const item of order) if (!inside.includes(item)) assert.deepEqual(now.get(item), before.get(item), `${z.name} at ${other} moves ${item.name}; ${shown(seed, plan)}`);
+        for (const item of order) if (!inside.includes(item)) assert.deepEqual(now.get(item), before.get(item), `${z.name} at ${other} moves ${item.name}; ${shown(plan)}`);
         changed++;
       }
       measured.forEach((line, k) => (line.length = lengths[k]!));
@@ -381,9 +376,9 @@ test("random plans: what is cut moves nothing else, however long it is", () => {
   assert.ok(changed > 500, `${changed}`);
 });
 
-test("random plans: without what is cut, its block and all it waits for are the same, when the block is in nothing cut itself", () => {
+test("random plans: without what is cut, its block and all it waits for are the same, when the block is in nothing cut itself", (t) => {
   let removed = 0;
-  for (const { seed, plan } of PLANS) {
+  for (const plan of tried(t)) {
     const { order, parent, isIn } = written(plan);
     const before = times(plan);
     for (const z of order) {
@@ -395,8 +390,8 @@ test("random plans: without what is cut, its block and all it waits for are the 
       block.items.splice(at, 1);
       const now = times(plan);
       const waited = (item: Item): Item[] => (left(item) ? [] : [item, ...(item.kind === "block" ? item.items.flatMap(waited) : [])]);
-      for (const item of block.items.flatMap(waited)) assert.deepEqual(now.get(item)!.uncut, before.get(item)!.uncut, `${z.name} moves ${item.name}; ${shown(seed, plan)}`);
-      assert.equal(now.get(block)!.uncut, before.get(block)!.uncut, `${z.name} moves ${block.name}; ${shown(seed, plan)}`);
+      for (const item of block.items.flatMap(waited)) assert.deepEqual(now.get(item)!.uncut, before.get(item)!.uncut, `${z.name} moves ${item.name}; ${shown(plan)}`);
+      assert.equal(now.get(block)!.uncut, before.get(block)!.uncut, `${z.name} moves ${block.name}; ${shown(plan)}`);
       block.items.splice(at, 0, z);
       removed++;
     }
@@ -404,30 +399,30 @@ test("random plans: without what is cut, its block and all it waits for are the 
   assert.ok(removed > 500, `${removed}`);
 });
 
-test("random plans: a channel never does two things, and keeps the written order", () => {
-  for (const { seed, plan } of PLANS) {
+test("random plans: a channel never does two things, and keeps the written order", (t) => {
+  for (const plan of tried(t)) {
     const { lines } = written(plan);
     const worked = times(plan);
     lines.forEach((y, k) => {
       for (const x of lines.slice(0, k)) {
         if (!x.on.some((one) => y.on.includes(one)) || !there(worked.get(x)!) || !there(worked.get(y)!)) continue;
-        assert.ok(worked.get(y)!.start >= worked.get(x)!.end, `${x.name} and ${y.name}; ${shown(seed, plan)}`);
+        assert.ok(worked.get(y)!.start >= worked.get(x)!.end, `${x.name} and ${y.name}; ${shown(plan)}`);
       }
     });
   }
 });
 
-test("random plans: what is refused is refused for any lengths, and what is not has one timing for them", () => {
-  for (const seed of SEEDS.slice(0, 2000)) {
-    const plan = randomPlan(seed);
+test("random plans: what is refused is refused for any lengths, and what is not has one timing for them", (t) => {
+  const { int } = random(2);
+  for (const drawn of tried(t, DRAWN.slice(0, 2000))) {
+    const plan = structuredClone(drawn);
     const before = why(plan);
-    const next = random(seed * 104729);
     for (const line of written(plan).lines) {
-      if (typeof line.length === "number") line.length = 1 + Math.floor(next() * 400);
-      else if (typeof line.length === "object") line.length = { ...line.length, ...fitted(1 + Math.floor(next() * 400)) };
+      if (typeof line.length === "number") line.length = 1 + int(400);
+      else if (typeof line.length === "object") line.length = { ...line.length, ...fitted(1 + int(400)) };
     }
-    assert.deepEqual(why(plan), before, shown(seed, plan));
-    if (before.length === 0) for (const [item, { start, end, uncut }] of times(plan)) assert.ok([start, end, uncut].every((n) => Number.isInteger(n) && n >= 0), `${item.name}; ${shown(seed, plan)}`);
+    assert.deepEqual(why(plan), before, shown(plan));
+    if (before.length === 0) for (const [item, { start, end, uncut }] of times(plan)) assert.ok([start, end, uncut].every((n) => Number.isInteger(n) && n >= 0), `${item.name}; ${shown(plan)}`);
   }
 });
 
@@ -504,6 +499,6 @@ function plainTimes(plan: Block): Map<Item, Interval> {
   return new Map(order.map((item) => [item, { start: of(item).start, end: Math.max(of(item).start, stops(item)), uncut: of(item).uncut }]));
 }
 
-test("random plans: the times are the ones of a plain solver that repeats the laws until nothing changes", () => {
-  for (const { seed, plan } of PLANS) assert.deepEqual(times(plan), plainTimes(plan), shown(seed, plan));
+test("random plans: the times are the ones of a plain solver that repeats the laws until nothing changes", (t) => {
+  for (const plan of tried(t)) assert.deepEqual(times(plan), plainTimes(plan), shown(plan));
 });

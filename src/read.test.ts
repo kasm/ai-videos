@@ -2,6 +2,7 @@
 // file, what joins, labels and anchors them; and every row that does not read, with a hint.
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { different, random, type Random } from "./random.ts";
 import { isBlock, readScript } from "./read.ts";
 import { linesIn, type ScriptItem } from "./scenario.ts";
 
@@ -130,41 +131,47 @@ test("a label is in square brackets before a line or a block; an anchor is after
   assert.deepEqual(joined && isBlock(joined) && joined.items.map((item) => item.label), [undefined, "b"]);
 });
 
-test("a script of any blocks, written at any margins, reads as it is written", () => {
-  let seed = 7;
-  const int = (to: number) => ((seed = (Math.imul(seed, 48271) >>> 0) % 2147483647), seed % to);
-  for (let n = 0; n < 2000; n++) {
-    const rows: string[] = [];
-    let label = 0;
-    /** Rows of a block at this margin, and the shape they read as. */
-    const write = (margin: number, deep: number): Shape[] => {
-      const list: Shape[] = [];
-      for (let k = 0, count = 1 + int(4); k < count; k++) {
-        if (int(6) === 0) rows.push(int(2) ? "" : `${" ".repeat(int(9))}# a note: together:`);
-        const joined = k > 0 && int(4) === 0 ? "& " : "";
-        const before = `${" ".repeat(margin)}${joined}${int(4) ? "" : `[l${label++}] `}`;
-        const anchor = int(4) ? "" : " @ prev.50% + 1s";
-        let item: Shape;
-        if (deep > 0 && int(3) === 0) {
-          const header = ["in order", "together", "under"][int(3)]!;
-          rows.push(`${before}${header}${int(3) ? "" : " pause=beat * 2 slide.speed=slow"}${anchor}:`);
-          item = { [header]: write(margin + 1 + int(4), deep - 1) };
-        } else {
-          rows.push(int(2) ? `${before}sq say${anchor}: in order: under @ a.50%: ${n}` : `${before}sq slide to=left${int(2) ? "" : " takes=beat + 1s"}${anchor}`);
-          item = rows.length;
-        }
-        const last = list.at(-1);
-        if (!joined) list.push(item);
-        else if (typeof last === "object" && "&" in last) last["&"]!.push(item);
-        else list[list.length - 1] = { "&": [last!, item] };
+/** A random script: its rows, and the shape they read as. */
+function randomScript({ int, chance, pick }: Random): { rows: string[]; written: Shape[] } {
+  const rows: string[] = [];
+  let label = 0;
+  /** Rows of a block at this margin, and the shape they read as. */
+  const write = (margin: number, deep: number): Shape[] => {
+    const list: Shape[] = [];
+    for (let k = 0, count = 1 + int(4); k < count; k++) {
+      if (chance(1 / 6)) rows.push(chance(1 / 2) ? "" : `${" ".repeat(int(9))}# a note: together:`);
+      const joined = k > 0 && chance(1 / 4) ? "& " : "";
+      const before = `${" ".repeat(margin)}${joined}${chance(1 / 4) ? `[l${label++}] ` : ""}`;
+      const anchor = chance(1 / 4) ? " @ prev.50% + 1s" : "";
+      let item: Shape;
+      if (deep > 0 && chance(1 / 3)) {
+        const header = pick(["in order", "together", "under"]);
+        rows.push(`${before}${header}${chance(1 / 3) ? " pause=beat * 2 slide.speed=slow" : ""}${anchor}:`);
+        item = { [header]: write(margin + 1 + int(4), deep - 1) };
+      } else {
+        rows.push(chance(1 / 2) ? `${before}sq say${anchor}: in order: under @ a.50%: so` : `${before}sq slide to=left${chance(1 / 2) ? " takes=beat + 1s" : ""}${anchor}`);
+        item = rows.length;
       }
-      return list;
-    };
-    const written = write(0, 3);
+      const last = list.at(-1);
+      if (!joined) list.push(item);
+      else if (typeof last === "object" && "&" in last) last["&"]!.push(item);
+      else list[list.length - 1] = { "&": [last!, item] };
+    }
+    return list;
+  };
+  const written = write(0, 3);
+  return { rows, written };
+}
+
+test("a script of any blocks, written at any margins, reads as it is written", (t) => {
+  const from = random(7);
+  const scripts = different(5000, () => randomScript(from), ({ rows }) => rows.join("\n"));
+  for (const { rows, written } of scripts) {
     const script = read(...rows);
     assert.deepEqual(script.issues, [], rows.join("\n"));
     assert.deepEqual(shape(script.items), written, rows.join("\n"));
   }
+  t.diagnostic(`${scripts.length} different scripts`);
 });
 
 test("what is joined to an anchored line begins with it: the block they are has the anchor", () => {

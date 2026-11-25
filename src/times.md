@@ -1,7 +1,8 @@
 # Why the laws of time hold
 
 The laws are in `AGENTS.md`, "What happens at once"; the code is `times.ts`. This note proves the
-five things they promise. `times.test.ts` tries each on random plans.
+five things they promise. `times.test.ts` tries each on random plans, and `scripts.test.ts` on random
+scripts, compiled.
 
 ## The formulas
 

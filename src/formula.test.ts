@@ -98,6 +98,7 @@ test("numbers are worked out with their units: times add up, and are multiplied 
   assert.equal(refused("*", amount(2, "s"), amount(3, "s")), "a time is not multiplied by a time");
   assert.equal(refused("/", amount(2), amount(3, "s")), "a number is not divided by a time");
   assert.equal(refused("/", amount(2, "s"), amount(0)), "nothing is divided by 0");
+  assert.equal(refused("/", amount(2, "s"), amount(0.1 + 0.2 - 0.3)), "nothing is divided by 0", "a hair off it, as a computer's sums are");
 });
 
 test("lines' lengths are added up and multiplied by numbers, and nothing is divided by one", () => {

@@ -292,6 +292,14 @@ test("the values of a file and of a scene are formulas, each with its line; they
   assert.equal(video.settings.timing.gap, 0.2, "a setting is the tool's still");
 });
 
+test("a number in values is taken as it is written, as a line's is, and not as YAML reads it", () => {
+  const script = (row: string) => writtenScript(["values:", `  ${row}`, "scenes:", "  - script: |", "      pip say: Hi.", ""].join("\n"))!;
+  for (const number of ["2.50", "010", "+2", "-3", "12345678901234567890"]) assert.deepEqual(script(`near: ${number}`).values, { near: { line: 2, text: number } });
+  // What YAML has as a number and a formula does not is refused, as it is on a line.
+  assert.deepEqual(script("near: 1e3").issues.map(({ line, message }) => [line, message]), [[2, 'near=1e3: "1e" has no unit that is known']]);
+  assert.deepEqual(script("near: 0x10").issues.map(({ line, message }) => [line, message]), [[2, 'near=0x10: "0x" has no unit that is known']]);
+});
+
 test("values that do not read, and a key on top of a script that nothing reads, are refused with their lines", () => {
   const scene = ["scenes:", "  - script: |", "      pip say: Hi."];
   const refused = (...rows: string[]) => writtenScript([...rows, ...scene, ""].join("\n"))!.issues.map(({ line, message }) => [line, message]);

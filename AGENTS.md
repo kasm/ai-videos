@@ -42,7 +42,7 @@ the voice model always stay in this tool.
 | Path | What it is |
 | --- | --- |
 | `scenes/clip/scene.html` | The scene template (a HyperFrames sub-composition with `{{placeholders}}`): the plugin's clip, muted, with the captions over it. |
-| `src/` | The pipeline: `video-file` (the file, its settings in layers, and the `script` the pipeline reads) → the plugin in its process (`plugin`, `make`, `host`): its plan → `tts` → `timeline` (and `fit` with `mouth`) → `sound` → the drawing (`moments`, `frames`, `clip`) → `compose` (with `bundle` and `captions`) → `render`; `page`, the web page; `stages` and `lock`, a make's cache and its lock (see The cache); `setup`, what the commands need on the disk; `prompt` and `import`, a story's prompt for a web chat and its reply taken in, and `story`, the two by the clipboard and the episodes made (see prompt, import, story); `read`, `scenario` with `names` and `labels`, `values` with `formula`, `plan` with `times` and `words`, `compile`, `shown` and `guide`, a video written as a script: its lines and blocks read and checked, what its values come to, when each begins and ends, compiled, what each frame of it shows, and how it is taught (see A script, Values, What happens at once). |
+| `src/` | The pipeline: `video-file` (the file, its settings in layers, and the `script` the pipeline reads) → the plugin in its process (`plugin`, `make`, `host`): its plan → `tts` → `timeline` (and `fit` with `mouth`) → `sound` → the drawing (`moments`, `frames`, `clip`) → `compose` (with `bundle` and `captions`) → `render`; `page`, the web page; `stages` and `lock`, a make's cache and its lock (see The cache); `setup`, what the commands need on the disk; `prompt` and `import`, a story's prompt for a web chat and its reply taken in, and `story`, the two by the clipboard and the episodes made (see prompt, import, story); `read`, `scenario` with `names` and `labels`, `values` with `formula`, `plan` with `times` and `words`, `compile`, `shown` and `guide`, a video written as a script: its lines and blocks read and checked, what its values come to, when each begins and ends, compiled, what each frame of it shows, and how it is taught (see A script, Values, What happens at once); `random`, what every random test draws from, to say how many different scripts or plans it tried. |
 | `cartoons/` | A project of the tool's, in this repo: the cartoon plugin (`cartoons/src/plugin.ts`), its library, videos and stories, and its notes, `cartoons/CLAUDE.md`. Its `episode` skill is the repo's, `.claude/skills/episode/`. |
 | `out/voice-samples/` | What `voices` writes. |
 | `.cache/tts/` | Narration audio, keyed by text, voice and speed. |
@@ -311,7 +311,9 @@ scenes:
 `src/read.test.ts`, `src/formula.test.ts`, `src/values.test.ts`, `src/scenario.test.ts`,
 `src/plan.test.ts`, `src/words.test.ts`,
 `src/compile.test.ts`, `src/shown.test.ts`, `src/guide.test.ts` and `src/check.test.ts` show each
-rule; `src/sound.test.ts` finds each voice of a script in its sound; `src/page.test.ts` draws the clip and the page from a compiled
+rule; `src/scripts.test.ts` writes random video files, values on every level, and tries that none throws
+and that each with no mistake compiles to a whole scenario (`RANDOM_SCRIPTS=40000` for more of them than
+`npm test` tries); `src/sound.test.ts` finds each voice of a script in its sound; `src/page.test.ts` draws the clip and the page from a compiled
 scenario and a library, with no video file, and finds their frames the same.
 
 ### Values
@@ -333,8 +335,8 @@ The laws:
 
 1. **A value** is a number (`150`, `0.5s`, `50%`), a name, or a formula of these, with `+ - * /` and
    parentheses (`src/formula.ts`). A name has dashes of its own, so a minus has a space on each side.
-   A time is in seconds: times add up, and are multiplied and divided by numbers. A name that nothing
-   sets is itself (`middle`, a mark).
+   A time is in seconds: times add up, and are multiplied and divided by numbers. What it comes to is in
+   whole millionths, so `0.1 + 0.2 - 0.3` is 0. A name that nothing sets is itself (`middle`, a mark).
 2. **Levels.** A line's own values, its block's, the block's around that, its scene's, the cartoon's;
    above them the plugin's `names` and the video's `timing` (its `gap` is the `pause`). The nearest wins.
 3. **For whom.** `speed` is for everything, `walk.speed` for an action, `pip.speed` for a character. Of
@@ -372,7 +374,7 @@ When each line of a scenario begins and ends is worked out from the measured len
 (`src/times.ts`), from a plan of lines and blocks written as data. `planOf` (`src/plan.ts`) makes it
 from a script (see A script for the words): a character's voice is one channel and its actions
 another, for now, so it does one at a time. `compile` lays it. `src/times.md` proves what the laws
-promise, below, and `src/times.test.ts` tries it.
+promise, below; `src/times.test.ts` tries it on random plans, and `src/scripts.test.ts` on random scripts.
 
 - **A line** is one thing that lasts: a voice, a sound, or a move (any of the plugin's actions). It
   keeps its **channels** busy: a character's voice, its place.

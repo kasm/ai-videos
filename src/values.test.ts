@@ -128,6 +128,8 @@ test("one character's setting reaches only its own, one action's only its own, a
   assert.deepEqual(await speeds({ cartoon: { "sq.speed": "slow", "hop.speed": "slow" }, scene: { speed: "fast" } }), [1, 1, 0.5, 0.5]);
   assert.deepEqual(await takes(["together mo.speed=fast:", "  sq slide", "  mo slide", "mo slide"]), ["own", 1, "own"]);
   assert.deepEqual(await takes(["sq slide speed=1", "sq slide"], { scene: { "sq.speed": "slow" } }), [2, 4]);
+  // So it is for a value that is no length.
+  assert.deepEqual(await far(["sq slide", "mo slide"], { cartoon: { far: "1", "slide.far": "2", "sq.far": "3" } }), [3, 2]);
   // A name of the writer's may be one character's too: what reads it is worked out for its own.
   assert.deepEqual(await far(["sq slide far=near * 2", "mo slide far=near * 2"], { cartoon: { near: "10", "mo.near": "20" } }), [20, 40]);
 });
@@ -195,6 +197,16 @@ test("a move given both a speed and a length is refused, where they are set on o
   // For another character, or on another level, they are not for one line.
   assert.deepEqual(await takes(["sq slide", "mo slide"], { cartoon: { "sq.speed": "slow", "mo.takes": "1s" } }), [4, 1]);
   assert.deepEqual(await takes(["sq slide takes=1s"], { cartoon: { speed: "slow" } }), [1]);
+});
+
+test("a wrong takes, speed or arrive counts as given: it is the one mistake, and nothing is refused for want of it", async () => {
+  // Fitted to the words, the slide would wait for the line that waits for it.
+  const rows = (given = "") => ["together:", `  [w] sq slide${given}`, "  narrator say: It goes.", "  mo say @ w.end: Here."];
+  assert.deepEqual(await why(rows()), [[4, [2], "it goes round: line 2 waits for line 4 and line 4 waits for line 2"]]);
+  assert.deepEqual(await why(rows(" takes=2")), [[2, [], "takes=2: it is a number, and not a time"]]);
+  assert.deepEqual(await why(rows(" speed=0")), [[2, [], "speed=0: a speed is more than 0"]]);
+  assert.deepEqual(await why(rows(" arrive=2s")), [[2, [], "arrive=2s: it is no moment of something above"]]);
+  assert.deepEqual(await why(rows(" speed=1 takes=1s")), [[2, [], "sq slide is given both takes and speed, and each says how long it lasts"]]);
 });
 
 test("values that go round are refused with their chain, whether or not a line reads them", async () => {
@@ -274,6 +286,10 @@ test("a value of the wrong kind is refused: a time without seconds, a number in 
   assert.equal(await one("sq slide far=2s"), "far=2s: far is no time, and has no unit");
   assert.equal(await one("sq slide far=2 + 1s"), "far=2 + 1s: a time and a number without a unit do not add up");
   assert.equal(await one("sq slide speed=1 / 0"), "speed=1 / 0: nothing is divided by 0");
+  // What comes to 0 is 0, though a computer's sums are a hair off.
+  assert.equal(await one("sq slide speed=0.1 + 0.2 - 0.3"), "speed=0.1 + 0.2 - 0.3: a speed is more than 0");
+  assert.equal(await one("sq slide takes=1s / (0.1 + 0.2 - 0.3)"), "takes=1s / (0.1 + 0.2 - 0.3): nothing is divided by 0");
+  assert.deepEqual(await far(["sq slide far=0.1 + 0.2"]), [0.3]);
   assert.equal(await one("in order pause=2:\n  sq say: Hi.\n  sq say: Ho."), "pause=2: it is a number, and not a time");
   assert.equal(await one("in order pause=1s - 2s:\n  sq say: Hi.\n  sq say: Ho."), "pause=1s - 2s: it is less than 0");
   const moments = ["[a] sq say: Hi."];
@@ -287,6 +303,8 @@ test("a value of the wrong kind is refused: a time without seconds, a number in 
   assert.deepEqual(await issues(["sq slide far=gap * 2"], { cartoon: { gap: "nearr", near: "2", unread: "near" } }).then((all) => all[0]), { line: 100, also: [1], message: 'gap=nearr: no value is called "nearr"', hint: "did you mean near?" });
   assert.equal(await hint(["sq slide far=width * 2"]), "set it on the cartoon, a scene or a block (width: 2), or write a number");
   assert.equal(await hint(["sq slide far=near-20 + 1"], { cartoon: { near: "2", gap: "near" } }), "a minus has a space on each side; set it on the cartoon, a scene or a block (near-20: 2), or write a number");
+  // The same mistake of one line is said once, though it makes it twice.
+  assert.deepEqual(await why(["sq slide arrive=a.end @ a.start"]), [[1, [], 'nothing above is called "a"']]);
   // The same mistake of one value is said once, with the lines that read it.
   assert.deepEqual(await why(["sq slide", "mo slide"], { cartoon: { "slide.takes": "2" } }), [[100, [1, 2], "slide.takes=2: it is a number, and not a time"]]);
   // A schema's own reason comes with the level that sets the value.

@@ -5,7 +5,7 @@
 // later: what is worked out from one stays a sum of lengths here.
 //
 // It needs none of the tool's packages, as scenario.ts: plugin.ts gives both to the plugins' tests.
-import { Wrong, calculate, minus, namesIn, readFormula, spanOf, type Amount, type Formula, type Span } from "./formula.ts";
+import { Wrong, calculate, exact, minus, namesIn, readFormula, spanOf, type Amount, type Formula, type Span } from "./formula.ts";
 import { momentIssue, named, nameOf, placesOf, unnamed, type Place } from "./labels.ts";
 import { listed, nearest } from "./names.ts";
 import { SAY, SET, isBlock } from "./read.ts";
@@ -303,7 +303,7 @@ export function workOut(script: WrittenScript, given: Given): { scenes: WorkedSc
         const { unit, number, lengths } = worth.amount;
         if (lengths.size > 0) throw refused(found, `${valueOf(found)}: ${name} is known before anything is spoken, and a line's length is not`, "only a time reads a line's length: takes, pause, or an anchor");
         if (unit === "s") throw refused(found, `${valueOf(found)}: ${name} is no time, and has no unit`, `write it without the s`);
-        return number;
+        return exact(number);
       });
       if (value === undefined) right = false;
       else values[name] = { value, line: found.set.line };
@@ -340,8 +340,9 @@ export function workOut(script: WrittenScript, given: Given): { scenes: WorkedSc
       }
       if (amount.lengths.size > 0) throw refused(found, `${valueOf(found)}: a speed is known before anything is spoken, and a line's length is not`, "give it its time: takes=a.length / 2");
       if (amount.unit === "s") throw refused(found, `${valueOf(found)}: it is a time, and a speed is so many times its own`, "a speed is a number: 0.5 is half its own speed, and 2 twice; its time is takes=2s");
-      if (amount.number <= 0) throw refused(found, `${valueOf(found)}: a speed is more than 0`, "0.5 is half its own speed, and 2 twice");
-      return { speed: amount.number };
+      const speed = exact(amount.number);
+      if (speed <= 0) throw refused(found, `${valueOf(found)}: a speed is more than 0`, "0.5 is half its own speed, and 2 twice");
+      return { speed };
     });
     // One that has no answer is given all the same: the times are tried as they would be with it.
     return { lasts: lasts ?? { speed: 1 } };

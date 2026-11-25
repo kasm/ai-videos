@@ -123,8 +123,8 @@ function refusalIssues(scenes: WorkedScene[]): Issue[] {
   const told = (item: Item) => {
     const own = written.get(item);
     const arrives = own !== undefined && !isBlock(own) && own.lasts !== undefined && "arrive" in own.lasts;
-    if (own) return { line: own.line, name: nameOf(own), anchored: own.anchor !== undefined || arrives };
-    return { line: scenes[blocks.indexOf(item as Block)]!.line, name: "the scene", anchored: false };
+    if (own) return { line: own.line, name: nameOf(own), waits: isBlock(own) && own.joined ? "wait" : "waits", anchored: own.anchor !== undefined || arrives };
+    return { line: scenes[blocks.indexOf(item as Block)]!.line, name: "the scene", waits: "waits", anchored: false };
   };
   const issueOf = (refusal: Refusal): Issue => {
     if (refusal.why === "held") {
@@ -144,12 +144,12 @@ function refusalIssues(scenes: WorkedScene[]): Issue[] {
     }
     if (refusal.why === "below") throw new Error(`line ${told(refusal.item).line} begins by "${refusal.name}", and nothing above is called so`);
     const chain = refusal.items.map(told);
-    const waits = chain.map(({ name }, i) => `${name} waits for ${chain[(i + 1) % chain.length]!.name}`);
+    const round = chain.map(({ name, waits }, i) => `${name} ${waits} for ${chain[(i + 1) % chain.length]!.name}`);
     // The one to mend is the one with a moment of its own, the last written of them.
     const { line } = chain.filter(({ anchored }) => anchored).toSorted((a, b) => a.line - b.line).at(-1) ?? chain[0]!;
     const also = [...new Set(chain.map((one) => one.line))].filter((one) => one !== line).sort((a, b) => a - b);
     const fitted = refusal.items.some((item) => item.kind === "move" && typeof item.length === "object") ? ", or give the action its length (takes=2s)" : "";
-    return { line, also, message: `it goes round: ${listed(waits)}`, hint: `begin it by the start, a share or a word of something above, or write it after the block${fitted}` };
+    return { line, also, message: `it goes round: ${listed(round)}`, hint: `begin it by the start, a share or a word of something above, or write it after the block${fitted}` };
   };
   return refusals(video).map(issueOf);
 }

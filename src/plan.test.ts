@@ -173,6 +173,9 @@ test("refused: a loop, with everything in it", () => {
   // A line by the end of the block that waits for it.
   assert.deepEqual(loops("sq say: One.", "together:", "  mo say: Two.", "  sq say @ block.end - 1s: Three."), [[4, [2], "it goes round: the block of line 2 waits for line 4 and line 4 waits for the block of line 2"]]);
   assert.deepEqual(loops("sq say: One.", "mo say @ block.end: Two."), [[2, [1], "it goes round: the scene waits for line 2 and line 2 waits for the scene"]]);
+  assert.deepEqual(loops("sq say: One.", "& mo say @ block.end: Two."), [
+    [2, [1], "it goes round: the scene waits for the lines joined at line 1, the lines joined at line 1 wait for line 2 and line 2 waits for the scene"],
+  ]);
   // A line by the end of what is cut where its own block ends.
   assert.deepEqual(loops("in order:", "  under:", "    [a] sq say: One.", "  mo say @ a.end: Two."), [[4, [1], "it goes round: the block of line 1 waits for line 4 and line 4 waits for the block of line 1"]]);
   // Of three, with no anchor: the first walk is fitted to the words, they wait for the second walk, and that for the first.

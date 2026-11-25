@@ -94,7 +94,22 @@
   written; 60,000 random scripts, 15,521 of them accepted, neither throw nor
   break a compiled scenario; each of 105 rules broken on purpose fails a
   test, but the four that 5a takes.
-- **Next: step 5a, random scripts that do not repeat.**
+- **Step 5a done 2026-11-25.** The generator it replaces wrote 2,409
+  different scripts in 40,000 draws. Found by the random scripts and mended:
+  a sum a hair off 0 was no 0 (`speed=0.1 + 0.2 - 0.3` gave a scene of 4.5e17
+  frames), one mistake of a line was said twice, and a slip of grammar in a
+  message. Checked: `npm test` and `npm run typecheck` here and in
+  `cartoons/`; RayCraft's media typecheck and `test:libs`, no file of it
+  changed; `make --fit` of the ten gives requests equal to the baseline, byte
+  for byte; `hello-script` and `all-at-once` compile to the same bytes as
+  before; 40,000 different random scripts, 20,726 of them with no mistake
+  (and 100,000, 51,580), none throws or breaks a compiled scenario, and each
+  timing keeps the promises and is the laws'; step 5's own run with the
+  cartoon plugin, 80,000 more, finds nothing; each of 110 rules broken on
+  purpose fails a test, the four too; of 67 breaks in what lays a script or
+  draws a random one, the random tests and the generator's own find 59 (the
+  other eight are among the 110).
+- **Next: step 5b, end together.**
 
 
 ## Goal

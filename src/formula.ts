@@ -155,7 +155,7 @@ export function calculate(op: "+" | "-" | "*" | "/", left: Amount, right: Amount
     return { ...each(long, by.number), unit: left.unit === "s" || right.unit === "s" ? "s" : "" };
   }
   if (right.lengths.size > 0) throw new Wrong("nothing is divided by a line's length", "divide the length by a number: a.length / 2");
-  if (right.number === 0) throw new Wrong("nothing is divided by 0", "divide by another number");
+  if (exact(right.number) === 0) throw new Wrong("nothing is divided by 0", "divide by another number");
   if (left.unit === "" && right.unit === "s") throw new Wrong("a number is not divided by a time", byNumber);
   return { ...each(left, 1 / right.number), unit: left.unit === right.unit ? "" : "s" };
 }
@@ -163,8 +163,8 @@ export function calculate(op: "+" | "-" | "*" | "/", left: Amount, right: Amount
 /** Seconds worked out: a number, or one with lines' lengths in it, each so many times, which are measured later. */
 export type Span = number | { seconds: number; lengths: { line: number; times: number }[] };
 
-/** Whole millionths, so that 0.1s + 0.2s is 0.3s. */
-const exact = (number: number) => Math.round(number * 1e6) / 1e6;
+/** Whole millionths, so that 0.1 + 0.2 is 0.3, and 0.1 + 0.2 - 0.3 is 0. */
+export const exact = (number: number) => Math.round(number * 1e6) / 1e6;
 
 /** An amount of seconds. */
 export function spanOf({ number, lengths }: Amount): Span {

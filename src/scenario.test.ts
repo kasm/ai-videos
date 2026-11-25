@@ -120,6 +120,16 @@ test("every mistake is found in one pass, and the plugin's own check runs only o
   assert.equal(seen.length, 1);
 });
 
+test("a script with a row that does not read has no mistake of its values or its times shown: the row may be what they read", async () => {
+  const rest = "sq slide to=left takes=a.length\nsq slide to=left speed=2s\nsq say @ a.end: Hi.";
+  assert.deepEqual((await issuesOf(`[a] sq slide right\n${rest}`)).map(({ line, message }) => [line, message]), [[5, '"right" is not a value']]);
+  // The row mended, they are.
+  assert.deepEqual((await issuesOf(`[a] sq slide to=right\n${rest}`)).map(({ line, message }) => [line, message]), [
+    [6, "takes=a.length: how long line 5 lasts is its own, or what the words beside it take, known only once they have their place"],
+    [7, "speed=2s: it is a time, and a speed is so many times its own"],
+  ]);
+});
+
 test("what the plugin's check gives is held to the contract: a scene and an action for each, in plain numbers", async () => {
   const giving = (scenes: unknown): ScriptPlugin => ({ ...scripted(), check: () => ({ scenes }) as never });
   const script = "sq slide to=right";

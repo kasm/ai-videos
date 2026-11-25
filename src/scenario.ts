@@ -276,7 +276,9 @@ export async function checkScenario(plugin: ScriptPlugin, script: WrittenScript,
   }
   // A row that does not read may be the one a label or a value is on.
   if (script.issues.length === 0) issues.push(...worked.issues, ...timeIssues(worked.scenes));
-  if (issues.length > 0) return { issues };
+  // One line may make a mistake twice, as where it begins and where it arrives: it is said once.
+  const once = issues.filter((one, k) => issues.findIndex(({ line, message }) => line === one.line && message === one.message) === k);
+  if (once.length > 0) return { issues: once };
 
   const result = plugin.check(acted, library);
   if ("issues" in result) {
