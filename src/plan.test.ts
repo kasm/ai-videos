@@ -8,33 +8,37 @@ import { begunBy, planOf, timeIssues, type Channels, type Lasting } from "./plan
 import { readScript } from "./read.ts";
 import { linesIn, type ScriptItem } from "./scenario.ts";
 import { times } from "./times.ts";
-import { workOut, type WorkedLine, type WorkedScene } from "./values.ts";
+import { workOut, type WorkedLine, type WorkedOver, type WorkedScene } from "./values.ts";
 
 /** A `slide` keeps the place busy, a `nod` the head, a `turn` the facing, a `spin` the place and the facing, and a `watch`, which is open, the facing. */
 const ACTIONS: Channels = { slide: { channels: ["place"] }, nod: { channels: ["head"] }, turn: { channels: ["facing"] }, spin: { channels: ["place", "facing"] }, watch: { channels: ["facing"], open: true } };
 /** Half a second before a scene's first line, 0.3 s between lines, a second after its last; an action's value is `to`. */
-const GIVEN = { actions: { slide: { to: {} }, nod: {}, turn: {}, spin: {}, watch: {} }, open: ["watch"], names: {}, speakers: ["sq", "mo", "tri", "radio"], timing: { lead: 0.5, gap: 0.3, tail: 1 } };
+const GIVEN = { actions: { slide: { to: {} }, nod: {}, turn: {}, spin: {}, watch: {} }, open: ["watch"], names: {}, speakers: ["sq", "mo", "tri", "radio"], sounds: ["bell", "rain", "gong"], timing: { lead: 0.5, gap: 0.3, tail: 1 } };
 
-/** Scenes of these rows, their values worked out, the first row of the first on line 1. */
-function scenes(...scripts: string[][]): WorkedScene[] {
+/** A scenario of these rows, its values worked out: the cartoon's own script, whose first row is on line 1, and its scenes. */
+function scenario(own: string[], ...scripts: string[][]): { scenes: WorkedScene[]; over?: WorkedOver } {
   let first = 1;
-  const written = scripts.map((rows) => {
+  const [over, ...written] = [own, ...scripts].map((rows) => {
     const { items, issues } = readScript(rows.join("\n"), first);
     assert.deepEqual(issues, []);
     const scene = { line: first, setting: {}, items };
     first += rows.length;
     return scene;
   });
-  const worked = workOut({ scenes: written, issues: [] }, GIVEN);
+  const worked = workOut({ scenes: written, ...(own.length > 0 ? { over: over! } : {}), issues: [] }, GIVEN);
   assert.deepEqual(worked.issues, []);
-  return worked.scenes;
+  return worked;
 }
+/** Scenes of these rows, their values worked out, the first row of the first on line 1. */
+const scenes = (...scripts: string[][]) => scenario([], ...scripts).scenes;
 
 /** Ten frames a second. */
 const frames = (seconds: Span) => Math.round(secondsOf(seconds, () => 0) * 10);
-/** A voice lasts a frame a letter, and an action 20 frames at its own speed, from 10 to 40, unless it is given its length. */
-const lasting = ({ action, text, lasts }: WorkedLine): Lasting => {
+/** A voice lasts a frame a letter, a sound 8 and the gong 100, and an action 20 frames at its own speed, from 10 to 40, unless it is given its length. */
+const lasting = ({ who, action, text, lasts }: WorkedLine): Lasting => {
   if (text !== undefined) return { kind: "voice", length: text.length };
+  if (action === "play") return { kind: "sound", length: who === "gong" ? 100 : 8 };
+  if (action === "loop") return { kind: "sound", length: "open" };
   const { channels, open } = ACTIONS[action]!;
   if (open) return { kind: "move", channels, length: "open" };
   if (lasts && "takes" in lasts) return { kind: "move", channels, length: frames(lasts.takes) };
@@ -42,13 +46,15 @@ const lasting = ({ action, text, lasts }: WorkedLine): Lasting => {
 };
 
 /** When each line of the scenes happens, by its line: the frame it begins on, and the one it has stopped by. */
-function when(...scripts: string[][]) {
-  const written = scenes(...scripts);
-  assert.deepEqual(timeIssues(written, ACTIONS), []);
-  const { video, items } = planOf(written, frames, lasting);
+const when = (...scripts: string[][]) => whenOver([], ...scripts);
+/** The same, with a script of the cartoon's own, whose rows come first. */
+function whenOver(own: string[], ...scripts: string[][]) {
+  const { scenes: written, over } = scenario(own, ...scripts);
+  assert.deepEqual(timeIssues(written, ACTIONS, over), []);
+  const { video, items } = planOf(written, frames, lasting, over);
   const placed = times(video);
   return Object.fromEntries(
-    written.flatMap((scene) => linesIn(scene.items)).map((line) => {
+    [...(over ? [over] : []), ...written].flatMap((scene) => linesIn(scene.items)).map((line) => {
       const { start, end } = placed.get(items.get(line as ScriptItem<WorkedLine>)!)!;
       return [line.line, [start, end]];
     }),
@@ -226,7 +232,7 @@ test("refused: what follows an open action on its channel in its block, and an o
 
 test("refused: an open action that would never be seen, as nothing says where its block ends", () => {
   assert.deepEqual(refused(["sq say: One.", "mo watch"]), [{ line: 2, message: "nothing comes after this in the scene, so there is nothing for it to go with", hint: "join it to what it goes with (&), or write that below it" }]);
-  assert.deepEqual(refused(["mo watch", "tri watch"]), [{ line: 1, message: "everything in the scene goes on to its end, and nothing in it says where that is", hint: "write in it too what it goes with: what is said, or an action with a length" }]);
+  assert.deepEqual(refused(["mo watch", "tri watch"]), [{ line: 1, message: "everything in the scene goes on to its end, and nothing in it says where that is", hint: "write in it too what it goes with: what is said or played, or an action with a length" }]);
   assert.deepEqual(why(["sq say: One.", "& together:", "    mo watch", "    tri watch"]), [[2, [], "everything in the block of line 2 goes on to its end, and nothing in it says where that is"]]);
   assert.deepEqual(why(["mo watch", "& under:", "    radio say: One.", "sq say: Two."]), [[1, [], "everything in the lines joined at line 1 goes on to its end, and nothing in it says where that is"]]);
   // Of several at the end of a block in order, each is said.
@@ -239,6 +245,99 @@ test("refused: an open action that would never be seen, as nothing says where it
   assert.deepEqual(why(["together:", "  sq say: One.", "  mo watch", "[a] sq say: Two.", "tri watch @ a.50%"]), []);
   // Its own block ends with it: in it, nothing waits for its end.
   assert.deepEqual(why(["sq say: One.", "& [w] mo watch", "& tri say @ w.end: Two."]), [[3, [1, 2], "it goes round: the lines joined at line 1 wait for line 3, line 3 waits for line 2 and line 2 ends with the lines joined at line 1"]]);
+});
+
+test("a sound that is played is a line as a voice is: waited for in order, cut under the rest, anchored, joined and ended together", () => {
+  assert.deepEqual(when(["bell play", `sq say: ${TEN}`]), { 1: [5, 13], 2: [16, 26] });
+  assert.deepEqual(when([`sq say: ${TWENTY}`, "& bell play", "mo nod takes=0.5s"]), { 1: [5, 25], 2: [5, 13], 3: [28, 33] });
+  assert.deepEqual(when(["gong play", `& sq say: ${TEN}`, "mo nod takes=0.5s"]), { 1: [5, 105], 2: [5, 15], 3: [108, 113] });
+  assert.deepEqual(when([`[a] sq say: ${TWENTY}`, "[b] bell play @ a.50%", `mo say @ b.50%: 0123`, "sq nod @ b.end + 0.2s"]), { 1: [5, 25], 2: [15, 23], 3: [19, 23], 4: [25, 45] });
+  // Under the rest it is cut, and one that has not begun by then is not there.
+  assert.deepEqual(when(["in order:", "  under:", "    bell play", "    rain play", "    bell play", `  sq say: ${TEN}456`, "mo nod takes=0.5s"]), { 3: [5, 13], 4: [16, 18], 5: [27, 27], 6: [5, 18], 7: [21, 26] });
+  assert.deepEqual(when(["ending together:", "  bell play", `  sq say: ${TEN}`]), { 2: [7, 15], 3: [5, 15] });
+  // It is no words: an action beside it alone is fitted to nothing.
+  assert.deepEqual(when(["sq slide to=left", "& bell play"]), { 1: [5, 25], 2: [5, 13] });
+  assert.deepEqual(when(["sq slide to=left", "& gong play", `& mo say: ${TEN}4`]), { 1: [5, 16], 2: [5, 105], 3: [5, 16] });
+  // One sound does one thing at a time, and others, or whoever has its name, do what they do.
+  assert.deepEqual(when(["[a] bell play", "bell play @ a.50%", "rain play @ a.50%"]), { 1: [5, 13], 2: [13, 21], 3: [9, 17] });
+  assert.deepEqual(when(["radio play", `& radio say: ${TEN}`]), { 1: [5, 13], 2: [5, 15] });
+});
+
+test("a sound that is looped goes on to the end of its block, and nothing waits for it", () => {
+  assert.deepEqual(when(["in order:", "  rain loop", `  sq say: ${TEN}`, `mo say: ${TEN}`]), { 2: [5, 15], 3: [5, 15], 4: [18, 28] });
+  // At the scene's own level, through its tail.
+  assert.deepEqual(when(["rain loop", `sq say: ${TEN}`], [`sq say: ${TEN}`]), { 1: [5, 25], 2: [5, 15], 3: [30, 40] });
+  // Joined to a walk, it lasts as the walk does, and as the words do that the walk is fitted to.
+  assert.deepEqual(when(["sq slide to=left", "& rain loop", "mo nod takes=0.5s"]), { 1: [5, 25], 2: [5, 25], 3: [28, 33] });
+  assert.deepEqual(when(["sq slide to=left", "& rain loop", `& mo say: ${TEN}4`]), { 1: [5, 16], 2: [5, 16], 3: [5, 16] });
+  assert.deepEqual(when([`[a] sq say: ${TWENTY}`, "& rain loop @ a.50%"]), { 1: [5, 25], 2: [15, 25] });
+  // In a block that ends its lines together it begins with the block; in one under the rest, with what it goes with there.
+  assert.deepEqual(when(["ending together:", "  rain loop", "  bell play", `  sq say: ${TEN}`]), { 2: [5, 15], 3: [7, 15], 4: [5, 15] });
+  assert.deepEqual(when(["in order:", "  under:", "    rain loop", "    bell play", `  sq say: ${TEN}`]), { 3: [5, 13], 4: [5, 13], 5: [5, 15] });
+  assert.deepEqual(when(["in order:", "  under:", "    rain loop", "    gong play", `  sq say: ${TEN}`]), { 3: [5, 15], 4: [5, 15], 5: [5, 15] });
+});
+
+test("the cartoon's own script: its rows begin with the cartoon, the scenes wait for none of them, and what has not ended is cut where the last scene ends", () => {
+  const two = [[`sq say: ${TEN}`], [`mo say: ${TEN}`]];
+  // Each scene is half a second, ten frames and a second: 25.
+  assert.deepEqual(whenOver(["rain loop"], ...two), { 1: [0, 50], 2: [5, 15], 3: [30, 40] });
+  assert.deepEqual(whenOver(["bell play", "rain loop", "gong play"], ...two), { 1: [0, 8], 2: [0, 50], 3: [0, 50], 4: [5, 15], 5: [30, 40] });
+  // One that begins later has an anchor; `block` is the cartoon.
+  assert.deepEqual(whenOver(["bell play", "rain loop @ prev.end + 0.2s"], ...two), { 1: [0, 8], 2: [10, 50], 3: [5, 15], 4: [30, 40] });
+  assert.deepEqual(whenOver(["gong play @ block.end - 1s"], ...two), { 1: [40, 50], 2: [5, 15], 3: [30, 40] });
+  assert.deepEqual(whenOver(["gong play @ block.50%"], ...two), { 1: [25, 50], 2: [5, 15], 3: [30, 40] });
+  assert.deepEqual(whenOver(["rain play @ block.end"], ...two), { 1: [50, 50], 2: [5, 15], 3: [30, 40] });
+  // Several in order are in a block, with its pause, cut as a whole.
+  assert.deepEqual(whenOver(["in order:", "  bell play", "  rain play", "  gong play"], ...two), { 2: [0, 8], 3: [11, 19], 4: [22, 50], 5: [5, 15], 6: [30, 40] });
+  assert.deepEqual(whenOver(["in order pause=0s:", "  rain loop", "  bell play", "  bell play"], ...two), { 2: [0, 16], 3: [0, 8], 4: [8, 16], 5: [5, 15], 6: [30, 40] });
+  assert.deepEqual(whenOver(["bell play", "& rain play"], ...two), { 1: [0, 8], 2: [0, 8], 3: [5, 15], 4: [30, 40] });
+  assert.deepEqual(whenOver(["under:", "  gong play"], ...two), { 2: [0, 50], 3: [5, 15], 4: [30, 40] });
+});
+
+test("refused: one sound that would do two things at once, a loop with nothing to go with, and a loop alone in what is under the rest", () => {
+  const atOnce = "write the two one after the other, in an in order: there, or begin this one by the end of the other (@ prev.end, or its label)";
+  assert.deepEqual(refused(["together:", "  bell play", "  sq say: One.", "  bell play"]), [{ line: 4, also: [1, 2], message: "bell's sound is busy with line 2, and the two would begin at once", hint: atOnce }]);
+  assert.deepEqual(refused(["rain loop", "sq say: One.", "rain play"]), [
+    { line: 3, also: [1], message: "rain's sound is busy with line 1, which goes on to the end of the scene", hint: "have line 1 end sooner, in a block of its own: join it to what it goes with (&)" },
+  ]);
+  assert.deepEqual(why(["in order:", "  under:", "    bell play", "  sq say: One.", "  bell play"]), [[5, [3], "bell's sound is busy with line 3, which goes on under the rest to the end of the block both are in"]]);
+  assert.deepEqual(refused(["sq say: One.", "rain loop"]), [{ line: 2, message: "nothing comes after this in the scene, so there is nothing for it to go with", hint: "join it to what it goes with (&), or write that below it" }]);
+  assert.deepEqual(why(["rain loop", "gong loop"]), [[1, [], "everything in the scene goes on to its end, and nothing in it says where that is"]]);
+  // It goes on by itself: under the rest it would end with what is under.
+  const beside = "a loop goes on to the end of its block by itself, and nothing waits for it: write it beside the under:, in the block that is in";
+  assert.deepEqual(refused(["in order:", "  under:", "    rain loop", "  sq say: One."]), [{ line: 2, message: "everything in the block of line 2 is a loop, and nothing in it says where it ends", hint: beside }]);
+  assert.deepEqual(refused(["in order:", "  under:", "    bell play", "    rain loop", "  sq say: One."]), [{ line: 4, message: "nothing comes after this in the block of line 2, so there is nothing for it to go with", hint: beside }]);
+  assert.deepEqual(why(["in order:", "  under:", "    in order:", "      rain loop", "      bell play", "    rain play", "  sq say: One."]), []);
+  // A loop's end is where its block's is: what that waits for is not begun by it.
+  assert.deepEqual(why(["sq say: One.", "& [r] rain loop", "& mo say @ r.end: Two."]).map(([line]) => line), [3]);
+});
+
+test("refused: a sound over the scenes and in one, one twice over them, and what names another script's line", () => {
+  const refusedOver = (own: string[], ...scripts: string[][]) => {
+    const { scenes: written, over } = scenario(own, ...scripts);
+    return timeIssues(written, ACTIONS, over);
+  };
+  const say = ["sq say: One."];
+  assert.deepEqual(refusedOver(["rain loop"], ["rain loop", "sq say: One."]), [
+    { line: 2, also: [1], message: "rain's sound is busy with line 1, which goes on over all the scenes", hint: "play it in one place: in the cartoon's own script, or in the scenes" },
+  ]);
+  assert.deepEqual(refusedOver(["in order:", "  bell play", "  rain play"], say, ["rain play"]).map(({ line, also }) => [line, also]), [[5, [3]]]);
+  const order = "play one of the two, or write them one after the other, in an in order: of the cartoon's own script";
+  assert.deepEqual(refusedOver(["rain loop", "rain play"], say), [{ line: 2, also: [1], message: "rain's sound is busy with line 1, which goes on to the end of the cartoon", hint: order }]);
+  assert.deepEqual(refusedOver(["bell play", "bell play @ prev.end"], say), [{ line: 2, also: [1], message: "bell's sound is busy with line 1, which goes on to the end of the cartoon", hint: order }]);
+  assert.deepEqual(refusedOver(["in order:", "  bell play", "  bell play"], say), []);
+  assert.deepEqual(refusedOver(["bell play", "& bell play"], say).map(({ line, also, message }) => [line, also, message]), [[2, [1], "bell's sound is busy with line 1, and the two would begin at once"]]);
+  // A block of its own has an end to say, as any.
+  assert.deepEqual(refusedOver(["in order:", "  bell play", "  rain loop"], say).map(({ line, message }) => [line, message]), [[3, "nothing comes after this in the block of line 1, so there is nothing for it to go with"]]);
+  assert.deepEqual(refusedOver(["rain loop", "& gong loop"], say).map(({ line, message }) => [line, message]), [[1, "everything in the lines joined at line 1 goes on to its end, and nothing in it says where that is"]]);
+  // Labels are each script's own.
+  assert.deepEqual(refusedOver(["rain play @ a.start"], ["[a] sq say: One."]), [{ line: 1, also: [2], message: '"a" is in a scene, at line 2', hint: "a line begins by something of its own script" }]);
+  assert.deepEqual(refusedOver(["[a] rain play"], ["sq say @ a.start: One."]), [{ line: 2, also: [1], message: '"a" is in the cartoon\'s own script, at line 1', hint: "a line begins by something of its own scene" }]);
+  assert.deepEqual(refusedOver(["[a] rain play"], ["[a] sq say: One.", "mo say @ a.end: Two."]), []);
+  assert.deepEqual(refusedOver(["[a] rain play", "[a] bell play"], say).map(({ line, message }) => [line, message]), [[2, "a is the label of line 1 already"]]);
+  assert.deepEqual(refusedOver(["rain loop @ block.word(One)"], say).map(({ line, message }) => [line, message]), [[1, "the cartoon has no words: a line that is said has"]]);
+  // What is no sound is another's mistake to tell, and has no time here.
+  assert.deepEqual(refusedOver(["sq slide to=left", "sq slide to=left"], say), []);
 });
 
 test("ending together: a voice ends with a longer walk, two voices at once, and one that waits for its channel ends them all later", () => {

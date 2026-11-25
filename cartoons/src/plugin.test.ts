@@ -10,11 +10,12 @@ import { parse } from "yaml";
 import plugin from "./plugin.ts";
 
 const root = path.join(import.meta.dirname, "..");
-/** The project's library, as the tool gives it to the plugin: without each character's voice. */
+/** The project's library, as the tool gives it to the plugin: without each character's voice, and without its sounds. */
 const library = (() => {
   const file = path.join(root, "library.yaml");
   const raw = parse(readFileSync(file, "utf8"));
   for (const character of Object.values(raw.characters)) delete (character as { voice?: string }).voice;
+  delete raw.sounds;
   return { file, raw };
 })();
 /** A cartoon's scenario, read and checked as the tool has the plugin do it: its file, without the tool's `use:`, and the library. */

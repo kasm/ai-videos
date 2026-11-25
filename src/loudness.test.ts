@@ -5,7 +5,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
-import { loudnessOf } from "./loudness.ts";
+import { loudnessIn, loudnessOf } from "./loudness.ts";
 import { run } from "./render.ts";
 
 const scratch = await mkdtemp(path.join(os.tmpdir(), "ai-videos-loudness-"));
@@ -38,6 +38,28 @@ test("a pause is left out, a quiet part only when it is far under the rest, and 
   assert.equal(loudnessOf({ samples: new Float32Array(48000), sampleRate }), -Infinity);
   assert.equal(loudnessOf({ samples: tone(997, 1, sampleRate, 1e-5), sampleRate }), -Infinity, "quieter than any voice");
   assert.equal(loudnessOf({ samples: new Float32Array(0), sampleRate }), -Infinity);
+});
+
+test("a sound in two channels is as loud as the two together: one that is silent adds nothing, and the same in both is 3 dB more", async () => {
+  const sampleRate = 48000;
+  const [left, right] = [tone(997, 2, sampleRate, 0.5), tone(997, 2, sampleRate, 0.25)];
+  const silent = new Float32Array(left.length);
+  near(loudnessIn({ left, right: silent, sampleRate }), -9.03, 0.05);
+  near(loudnessIn({ left: silent, right: left, sampleRate }), -9.03, 0.05);
+  near(loudnessIn({ left, right: left, sampleRate }), -6.02, 0.05);
+  near(loudnessIn({ left, right, sampleRate }), -9.03 + 10 * Math.log10(1.25), 0.05);
+  assert.equal(loudnessIn({ left, right: left, sampleRate }), loudnessOf({ samples: left, sampleRate }, 2));
+  assert.equal(loudnessIn({ left: silent, right: silent, sampleRate }), -Infinity);
+  // What ffmpeg's meter says of one with a pause in one channel and a quiet part in the other.
+  const both = Float32Array.from({ length: 2 * 4 * sampleRate }, (_, i) => {
+    const t = Math.floor(i / 2) / sampleRate;
+    return i % 2 === 0 ? (t < 2 ? 0.3 * Math.sin(2 * Math.PI * 300 * t) : 0) : (t < 1 ? 0.02 : 0.2) * Math.sin(2 * Math.PI * 2100 * t);
+  });
+  const file = path.join(scratch, "stereo.f32");
+  await writeFile(file, Buffer.from(both.buffer));
+  const { stderr } = await run("ffmpeg", ["-hide_banner", "-nostats", "-f", "f32le", "-ar", String(sampleRate), "-ac", "2", "-i", file, "-af", "ebur128=framelog=quiet", "-f", "null", "-"]);
+  const channel = (n: number) => both.filter((_, i) => i % 2 === n);
+  near(loudnessIn({ left: channel(0), right: channel(1), sampleRate }), Number(/I:\s+(-?[\d.]+) LUFS/.exec(stderr)![1]), 0.1);
 });
 
 test("a voice too short for a block is one block", () => {

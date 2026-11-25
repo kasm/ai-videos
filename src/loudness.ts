@@ -1,7 +1,14 @@
-// How loud a voice is, as a video's loudness is measured (ITU-R BS.1770-4, what LUFS are): its samples
-// filtered as an ear hears them, and the mean power of its blocks of 400 ms, those that are silence, or
-// far under the rest, left out. A script's voices are brought to one loudness by it (sound.ts).
+// How loud a voice or a sound is, as a video's loudness is measured (ITU-R BS.1770-4, what LUFS are): its
+// samples filtered as an ear hears them, and the mean power of its blocks of 400 ms, those that are silence,
+// or far under the rest, left out. A script's voices and sounds are brought to one loudness by it (sound.ts).
 import type { Voice } from "./mouth.ts";
+
+/** A sound as samples, -1 to 1, in two channels. */
+export interface Stereo {
+  left: Float32Array;
+  right: Float32Array;
+  sampleRate: number;
+}
 
 const BLOCK = 0.4;
 /** A block this quiet, LUFS, is silence, and one this far under the mean of the rest, LU, is a pause. */
@@ -35,11 +42,8 @@ function weighted(samples: Float32Array, sampleRate: number): Float32Array {
   return filtered(raised, [1, -2, 1], at(38.13547087602444, 0.5003270373238773).a);
 }
 
-/**
- * How loud a voice is, LUFS, played whole in each of so many channels. One shorter than a block is one
- * block; -Infinity for one that is silence.
- */
-export function loudnessOf({ samples, sampleRate }: Voice, channels = 1): number {
+/** The power of each block of a channel, as it is heard, four of them begun in each 400 ms. One shorter than a block is one. */
+function powersOf(samples: Float32Array, sampleRate: number): number[] {
   const heard = weighted(samples, sampleRate);
   const block = Math.max(1, Math.min(heard.length, Math.round(BLOCK * sampleRate)));
   const step = Math.max(1, Math.round((BLOCK / 4) * sampleRate));
@@ -49,10 +53,24 @@ export function loudnessOf({ samples, sampleRate }: Voice, channels = 1): number
     for (let i = at; i < at + block; i++) sum += heard[i]! * heard[i]!;
     powers.push(sum / block);
   }
-  const loudness = (power: number) => -0.691 + 10 * Math.log10(channels * power);
+  return powers;
+}
+
+/** The loudness of blocks of these powers, all channels' added up, LUFS: the silent ones and the pauses left out. */
+function gated(powers: number[]): number {
+  const loudness = (power: number) => -0.691 + 10 * Math.log10(power);
   const mean = (list: number[]) => list.reduce((sum, power) => sum + power, 0) / list.length;
   const sounding = powers.filter((power) => loudness(power) > SILENCE);
   if (sounding.length === 0) return -Infinity;
   const floor = loudness(mean(sounding)) + PAUSE;
   return loudness(mean(sounding.filter((power) => loudness(power) > floor)));
+}
+
+/** How loud a voice is, LUFS, played whole in each of so many channels; -Infinity for one that is silence. */
+export const loudnessOf = ({ samples, sampleRate }: Voice, channels = 1): number => gated(powersOf(samples, sampleRate).map((power) => channels * power));
+
+/** How loud a sound is, LUFS, its two channels as they are; -Infinity for one that is silence. */
+export function loudnessIn({ left, right, sampleRate }: Stereo): number {
+  const others = powersOf(right, sampleRate);
+  return gated(powersOf(left, sampleRate).map((power, k) => power + others[k]!));
 }

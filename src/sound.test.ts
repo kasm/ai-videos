@@ -1,18 +1,20 @@
 // A video file's one sound track (sound.ts): each line's voice laid from where it begins, and no
-// further than it is cut, brought to the video's loudness. A script's voices are first as loud as each
-// other, then at their volumes, and one gain with a limiter keeps them so far apart.
+// further than it is cut, brought to the video's loudness. A script's voices and the sounds it plays are
+// first as loud as each other, then at their volumes, and one gain with a limiter keeps them so far apart; a
+// sound keeps its channels, and all of its treble.
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
-import { compile, saidLines } from "./compile.ts";
+import { compile, playedLines, saidLines, type Compiled } from "./compile.ts";
 import { loudnessOf } from "./loudness.ts";
 import { mouthTrack } from "./mouth.ts";
 import { readScript } from "./read.ts";
 import { run } from "./render.ts";
-import { linesIn, type CheckedLine, type ScriptItem } from "./scenario.ts";
-import { compiledVoices, gainOf, mix, writeMix, writeSound } from "./sound.ts";
+import { checkScenario, linesIn, type CheckedLine, type ScriptItem, type ScriptPlugin } from "./scenario.ts";
+import { pictureOf } from "./shown.ts";
+import { compiledSounds, compiledVoices, gainOf, measureSound, mix, mixKey, readSound, writeMix, writeSound } from "./sound.ts";
 import { encodeWav } from "./tts.ts";
 import { workOut, type WorkedLine } from "./values.ts";
 
@@ -42,6 +44,19 @@ test("a voice longer than it may sound is cut there, fading to nothing just befo
   assert.ok(track.subarray(600, 800).every((s) => s === 0), "nothing after the cut");
   assert.ok(track.subarray(800, 900).every((s) => s === 1), "one as long as it may sound is not cut");
 });
+
+test("what is looped is laid again and again for as long as it sounds, and fades to nothing just before its end", () => {
+  const three = new Float32Array([1, 2, 3]);
+  assert.deepEqual([...mix([{ samples: three, start: 0.2, duration: 0.7, loop: true }], 10, 1)], [0, 0, 1, 2, 3, 1, 2, 3, 1, 0]);
+  assert.deepEqual([...mix([{ samples: three, start: 0.2, duration: 0.7 }], 10, 1)], [0, 0, 1, 2, 3, 0, 0, 0, 0, 0]);
+  // Longer than the track, it stops with that.
+  assert.deepEqual([...mix([{ samples: three, start: 0.1, duration: 5, loop: true, gain: 2 }], 10, 0.5)], [0, 2, 4, 6, 2]);
+  const track = mix([{ samples: new Float32Array(100).fill(1), start: 0, duration: 0.5, loop: true }], 1000, 0.6);
+  assert.ok(track.subarray(0, 470).every((s) => s === 1), "whole until 30 ms before its end, over where the file ends");
+  for (let i = 471; i < 500; i++) assert.ok(track[i]! < track[i - 1]!, "then down");
+  assert.ok(track.subarray(500).every((s) => s === 0), "nothing after it");
+});
+
 /** Where a sound file is silent, seconds, as ffmpeg finds it: its starts and its ends. */
 async function silences(file: string) {
   const { stderr } = await run("ffmpeg", ["-hide_banner", "-nostats", "-i", file, "-af", "silencedetect=noise=-50dB:d=0.2", "-f", "null", "-"]);
@@ -305,6 +320,199 @@ test("each voice of a script is in the sound at its compiled time, and what is c
       else if ((k + 1) / 10 < from - 0.02 || k / 10 > to + 0.02) assert.ok(level < 0.1, `line ${line}, ${k / 10} s: ${level}, silent before ${from} and after ${to}`);
     });
   }
+});
+
+/** A tone as samples. */
+const toneOf = (hz: number, seconds: number, rate = 48000, level = 0.15) => Float32Array.from({ length: Math.round(seconds * rate) }, (_, i) => level * Math.sin((2 * Math.PI * hz * i) / rate));
+/** A sound file of the format its name says, from its channels. */
+async function soundFile(name: string, channels: Float32Array[], rate = 48000): Promise<string> {
+  const raw = path.join(scratch, `${name}.raw`);
+  const both = Float32Array.from({ length: channels[0]!.length * channels.length }, (_, i) => channels[i % channels.length]![Math.floor(i / channels.length)]!);
+  await writeFile(raw, Buffer.from(both.buffer));
+  const { code, stderr } = await run("ffmpeg", ["-v", "error", "-y", "-f", "f32le", "-ar", String(rate), "-ac", String(channels.length), "-i", raw, path.join(scratch, name)]);
+  assert.equal(code, 0, stderr);
+  return name;
+}
+/** How high a tone of `hz` is in a part of a sound, dB: 0 for a full one. */
+const levelOf = ({ samples, sampleRate }: { samples: Float32Array; sampleRate: number }, hz: number, from: number, to: number) => {
+  const part = samples.subarray(Math.round(from * sampleRate), Math.round(to * sampleRate));
+  let [re, im] = [0, 0];
+  part.forEach((s, i) => {
+    re += s * Math.cos((2 * Math.PI * hz * i) / sampleRate);
+    im += s * Math.sin((2 * Math.PI * hz * i) / sampleRate);
+  });
+  return 20 * Math.log10((2 * Math.hypot(re, im)) / part.length);
+};
+/** A plugin with no actions, which draws nothing. */
+const bare: ScriptPlugin = { actions: {}, guide: "Nothing is drawn.", check: (scenes) => ({ scenes: scenes.map(() => ({ setting: {}, actions: [] })) }), draw: () => () => "<svg/>" };
+
+/** Tones, each its own: the sounds' files, by name, and how long each lasts. */
+const TONES = { bell: { hz: 3100, seconds: 0.8 }, high: { hz: 15200, seconds: 0.6 }, rain: { hz: 5300, seconds: 0.5 }, gong: { hz: 1900, seconds: 4 }, hum: { hz: 900, seconds: 2 } };
+/** A script's sounds and voices compiled, its files written: what is played and said, and the tone of each, by its line. */
+async function playedScript() {
+  const own = ["tune loop volume=-9dB", "hum play @ block.end - 1s"];
+  const rows = [
+    ["bell play volume=-3dB", "in order:", "  rain loop volume=-6dB", "  [a] ann say: One, two, three.", "  high play @ a.50%", "  ben say: Four.", "ann say: Five."],
+    ["in order:", "  under:", "    gong play volume=-12dB", "  ben say volume=-4dB: Six.", "rain play", "ann say: Seven."],
+  ];
+  let first = 2;
+  const scripts = [own, ...rows].map((script) => {
+    const { items, issues } = readScript(script.join("\n"), first);
+    assert.deepEqual(issues, []);
+    first += script.length + 1;
+    return { line: first, setting: {}, items };
+  });
+  const [over, ...scenes] = scripts;
+  const files: Record<string, string> = {};
+  for (const [name, { hz, seconds }] of Object.entries(TONES)) files[name] = await soundFile(`${name}.flac`, name === "high" ? [toneOf(hz, seconds), toneOf(hz, seconds)] : [toneOf(hz, seconds)]);
+  // The tune has a tone of its own in each channel.
+  files.tune = await soundFile("tune.flac", [toneOf(700, 1.3), toneOf(1300, 1.3)]);
+  const lengths: Record<string, number> = {};
+  for (const file of Object.values(files)) lengths[file] = (await measureSound(path.join(scratch, file))) as number;
+  const checked = await checkScenario(bare, { over: over!, scenes, issues: [] }, undefined, ["ann", "ben"], { lead: 0.6, gap: 0.4, tail: 1 }, {}, files);
+  assert.ok("scenes" in checked, JSON.stringify(checked));
+  const said = checked.scenes.flatMap((scene) => linesIn(scene.items)).filter((line) => "text" in line);
+  const hz = new Map(said.map((line, k) => [line.line, 300 + 60 * k]));
+  const voices = await Promise.all(
+    said.map(async ({ line }) => {
+      const samples = toneOf(hz.get(line)!, 1.5, 24000);
+      await writeFile(path.join(scratch, `said-${line}.wav`), encodeWav(samples, 24000));
+      return { file: `said-${line}.wav`, duration: 1.5, mouth: [] };
+    }),
+  );
+  const compiled = compile(checked.scenes, voices, { fps: 30, loudness: -26, moves: { slowest: 0.5, fastest: 2 } }, "x.yaml", lengths, checked.over);
+  const toneIn = (line: ReturnType<typeof playedLines>[number]) => (line.who === "tune" ? 700 : TONES[line.who as keyof typeof TONES].hz);
+  const tones = [...saidLines(compiled.scenes).map((line) => ({ ...line, hz: hz.get(line.line)! })), ...playedLines(compiled).map((line) => ({ ...line, hz: toneIn(line) }))];
+  return { compiled, tones, seconds: compiled.frames / 30 };
+}
+const heardOf = (compiled: Compiled) => [...compiledVoices(compiled, scratch), ...compiledSounds(compiled, scratch)];
+
+test("each sound a script plays is in the sound at its time and its level, beside the voices, one above 12 kHz among them", async () => {
+  const { compiled, tones, seconds } = await playedScript();
+  // The laws' times, seconds: the first scene waits for the bell, and the rain ends with its block; the gong is cut with its.
+  const at = (who: string, action: string) => tones.filter((line) => line.who === who && line.action === action).map(({ from, frames }) => [from / 30, (from + frames) / 30].map((t) => Math.round(t * 100) / 100));
+  assert.deepEqual(at("bell", "play"), [[0.6, 1.4]]);
+  assert.deepEqual(at("rain", "loop"), [[1.8, 5.2]]);
+  // Half of Ann's 45 frames is 23.
+  assert.deepEqual(at("high", "play"), [[2.57, 3.17]]);
+  assert.deepEqual(at("gong", "play"), [[8.7, 10.2]]);
+  assert.deepEqual(at("rain", "play"), [[10.6, 11.1]]);
+  assert.deepEqual(at("tune", "loop"), [[0, 14]]);
+  assert.deepEqual(at("hum", "play"), [[13, 14]]);
+  assert.equal(seconds, 14);
+  assert.deepEqual(compiledSounds(compiled, scratch).map(({ file, sound }) => `${path.basename(file, ".flac")} ${sound}`), ["tune loop", "hum once", "bell once", "rain loop", "high once", "gong once", "rain once"]);
+
+  const file = path.join(scratch, "played.m4a");
+  const { lowered } = await writeMix(heardOf(compiled), seconds, file, -26);
+  assert.equal(lowered, 0, "so quiet that nothing is limited");
+  const sound = await heard(file, 48000);
+  assert.ok(Math.abs(sound.samples.length / 48000 - seconds) < 0.1);
+  for (const hz of new Set(tones.map((line) => line.hz))) {
+    const spans = tones.filter((line) => line.hz === hz).map(({ from, frames }) => [from / 30, (from + frames) / 30] as const);
+    // Its tone fills the tenths that are all its own, and is in none that has nothing of it.
+    for (let t = 0; t + 0.1 <= seconds; t += 0.1) {
+      const level = levelOf(sound, hz, t, t + 0.1);
+      if (spans.some(([from, to]) => t >= from + 0.02 && t + 0.1 <= to - 0.04)) assert.ok(level > -60, `${hz} Hz at ${t.toFixed(1)} s: ${level}`);
+      else if (spans.every(([from, to]) => t + 0.1 < from - 0.02 || t > to + 0.02)) assert.ok(level < -65, `${hz} Hz at ${t.toFixed(1)} s: ${level}`);
+    }
+  }
+  // At 0 dB all are as loud as each other, as an ear hears them: a tone's height is what that leaves, then its volume.
+  const heardAs = (hz: number, channels: number) => loudnessOf({ samples: toneOf(hz, 2, 48000, 1), sampleRate: 48000 }, channels);
+  const over = tones.map(({ who, hz, volume, from, frames }) => {
+    const [start, end] = [from / 30 + 0.1, (from + frames) / 30 - 0.1];
+    // The tune's two tones, one in each channel, are as loud as it together.
+    const own = who === "tune" ? 10 * Math.log10(10 ** (heardAs(700, 1) / 10) + 10 ** (heardAs(1300, 1) / 10)) : heardAs(hz, 2);
+    return { who, hz, off: levelOf(sound, hz, start, Math.min(end, start + 1)) - (volume - own) };
+  });
+  const base = over[0]!.off;
+  for (const { who, hz, off } of over) near(off - base, 0, 0.6, `${who}, ${hz} Hz, is off by`);
+  assert.equal(over.length, 12);
+});
+
+test("a sound keeps its two channels, and a voice, or a sound that has one, is in both", async () => {
+  const { compiled, seconds } = await playedScript();
+  const file = path.join(scratch, "stereo.m4a");
+  await writeMix(heardOf(compiled), seconds, file, -26);
+  const [left, right] = [await heard(file, 48000, 0), await heard(file, 48000, 1)];
+  // The tune's, in a pause of all else but it.
+  near(levelOf(left, 700, 7.2, 7.9), levelOf(right, 1300, 7.2, 7.9), 0.5);
+  assert.ok(levelOf(left, 1300, 7.2, 7.9) < levelOf(left, 700, 7.2, 7.9) - 40);
+  assert.ok(levelOf(right, 700, 7.2, 7.9) < levelOf(right, 1300, 7.2, 7.9) - 40);
+  for (const [hz, from, to] of [[3100, 0.7, 1.3], [15200, 2.65, 3.05], [300, 1.9, 3.1]] as const) near(levelOf(left, hz, from, to), levelOf(right, hz, from, to), 0.2);
+});
+
+test("a sound file is of any format, sample rate and number of channels, and one that is none is known before the voices", async () => {
+  const measured = async (name: string) => measureSound(path.join(scratch, name));
+  const files = [
+    await soundFile("a.wav", [toneOf(1000, 0.75)]),
+    await soundFile("a.flac", [toneOf(1000, 0.75), toneOf(1000, 0.75)]),
+    await soundFile("a-44.wav", [toneOf(1000, 0.75, 44100)], 44100),
+    await soundFile("a-8.wav", [toneOf(1000, 0.75, 8000)], 8000),
+    await soundFile("a.ogg", [toneOf(1000, 0.75), toneOf(1000, 0.75)]),
+    await soundFile("a.mp3", [toneOf(1000, 0.75)]),
+  ];
+  for (const name of files) {
+    near((await measured(name)) as number, 0.75, 0.03, name);
+    // Whatever it was, it is the same tone, in both channels.
+    const { left, right, sampleRate } = await readSound(path.join(scratch, name));
+    assert.equal(sampleRate, 48000);
+    near(levelOf({ samples: left, sampleRate }, 1000, 0.1, 0.6), levelOf({ samples: right, sampleRate }, 1000, 0.1, 0.6), 0.05, name);
+    assert.ok(levelOf({ samples: left, sampleRate }, 1000, 0.1, 0.6) > levelOf({ samples: left, sampleRate }, 1300, 0.1, 0.6) + 30, name);
+  }
+  assert.equal(await measured("nowhere.wav"), "missing");
+  assert.equal(await measured("."), "missing", "a folder is no file");
+  await writeFile(path.join(scratch, "words.wav"), "This is no sound.");
+  assert.equal(await measured("words.wav"), "silent");
+  await assert.rejects(readSound(path.join(scratch, "words.wav")), /Invalid data/, "in ffmpeg's words");
+  await writeFile(path.join(scratch, "empty.wav"), "");
+  assert.equal(await measured("empty.wav"), "silent");
+  await writeFile(path.join(scratch, "nothing.wav"), encodeWav(new Float32Array(0), 48000));
+  assert.equal(await measured("nothing.wav"), "silent");
+  // A picture has none.
+  assert.equal((await run("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "color=red:s=16x16:d=0.2", path.join(scratch, "picture.mp4")])).code, 0);
+  assert.equal(await measured("picture.mp4"), "silent");
+  // One that is silence is a sound, and stays so.
+  await soundFile("hush.wav", [new Float32Array(48000)]);
+  assert.equal(await measured("hush.wav"), 1);
+  const out = path.join(scratch, "hush.m4a");
+  assert.deepEqual(await writeMix([{ file: path.join(scratch, "hush.wav"), start: 0, duration: 1, volume: 6, sound: "once" }], 2, out, -14), { gain: 0, lowered: 0, loudness: -Infinity });
+});
+
+test("a looped sound goes on over the end of its file, again and again, at every sample rate the frames have", async () => {
+  // Half of it a tone and half of it silence: a tone each half a second.
+  const file = path.join(scratch, await soundFile("beat.wav", [Float32Array.from([...toneOf(2000, 0.25), ...new Float32Array(12000)])]));
+  const out = path.join(scratch, "beat.m4a");
+  await writeMix([{ file, start: 0.5, duration: 2.25, volume: 0, sound: "loop" }, { file, start: 3.5, duration: 0.75, volume: 0, sound: "once" }], 4.5, out, -26);
+  const sound = await heard(out, 48000);
+  const on = Array.from({ length: 18 }, (_, k) => levelOf(sound, 2000, 0.25 * k + 0.05, 0.25 * k + 0.2) > -50);
+  // Quarters of a second: from the second on, on and off, to the cut in the eleventh; then once, though its frames are more than its file.
+  assert.deepEqual(on.map(Number), [0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0]);
+});
+
+test("a sound whose file has other bytes makes the sound anew, and draws nothing again: the key of one, and the picture of the other", async () => {
+  const { compiled, seconds } = await playedScript();
+  const lines = heardOf(compiled);
+  const key = () => mixKey(lines, seconds, -26);
+  const [before, picture] = [await key(), pictureOf(compiled)];
+  assert.equal(await key(), before);
+  // As long as it was, and another sound.
+  await soundFile("bell.flac", [toneOf(3150, 0.8)]);
+  const after = await key();
+  assert.notEqual(after, before);
+  assert.deepEqual(pictureOf(compiled), picture);
+  assert.doesNotMatch(JSON.stringify(picture), /bell|tune|flac/);
+  await soundFile("bell.flac", [toneOf(3100, 0.8)]);
+  assert.equal(await key(), before, "as it was, it is the same");
+  // When, for how long, how loud and whether again and again go into it too; a voice by its file's name.
+  const other = async (change: Partial<(typeof lines)[number]>) => assert.notEqual(await mixKey([...lines.slice(0, -1), { ...lines.at(-1)!, ...change }], seconds, -26), before, JSON.stringify(change));
+  await other({ start: 0.5 });
+  await other({ duration: 0.4 });
+  await other({ volume: -1 });
+  await other({ sound: lines.at(-1)!.sound === "loop" ? "once" : "loop" });
+  assert.notEqual(await mixKey(lines, seconds, -20), before);
+  assert.notEqual(await mixKey(lines, seconds + 1, -26), before);
+  assert.notEqual(await mixKey([{ ...lines[0]!, file: "another.wav" }, ...lines.slice(1)], seconds, -26), before);
+  assert.equal(await mixKey([{ ...lines[0]!, file: path.join("elsewhere", path.basename(lines[0]!.file)) }, ...lines.slice(1)], seconds, -26), before);
 });
 
 test("where nobody speaks, the sound is silence as long as the video", async () => {

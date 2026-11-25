@@ -6,12 +6,15 @@
 # point of the scene's own, and Tuk comes between Pip and Mo, then up to Pip. In the third, the badger
 # walks in while Tuk hops and Mo, a second later, turns round and points, Pip walks up waving and
 # talking, Tuk and Mo looking at Pip all the way past them, and at a word, as the badger walks off, the
-# day breaks. The format is in CLAUDE.md ("The script"); the characters and the backgrounds are drawn in
-# library.yaml, and the radio is only heard.
+# day breaks. A tune goes on under all three scenes, the news waits for a jingle, and something rustles in
+# the reeds at a word. The format is in CLAUDE.md ("The script"); the characters and the backgrounds are drawn
+# in library.yaml, and the radio is only heard, as the sounds are, whose files it names.
 use: cartoon
 outputs: { web: true } # its page too, beside the video
 cast: { radio: am_michael }
-values: { beat: 0.4s, pause: beat, radio.volume: -8dB }
+values: { beat: 0.4s, pause: beat, radio.volume: -8dB, jingle.volume: -8dB }
+script: |
+  tune loop
 
 scenes:
   - background: morning
@@ -28,6 +31,7 @@ scenes:
       tuk say volume=-6dB: Hush, it is beginning.
       together:
         in order pause=beat * 2:
+          jingle play
           radio say: Good morning, and here is the news.
           [seen] radio say: A badger was seen by the pond last night.
           radio say: It has asked to be left alone.
@@ -65,6 +69,7 @@ scenes:
         mo turn @ block.start + 1s
         mo point @ prev.end
         narrator say: And then the badger comes out of the reeds.
+        rustle play @ prev.word(badger)
       together:
         pip walk to=left-of(badger, near)
         pip wave

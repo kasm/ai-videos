@@ -10,6 +10,7 @@ import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { isMap, isScalar, parseDocument, stringify, type Pair } from "yaml";
 import { pluginOf, startPlugin } from "./make.ts";
+import { listed } from "./names.ts";
 import { ALL_WRITTEN } from "./prompt.ts";
 import { slug, voiceOf } from "./script.ts";
 import { kokoroVoices } from "./tts.ts";
@@ -262,13 +263,20 @@ export async function importReply(file: string, log: (msg: string) => void): Pro
   }
 
   // What the reply adds to the library: the entries it lacks, from the episodes in order, the last
-  // word counting. A new character's voice is the tool's to check.
+  // word counting. A new character's voice is the tool's to check, and a sound is a file, which no chat has.
   const project = await readProject(plugin);
   const voices = new Set((await kokoroVoices()).map((v) => v.name));
   const has = project.libraryFile?.raw ?? {};
   const added = new Map<string, Entry>();
   const kept = new Set<string>();
+  const inLibrary = (section: string, name: string) => (isRecord(has[section]) ? (has[section] as Record<string, unknown>)[name] : undefined);
   for (const episode of [...episodes.values()]) {
+    const sounds = episode.entries.filter(({ section, name }) => section === "sounds" && inLibrary(section, name) === undefined).map(({ name }) => name);
+    if (sounds.length > 0) {
+      refused.set(episode.name, `it adds ${sounds.length > 1 ? "sounds" : "a sound"} to the library (${listed(sounds)}): a sound is a file, which only a person adds, so leave sounds: out of library:`);
+      episodes.delete(episode.name);
+      continue;
+    }
     const voiceless = episode.entries.find((e) => e.section === "characters" && !(isRecord(e.value) && typeof e.value.voice === "string" && voices.has(e.value.voice)));
     if (voiceless) {
       const voice = isRecord(voiceless.value) ? voiceless.value.voice : undefined;
@@ -277,7 +285,7 @@ export async function importReply(file: string, log: (msg: string) => void): Pro
       continue;
     }
     for (const entry of episode.entries) {
-      const there = isRecord(has[entry.section]) ? (has[entry.section] as Record<string, unknown>)[entry.name] : undefined;
+      const there = inLibrary(entry.section, entry.name);
       if (there === undefined) added.set(`${entry.section}/${entry.name}`, entry);
       else if (!isDeepStrictEqual(there, entry.value)) kept.add(`${entry.section}: ${entry.name}`);
     }
@@ -295,8 +303,8 @@ export async function importReply(file: string, log: (msg: string) => void): Pro
   if (episodes.size > 0) {
     let withAdded: Project;
     try {
-      const { library, cast, volumes } = libraryOf(label, merged);
-      withAdded = { ...project, library: project.libraryFile || added.size > 0 ? library : undefined, volumes, settings: { ...project.settings, cast } };
+      const { library, cast, sounds, volumes } = libraryOf(label, merged);
+      withAdded = { ...project, library: project.libraryFile || added.size > 0 ? library : undefined, sounds, volumes, settings: { ...project.settings, cast } };
     } catch (e) {
       for (const name of episodes.keys()) refused.set(name, message(e));
       episodes.clear();
@@ -350,7 +358,7 @@ export async function importReply(file: string, log: (msg: string) => void): Pro
     videos.push(target);
   }
   if (refused.size === 0) return { videos, refused: undefined, ended: reply.ended };
-  const listed = new Map([...refused].toSorted(([a], [b]) => order.indexOf(a) - order.indexOf(b)));
-  for (const [what, why] of listed) log(`Refused: ${what}: ${why.replace(/\n/g, "\n  ")}`);
-  return { videos, refused: refusedMessage(listed), ended: reply.ended };
+  const inOrder = new Map([...refused].toSorted(([a], [b]) => order.indexOf(a) - order.indexOf(b)));
+  for (const [what, why] of inOrder) log(`Refused: ${what}: ${why.replace(/\n/g, "\n  ")}`);
+  return { videos, refused: refusedMessage(inOrder), ended: reply.ended };
 }

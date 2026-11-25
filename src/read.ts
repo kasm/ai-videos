@@ -22,6 +22,13 @@ const HEADERS = "the blocks are in order:, together:, ending together: and under
 
 /** The tool's own action: a character says the line's text, in its voice. */
 export const SAY = "say";
+/** And those of the library's sounds: one is played once, or again and again to the end of its block. */
+export const PLAY = "play";
+export const LOOP = "loop";
+/** The tool's own actions, by name: none of a plugin's is called so. */
+export const TOOL_ACTIONS: readonly string[] = [SAY, PLAY, LOOP];
+/** Whether an action is a sound's. */
+export const isPlayed = (action: string) => action === PLAY || action === LOOP;
 
 /** The names an anchor has for what needs no label: the line or the block just above, and the block it is in. */
 export const PREV = "prev";

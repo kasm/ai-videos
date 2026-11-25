@@ -14,12 +14,13 @@ import { mouthTrack } from "./mouth.ts";
 import { listed } from "./names.ts";
 import { promptFor } from "./prompt.ts";
 import { compiledPage, writePage, pageVideo, type PagePicture, type PageVideo } from "./page.ts";
+import { LOOP } from "./read.ts";
 import { hyperframes, muxSound, renderProject } from "./render.ts";
-import { NARRATOR, issuesText, linesIn, type Checked, type Default, type Issue } from "./scenario.ts";
+import { NARRATOR, issuesText, linesIn, type Checked, type CheckedLine, type Default, type Issue } from "./scenario.ts";
 import { FORMATS, voiceOf, type EventLimitsScript, type FormatName, type LoadedVideo } from "./script.ts";
 import { cachePaths, cacheRoot, ready, setup } from "./setup.ts";
 import { pictureOf } from "./shown.ts";
-import { compiledVoices, writeMix, writeSound } from "./sound.ts";
+import { compiledSounds, compiledVoices, measureSound, mixKey, writeMix, writeSound } from "./sound.ts";
 import { PLAYING, codeKey, folderKey, inputsKey, keyOf, stagesIn, type Stages } from "./stages.ts";
 import { runStory, windowsIO } from "./story.ts";
 import { buildTimeline, narrate } from "./timeline.ts";
@@ -104,16 +105,43 @@ function sameScene(video: VideoFile, host: PluginHost): void {
   if (host.scene !== video.use) throw new Error(`${video.file} says use: ${video.use}, and the plugin ${video.plugin.file} draws ${host.scene}`);
 }
 
+/** A script checked: the scenario worked out, the defaults it takes, and how long each sound it plays lasts, seconds, by its file. */
+type CheckedScript = Extract<Checked, { scenes: unknown }> & { lengths: Record<string, number> };
+
+/** The lines of a checked script, the cartoon's own first. */
+const checkedLines = ({ over, scenes }: Pick<CheckedScript, "over" | "scenes">): CheckedLine[] => [...(over ? [over] : []), ...scenes].flatMap(({ items }) => linesIn(items));
+
+/** The sounds that lines play, each file measured once: how long it lasts, seconds, or a mistake of the lines that play it. */
+async function measured(lines: CheckedLine[], dir: string): Promise<{ lengths: Record<string, number>; issues: Issue[] }> {
+  const played = Map.groupBy(
+    lines.filter((line) => "sound" in line),
+    ({ sound }) => sound,
+  );
+  const lengths: Record<string, number> = {};
+  const issues: Issue[] = [];
+  for (const [sound, [first, ...others]] of played) {
+    const length = await measureSound(path.resolve(dir, sound));
+    if (typeof length === "number") lengths[sound] = length;
+    else {
+      const { line, who } = first!;
+      const also = others.length > 0 ? { also: others.map((one) => one.line) } : {};
+      const message = length === "missing" ? `there is no file ${sound}, which ${LIBRARY_FILE} has for ${who}` : `${sound}, which ${LIBRARY_FILE} has for ${who}, holds no sound that ffmpeg reads`;
+      issues.push({ line, ...also, message, hint: `${length === "missing" ? "put it there" : "put a sound there"}, a path from the folder of ${LIBRARY_FILE}, or give ${who} another file` });
+    }
+  }
+  return { lengths, issues };
+}
+
 /**
  * The check of a video written as a script (AGENTS.md, "A script"), the only pass that refuses:
  * the tool's and the plugin's (scenario.ts), then each speaker's voice one the tool speaks in, known
- * with no model on the disk. It gives the scenario worked out, with the defaults it takes, or throws
- * every mistake with its line and a hint.
+ * with no model on the disk, and each sound that is played a file that ffmpeg reads. It gives the scenario
+ * worked out, with the defaults it takes, or throws every mistake with its line and a hint.
  */
-async function checkScript(video: VideoFile, host: PluginHost): Promise<Extract<Checked, { scenes: unknown }>> {
+async function checkScript(video: VideoFile, host: PluginHost): Promise<CheckedScript> {
   sameScene(video, host);
   const refused = (issues: Issue[]) => new Error(issuesText(path.relative(CALLER, video.file), video.text, issues));
-  const checked = await host.checkScript(video.file, video.script!, video.library, Object.keys(video.settings.cast), video.settings.timing, video.volumes);
+  const checked = await host.checkScript(video.file, video.script!, video.library, Object.keys(video.settings.cast), video.settings.timing, video.volumes, video.sounds);
   if ("issues" in checked) throw refused(checked.issues);
   const voices = new Set((await kokoroVoices()).map((voice) => voice.name));
   const unspoken = checked.scenes.flatMap((scene) => linesIn(scene.items)).flatMap((line): Issue[] => {
@@ -123,8 +151,9 @@ async function checkScript(video: VideoFile, host: PluginHost): Promise<Extract<
     const home = line.who === NARRATOR ? `the ${NARRATOR}'s voice is the video's, voice:` : `${line.who}'s voice is in ${LIBRARY_FILE}, or the file's cast:`;
     return [{ line: line.line, message: `${line.who} speaks in ${voice}, which is not one of the tool's voices`, hint: `${home} give one that npm run -s video -- voices lists` }];
   });
-  if (unspoken.length > 0) throw refused(unspoken);
-  return checked;
+  const { lengths, issues } = await measured(checkedLines(checked), video.plugin.dir);
+  if (unspoken.length + issues.length > 0) throw refused([...unspoken, ...issues]);
+  return { ...checked, lengths };
 }
 
 /** The defaults a script takes, a row for each value that nothing sets: what it is then, and the lines that take it. */
@@ -145,9 +174,10 @@ async function checkFile(file: string): Promise<void> {
   try {
     if (video.script) {
       const checked = await checkScript(video, host);
-      const lines = checked.scenes.flatMap((scene) => linesIn(scene.items));
+      const lines = checkedLines(checked);
       const said = lines.filter((line) => "text" in line).length;
-      log(`Checked: ${shown}, a script of ${count(video.script.scenes.length, "scene")} and ${count(lines.length, "line")}, ${said} of them said.`);
+      const played = lines.filter((line) => "sound" in line).length;
+      log(`Checked: ${shown}, a script of ${count(video.script.scenes.length, "scene")} and ${count(lines.length, "line")}, ${said} of them said${played > 0 ? ` and ${played} played` : ""}.`);
       return logDefaults(checked);
     }
     sameScene(video, host);
@@ -206,8 +236,8 @@ async function playScript(video: VideoFile, fit: boolean, plugin: () => Promise<
   const host = await plugin();
   const format = formatOf(host.scene, host.stage);
   const checked = await checkScript(video, host);
-  const { scenes } = checked;
-  const lines = scenes.flatMap((scene) => linesIn(scene.items));
+  const { scenes, over, lengths } = checked;
+  const lines = checkedLines(checked);
   log(`${count(scenes.length, "scene")}, ${count(lines.length, "line")}`);
   logDefaults(checked);
 
@@ -219,6 +249,11 @@ async function playScript(video: VideoFile, fit: boolean, plugin: () => Promise<
   /** How long each line lasts by itself, seconds, by its line in the file: none for an open one. */
   const own = new Map<number, number>();
   for (const line of lines) {
+    if ("sound" in line) {
+      if (line.action !== LOOP) own.set(line.line, lengths[line.sound]!);
+      log(`  line ${line.line} (${line.who}, ${line.sound}): ${lengths[line.sound]!.toFixed(2)}s${line.action === LOOP ? ", again and again" : ""}`);
+      continue;
+    }
     if (!("text" in line)) {
       if (line.length !== "open") own.set(line.line, line.length);
       continue;
@@ -234,46 +269,48 @@ async function playScript(video: VideoFile, fit: boolean, plugin: () => Promise<
   const file = path.join(video.cache, "compiled.json");
   const from = path.relative(video.cache, video.file).split(path.sep).join("/");
   await mkdir(video.cache, { recursive: true });
-  await writeFile(file, compiledText(compile(scenes, voices, { fps, loudness, moves: timing.moves }, from)));
+  await writeFile(file, compiledText(compile(scenes, voices, { fps, loudness, moves: timing.moves }, from, lengths, over)));
   const compiled = JSON.parse(await readFile(file, "utf8")) as Compiled;
   const seconds = (frames: number) => `${(frames / compiled.fps).toFixed(2)}s`;
   log(`\nCompiled ${video.name}: ${seconds(compiled.frames)}, ${compiled.frames} frames at ${compiled.fps} a second`);
-  compiled.scenes.forEach((scene, i) => {
-    log(`  scene ${i + 1}, at ${seconds(scene.from)} for ${seconds(scene.frames)}`);
-    for (const line of linesIn(scenes[i]!.items)) {
+  const parts = [...(over ? [{ what: "over the scenes", lines: compiled.lines!, items: over.items }] : []), ...compiled.scenes.map((scene, i) => ({ what: `scene ${i + 1}, at ${seconds(scene.from)} for ${seconds(scene.frames)}`, lines: scene.lines, items: scenes[i]!.items }))];
+  for (const part of parts) {
+    log(`  ${part.what}`);
+    for (const line of linesIn(part.items)) {
       const written = `${line.who} ${line.action}${"text" in line ? `: ${line.text}` : ""}`;
       const what = `    line ${String(line.line).padEnd(3)} ${written.length > 40 ? `${written.slice(0, 37)}...` : written.padEnd(40)}`;
-      const on = scene.lines.find((compiled) => compiled.line === line.line);
+      const on = part.lines.find((compiled) => compiled.line === line.line);
       if (!on) {
         log(`${what}  not there: ${own.has(line.line) ? "what it is under ends" : "its block ends"} before it begins`);
         continue;
       }
-      // A voice with fewer frames than it needs is cut, and a fitted action has another length than its own.
+      // A voice or a sound with fewer frames than it needs is cut, and a fitted action has another length than its own.
       // An action that is over at once, in less than a frame, has no speed, and an open one has none either.
       const needs = (own.get(line.line) ?? 0) * compiled.fps;
-      const cut = "text" in line && Math.ceil(needs - 1e-6) > on.frames;
-      const fitted = !("text" in line) && Math.round(needs) > 0 && Math.round(needs) !== on.frames;
+      const heard = !("values" in line);
+      const cut = heard && Math.ceil(needs - 1e-6) > on.frames;
+      const fitted = !heard && Math.round(needs) > 0 && Math.round(needs) !== on.frames;
       const loud = "volume" in on && on.volume !== 0 ? `, at ${on.volume}dB` : "";
       const how = !own.has(line.line) ? ", to the end of its block" : cut ? ", cut" : fitted ? `, ${(needs / on.frames).toFixed(2)} times its own speed` : "";
       log(`${what}  at ${seconds(on.from).padStart(7)} for ${seconds(on.frames).padStart(6)}, frames ${on.from} to ${on.from + on.frames - 1}${how}${loud}`);
     }
-  });
+  }
   log(`  ${shown(file)}`);
   if (fit) return undefined;
 
   const { clip } = madeFiles(video.cache, video.name, format);
   const size = FORMATS[format];
   const drawKey = keyOf("drawing", pictureOf(compiled), video.library?.raw, await codeKey(video.plugin.file, PLAYING));
-  const placed = compiledVoices(compiled, TTS_CACHE);
+  const placed = [...compiledVoices(compiled, TTS_CACHE), ...compiledSounds(compiled, video.plugin.dir)];
   const length = compiled.frames / compiled.fps;
   return {
     fps: compiled.fps,
     loudness: compiled.loudness,
     sound: {
-      key: keyOf("mix", placed.map(({ file, start, duration, volume }) => [path.basename(file), start, duration, volume]), length, compiled.loudness),
+      key: await mixKey(placed, length, compiled.loudness),
       async write(sound) {
         const { gain, lowered, loudness } = await writeMix(placed, length, sound, compiled.loudness);
-        if (!Number.isFinite(loudness)) return "nobody speaks: it is silence";
+        if (!Number.isFinite(loudness)) return "nothing is heard: it is silence";
         return `one gain of ${gain.toFixed(1)} dB, to ${loudness.toFixed(1)} LUFS${lowered > 0.05 ? `; its peaks lowered by at most ${lowered.toFixed(1)} dB` : ""}`;
       },
     },
@@ -469,7 +506,7 @@ async function makePlayed(video: VideoFile, outputs: Mode[], played: Played, { s
   if (stages.cached("sound", played.sound.key, [sound])) cached(`the sound, ${shown(sound)}`);
   else {
     await stages.forget("sound");
-    log(`Sound: the voices mixed at ${loudness} LUFS`);
+    log(`Sound: ${video.script ? "what is heard" : "the voices"} mixed at ${loudness} LUFS`);
     const how = await played.sound.write(sound);
     await stages.made("sound", played.sound.key);
     if (how) log(`  ${how}`);

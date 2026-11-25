@@ -87,4 +87,7 @@ test("the picture's part has no words, files, captions, loudness, volumes or lin
   assert.deepEqual(other((c) => ((c.scenes[0]!.lines[1] as { volume: number }).volume = -20)), picture);
   assert.deepEqual(other((c) => (c.scenes[0]!.lines[1]!.line = 60)), picture);
   assert.notDeepEqual(other((c) => (c.scenes[0]!.lines[0]!.from = 6)), picture);
+  // What is played is no part of it either, over the scenes or in one.
+  const tune = { line: 2, who: "tune", action: "loop", from: 0, frames: 42, sound: "tune.ogg", volume: -20 };
+  assert.deepEqual(other((c) => ((c.lines = [tune]), c.scenes[0]!.lines.push({ ...tune, line: 8, action: "play" }))), picture);
 });

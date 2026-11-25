@@ -89,8 +89,8 @@ test("the check gives the scenario worked out: what is said, and the plugin's ac
 });
 
 test("an unknown action is refused with its line, the actions there are, and the nearest", async () => {
-  assert.deepEqual(await issuesOf("sq say: Hi.\nsq slid to=right"), [{ line: 6, message: 'no action is named "slid"', hint: "the actions are say and slide: did you mean slide?" }]);
-  assert.deepEqual((await issuesOf("sq dance"))[0]!.hint, "the actions are say and slide");
+  assert.deepEqual(await issuesOf("sq say: Hi.\nsq slid to=right"), [{ line: 6, message: 'no action is named "slid"', hint: "the actions are say, slide, play and loop: did you mean slide?" }]);
+  assert.deepEqual((await issuesOf("sq dance"))[0]!.hint, "the actions are say, slide, play and loop");
 });
 
 test("a wrong value is refused with its line, the schema's reason, and the action's example", async () => {
@@ -112,6 +112,72 @@ test("say is the tool's: its speaker has a voice or is the narrator, it has word
   const nobody = await checkScenario(scripted(), written("mo say: Hi."), LIBRARY, [], TIMING);
   assert.ok("issues" in nobody);
   assert.equal(nobody.issues[0]!.hint, "no character has a voice");
+});
+
+/** The library's sounds, each with its file. */
+const SOUNDS = { bell: "sounds/bell.wav", rain: "sounds/rain.flac" };
+/** A script of one scene, and the cartoon's own, whose first row is on line 2, checked with the library's sounds. */
+const played = async (script: string, own?: string, sounds: Record<string, string> = SOUNDS) => {
+  const over = own === undefined ? {} : { over: { line: 1, items: readScript(own, 2).items } };
+  return checkScenario(scripted(), { ...written(script), ...over }, LIBRARY, ["sq"], TIMING, { rain: -20 }, sounds);
+};
+
+test("play and loop are the tool's: the sound is one of the library's, and the check gives its file and how loud it is", async () => {
+  const checked = await played("rain loop\nsq say: Here I go!\nbell play volume=-6dB", "rain2 loop", { ...SOUNDS, rain2: "sounds/rain2.mp3" });
+  assert.ok("scenes" in checked, JSON.stringify(checked));
+  assert.deepEqual(checked.scenes[0]!.items, [
+    { line: 5, who: "rain", action: "loop", sound: "sounds/rain.flac", volume: -20 },
+    { line: 6, who: "sq", action: "say", text: "Here I go!", volume: 0 },
+    { line: 7, who: "bell", action: "play", sound: "sounds/bell.wav", volume: -6 },
+  ]);
+  assert.deepEqual(checked.over, { line: 1, items: [{ line: 2, who: "rain2", action: "loop", sound: "sounds/rain2.mp3", volume: 0 }] });
+  // With no script of its own, a cartoon has none checked.
+  const alone = await played("bell play");
+  assert.ok("scenes" in alone && !("over" in alone));
+});
+
+test("a sound that the library lacks is refused, and what is no sound's: words, and values but how loud", async () => {
+  const wrong = async (script: string, sounds?: Record<string, string>) => {
+    const checked = await played(script, undefined, sounds);
+    assert.ok("issues" in checked, "it is refused");
+    return checked.issues.map(({ line, message, hint }) => [line, message, hint]);
+  };
+  assert.deepEqual(await wrong("bel play"), [[5, 'no sound is named "bel"', "the library's sounds are bell and rain: did you mean bell?"]]);
+  assert.deepEqual(await wrong("sq loop\nsq say: Hi."), [[5, 'no sound is named "sq"', "the library's sounds are bell and rain"]]);
+  assert.deepEqual(await wrong("play bell"), [[5, 'no action is named "bell"', "a sound's name comes first: bell play"]]);
+  assert.deepEqual(await wrong("loop bel"), [[5, 'no action is named "bel"', "the actions are say, slide, play and loop"]]);
+  assert.deepEqual(await wrong("bell play", {}), [[5, 'no sound is named "bell"', "the library has no sound: its sounds: name each with its file"]]);
+  const form = (line: string) => `write only the sound, and how loud it is: ${line} volume=-12dB`;
+  assert.deepEqual(await wrong("bell play takes=2s fast=1"), [[5, "play takes no takes and fast", form("bell play")]]);
+  assert.deepEqual(await wrong("bell play: Ding!"), [[5, "play takes no words after a colon: only say does", form("bell play")]]);
+  assert.deepEqual(await wrong("rain loop pause=1s\nsq say: Hi."), [[5, "loop takes no pause", form("rain loop")]]);
+  assert.deepEqual((await wrong("bell play volume=2"))[0]!.slice(0, 2), [5, "volume=2: it is a number, and not a volume"]);
+});
+
+test("the cartoon's own script has sounds alone: anything else in it is refused, with its line", async () => {
+  const wrong = async (own: string) => {
+    const checked = await played("sq say: Hi.", own);
+    assert.ok("issues" in checked, "it is refused");
+    return checked.issues.map(({ line, message }) => [line, message]);
+  };
+  assert.deepEqual(await wrong("rain loop\nnarrator say: Once.\nsq slide to=right\nbel play"), [
+    [3, "the cartoon's own script plays sounds alone, and narrator say is none"],
+    [4, "the cartoon's own script plays sounds alone, and sq slide is none"],
+    [5, 'no sound is named "bel"'],
+  ]);
+  assert.deepEqual(await wrong("in order:\n  bell play\n  sq say: Hi."), [[4, "the cartoon's own script plays sounds alone, and sq say is none"]]);
+  assert.deepEqual(await wrong("rain loop\nrain loop"), [[3, "rain's sound is busy with line 2, which goes on to the end of the cartoon"]]);
+  const checked = await played("sq say: Hi.", "sq slide to=right");
+  assert.ok("issues" in checked);
+  assert.equal(checked.issues[0]!.hint, "write it in a scene's script; a sound is played by play or loop: tune loop");
+});
+
+test("the plugin's check is told of its own actions alone, whatever is played beside them", async () => {
+  const seen: SceneActions[][] = [];
+  const script = { ...written("rain loop\nsq slide to=right\n& bell play\nsq slide to=left"), over: { line: 1, items: readScript("rain2 loop", 2).items } };
+  const checked = await checkScenario(scripted(seen), script, LIBRARY, ["sq"], TIMING, {}, { ...SOUNDS, rain2: "x" });
+  assert.ok("scenes" in checked, JSON.stringify(checked));
+  assert.deepEqual(seen[0]![0]!.actions.map(({ line, action, begun }) => [line, action, begun]), [[6, "slide", []], [8, "slide", [6]]]);
 });
 
 test("every mistake is found in one pass, and the plugin's own check runs only on a script with none before it", async () => {

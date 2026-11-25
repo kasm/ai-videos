@@ -1,5 +1,5 @@
-// Random scripts with values on every level (AGENTS.md, "A script", "Values"): whole video files, read,
-// checked and compiled as the tool does it. None throws; a mistake is told at a line of the file; and a
+// Random scripts with values on every level, and sounds over their scenes and in them (AGENTS.md, "A
+// script", "Values"): whole video files, read, checked and compiled as the tool does it. None throws; a mistake is told at a line of the file; and a
 // script with none compiles to a whole scenario, which keeps the promises of "What happens at once". The
 // promises, and the laws as they read, are tried on the script and the compiled scenario alone, without
 // plan.ts and times.ts, which lay it.
@@ -13,7 +13,7 @@ import { compile, compiledText, type Compiled, type CompiledLine } from "./compi
 import { secondsOf, shownAs, type Span, type Worked } from "./formula.ts";
 import { different, random, type Random } from "./random.ts";
 import { isBlock } from "./read.ts";
-import { checkScenario, linesIn, type Anchor, type CheckedLine, type CheckedScene, type Default, type Issue, type SceneChecked, type ScriptBlock, type ScriptItem, type ScriptPlugin } from "./scenario.ts";
+import { checkScenario, linesIn, type Anchor, type CheckedLine, type CheckedOver, type CheckedScene, type Default, type Issue, type SceneChecked, type ScriptBlock, type ScriptItem, type ScriptPlugin } from "./scenario.ts";
 import { pictureOf, shownAt } from "./shown.ts";
 import { writtenScript } from "./video-file.ts";
 import { sharesOf } from "./words.ts";
@@ -72,16 +72,22 @@ const PLUGIN: ScriptPlugin = {
 };
 const SPEAKERS = ["pip", "mo", "tuk", "radio", "bird", "crowd"];
 const TIMING = { lead: 0.6, gap: 0.4, tail: 1 };
+/** The library's sounds, each with its file: those that a scene may play, those of each who is under the rest, and those of the cartoon's own script. */
+const IN_SCENES = ["bell", "rain", "gong"];
+const UNDER: Record<string, string> = { radio: "jingle", bird: "chirp", crowd: "clap" };
+const OVER = ["tune", "hum", "horn"];
+const SOUNDS = Object.fromEntries([...IN_SCENES, ...Object.values(UNDER), ...OVER].map((name) => [name, `sounds/${name}.wav`]));
 /** The library's volumes, dB. */
-const VOLUMES = { pip: -2, radio: -8.5 };
+const VOLUMES = { pip: -2, radio: -8.5, rain: -20, tune: -18.5 };
 const MOVES = { slowest: 0.5, fastest: 2 };
-/** What a line of a script keeps busy, of its character: a row that is said, or that names an action. */
-const channelsOf = (who: string, action: string) => (action === "say" ? ["voice"] : PLUGIN.actions[action]!.channels).map((channel) => `${who} ${channel}`);
+/** What a line of a script keeps busy, of its character or its sound: a row that is said or played, or that names an action. */
+const channelsOf = (who: string, action: string) => (action === "say" ? ["voice"] : action === "play" || action === "loop" ? ["sound"] : PLUGIN.actions[action]!.channels).map((channel) => `${who} ${channel}`);
 
 const WORDS = ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty"];
 
 /** Rows with a mistake in them, formulas that are a mistake in some places or in all, and names that are none of a value. */
 const WRONG_ROWS = [
+  ...["bell play takes=1s", "bell loop: Ding.", "pip play", "nobody loop", "bell say: Hi.", "bell play far=2", "bell play twice", "loop bell", "pip walk to=bell", "tune loop"],
   ...["pip watch takes=1s", "pip watch speed=slow", "pip watch arrive=prev.end", "pip watch far=0"],
   ...["pip", "pip walk left", "Pip say: Hi.", "pip say", "pip dance to=left", "nobody say: Hi.", "nobody walk to=left", "pip walk to=left: Whee!", "pip say loud=2: Hi.", "pip say volume=2: Hi.", "pip walk volume=-6dB", "pip Walk to=left"],
   ...["pip walk to=left to=right", "pip walk to=", "pip walk pause=1s", "pip walk nobody=1", "pip walk pip.to=left", "pip walk to=up", "pip hop times=0", "pip walk far=2px", "pip walk far=1 takes=1s speed=2"],
@@ -93,13 +99,15 @@ const WRONG = [
   ...["beside(left, 2)", "beside(left, 1) * 2", "beside(left, beside(right, 1))", "besid(left, 2)", "beside()", "beside(left)", "beside(left, 2", "beside(left 2)", "beside(left, 2s)", "between(left, a.length)", "between(a.end, left)", "between(nobody, left)", "left, right"],
   ...["volume", "-6dB", "6dB", "hush", "3dB * 1s", "3dB + 1", "20dB", "-61dB", "a.length / 1s * 3dB", "6db"],
 ];
-const WRONG_NAMES = ["puase", "nobody.speed", "say.speed", "pip.pause", "lead", "Near", "pip.walk.far", "say.far", "narrator.beat", "walk.say", "watch.takes", "watch.speed", "walk.volume", "watch.volume", "sk.volume"];
+const WRONG_NAMES = ["bell.takes", "play.speed", "loop.arrive", "bel.volume", "bell.pause", "puase", "nobody.speed", "say.speed", "pip.pause", "lead", "Near", "pip.walk.far", "say.far", "narrator.beat", "walk.say", "watch.takes", "watch.speed", "walk.volume", "watch.volume", "sk.volume"];
 
 /** What has a label: a line that is said, its words; an action given its length; a block, and whether a row is in it still. */
 interface Above {
   label: string;
   words?: string[];
   given?: boolean;
+  /** A sound that is played once, which is given its length by its file. */
+  played?: boolean;
   open?: boolean;
 }
 
@@ -144,8 +152,9 @@ function randomFile({ int, chance, pick }: Random): string {
   /** What has a label above in the scene. */
   let above: Above[] = [];
   const measured = (names: string[]): string => {
-    const known = above.filter(({ words, given }) => words || given).map(({ label }) => `${label}.length`);
-    const of = () => (known.length > 0 ? pick(known) : "1s");
+    const lengths = (list: Above[]) => list.map(({ label }) => `${label}.length`);
+    const [known, sounds] = [lengths(above.filter(({ words, given }) => words || given)), lengths(above.filter(({ played }) => played))];
+    const of = () => (known.length > 0 ? pick(sounds.length > 0 && chance(0.5) ? sounds : known) : "1s");
     return chance(0.5) ? time(names) : pick([() => of(), () => `${of()} / 2`, () => `(${of()} + ${time(names, 0)}) * 1.5`, () => `3s - ${of()}`, () => `${of()} - ${of()}`, () => `${of()} / 2s * beat`])();
   };
   const moment = (first: boolean): string => {
@@ -166,7 +175,7 @@ function randomFile({ int, chance, pick }: Random): string {
       const whose = pick(["", "", "pip.", "mo.", "walk.", "hop.", "spin.", ...(chance(0.2) ? ["watch."] : [])]);
       const name = pick(["beat", "lag", "near", "much", "far", "to", "times", "pause", "pause", "takes", "speed", "arrive", "volume", "volume", "hush", ...(level === "block" ? [] : ["lead", "tail"])]);
       // Only what is said has a volume.
-      const loudest = /^(walk|hop|spin|watch)/.test(whose) && !wrong(0.1) ? pick(["say.", "narrator."]) : whose;
+      const loudest = /^(walk|hop|spin|watch)/.test(whose) && !wrong(0.1) ? pick(["say.", "narrator.", "play.", "loop.", "bell.", "rain.", "tune."]) : whose;
       const key = ["pause", "lead", "tail"].includes(name) && !wrong(0.1) ? name : `${name === "volume" ? loudest : whose}${name}`;
       if (wrong(0.08)) {
         values.set(pick(WRONG_NAMES), time(["beat"]));
@@ -213,6 +222,11 @@ function randomFile({ int, chance, pick }: Random): string {
     watching.at(-1)!.add(who);
     return `${who} watch${chance(0.7) ? "" : ` far=${number(["near", "much"])}`}`;
   };
+  /** A sound that a row plays: `under` is who speaks when it is under the rest, whose own it is; none that is looped in a block around the row. */
+  const aSound = (under: string | undefined): string | undefined => {
+    const sound = wrong(0.05) ? pick([...OVER, "pip", "nobody"]) : under === undefined ? pick(IN_SCENES) : UNDER[under]!;
+    return watching.some((block) => block.has(sound)) && !wrong(0.1) ? undefined : sound;
+  };
   const labelled = (): Above | undefined => (chance(0.5) ? { label: wrong(0.1) ? pick(["a", "b", "z"]) : `${"abcdefgh"[labels % 8]}${labels++ < 8 ? "" : labels}` } : undefined);
   const saying = (): string[] => WORDS.slice(int(WORDS.length)).slice(0, 1 + int(chance(0.2) ? 20 : 5));
   const spoken = (words: string[]) => `${words.map((word, i) => `${word}${i < words.length - 1 && chance(0.2) ? pick([",", ".", ":", "!"]) : ""}`).join(" ")}.`;
@@ -252,6 +266,17 @@ function randomFile({ int, chance, pick }: Random): string {
         waited = k > 0;
         continue;
       }
+      if (chance(0.15)) {
+        const sound = aSound(under);
+        // It is in place of what would have been written: no channel of that is busy.
+        if (!sound || taken(busy, channelsOf(sound, "play"))) {
+          waited = k > 0;
+          continue;
+        }
+        rows.push(`${margin}${own}${sound} play${loud()}${anchor}`);
+        if (label) above.push(Object.assign(label, { given: true, played: true }));
+        continue;
+      }
       if (says) {
         const words = saying();
         rows.push(`${margin}${own}${who} say${loud()}${anchor}: ${spoken(words)}`);
@@ -265,7 +290,7 @@ function randomFile({ int, chance, pick }: Random): string {
   };
   /** The rows of a block, in order or all at once; `under` is who speaks in it when it is under the rest, where nobody acts. */
   const write = (margin: string, deep: number, atOnce: boolean, under?: string) => {
-    const count = 1 + int(4);
+    const count = (under === undefined ? 1 : 2) + int(4);
     let afterUnder = false;
     /** What is busy with the rows that begin at once: all of a block together, or those that are joined. */
     let busy = new Set<string>();
@@ -294,6 +319,27 @@ function randomFile({ int, chance, pick }: Random): string {
         if (!beside) unwatched.push(rows.at(-1)!);
         // What is joined to it would be in a block with it.
         afterUnder = !beside;
+        continue;
+      }
+      // A loop is written as one who watches is, under the rest too.
+      if (chance(under === undefined ? 0.06 : 0.35) && (beside || (!last && !joined))) {
+        const sound = aSound(under);
+        if (!sound || taken(busy, channelsOf(sound, "loop"))) continue;
+        watching.at(-1)!.add(sound);
+        rows.push(`${margin}${joined}${own}${sound} loop${loud()}${beside ? anchor : ""}`);
+        if (label) above.push(Object.assign(label, { open: true }));
+        if (!beside) unwatched.push(rows.at(-1)!);
+        afterUnder = !beside;
+        continue;
+      }
+      if (chance(under === undefined ? 0.14 : 0.35)) {
+        const sound = aSound(under);
+        if (!sound || (taken(busy, channelsOf(sound, "play")) && anchor === "")) continue;
+        afterUnder = false;
+        waited = true;
+        unwatched = [];
+        rows.push(`${margin}${joined}${own}${sound} play${loud()}${anchor}`);
+        if (label) above.push(Object.assign(label, { given: true, played: true }));
         continue;
       }
       afterUnder = false;
@@ -335,6 +381,26 @@ function randomFile({ int, chance, pick }: Random): string {
     }
   };
 
+  /** The rows of the cartoon's own script: each sound once, or twice in order. */
+  const writeOwn = (): string[] => {
+    const own: string[] = [];
+    const left = [...OVER];
+    let labels = 0;
+    for (let k = 0, count = 1 + int(3); k < count && left.length > 0; k++) {
+      const sound = left.splice(int(left.length), 1)[0]!;
+      const label = chance(0.4) ? `[${"abc"[labels++]}] ` : "";
+      const anchor = chance(0.4) ? ` @ ${k > 0 && chance(0.5) ? pick(["prev.start + beat", "prev.50%", "prev.end", "prev.end + lag"]) : pick(["block.start + 1s", "block.50%", "block.end - 2s", "block.end - beat * 3"])}` : "";
+      if (wrong(0.1)) own.push(pick(["pip say: Hi.", "pip walk to=left", "nobody play", "tune play takes=2s", "bell play", "under:", "[a] tune", "narrator say: One."]));
+      if (chance(0.25)) {
+        own.push(`${label}${pick(["in order", "in order", "under", "together"])}${chance(0.5) ? "" : ` ${chance(0.5) ? `volume=${volume()}` : `pause=${time(["beat"], 1)}`}`}${anchor}:`);
+        const two = own.at(-1)!.includes("together") ? (left.splice(0, 1)[0] ?? "bell") : sound;
+        own.push(`  ${sound} play${loud()}`, ...(chance(0.3) && left.length > 0 ? [`  ${left.splice(0, 1)[0]!} loop`] : []), `  ${two} play${loud()}`);
+        continue;
+      }
+      own.push(`${label}${sound} ${pick(["loop", "play"])}${loud()}${anchor}`);
+    }
+    return own;
+  };
   const scenes = Array.from({ length: 1 + int(3) }, (_, n) => {
     rows.length = 0;
     above = [];
@@ -367,19 +433,21 @@ function randomFile({ int, chance, pick }: Random): string {
   ]);
   if (wrong(0.1)) cartoon.delete(pick([...cartoon.keys()]));
   if (wrong(0.05)) cartoon.set("beat", pick(["lag", "beat", "two", "a.end", "a.length", "{ short: 1s }", "", "[1s]"]));
-  return ["use: cartoon", ...(wrong(0.02) ? ["valuse: { beat: 1s }"] : []), "values:", ...[...cartoon].map(([name, text]) => `  ${name}: ${text}`), "scenes:", ...scenes.flat(), ""].join("\n");
+  return ["use: cartoon", ...(wrong(0.02) ? ["valuse: { beat: 1s }"] : []), "values:", ...[...cartoon].map(([name, text]) => `  ${name}: ${text}`), ...(chance(0.4) ? ["script: |", ...writeOwn().map((row) => `  ${row}`)] : []), "scenes:", ...scenes.flat(), ""].join("\n");
 }
 
 type Item = ScriptItem<CheckedLine>;
 type Block = ScriptBlock<CheckedLine>;
 
-/** A script with no mistake, checked, and how long its voices turn out to be, frames. */
+/** A script with no mistake, checked, and how long its voices and its sounds, by their files, turn out to be, frames. */
 interface Taken {
   text: string;
   scenes: CheckedScene[];
+  over?: CheckedOver;
   defaults: Default[];
   fps: number;
   voices: number[];
+  sounds: Record<string, number>;
 }
 
 const from = random(5);
@@ -395,6 +463,11 @@ const FILES = different(
   (text) => text,
 );
 const saidIn = (scenes: CheckedScene[]) => scenes.flatMap((scene) => linesIn(scene.items)).filter((line) => "text" in line);
+/** The scripts of a scenario: its scenes', and the cartoon's own. */
+const partsIn = ({ scenes, over }: Pick<Taken, "scenes" | "over">): (CheckedScene | CheckedOver)[] => [...scenes, ...(over ? [over] : [])];
+const playedIn = (taken: Pick<Taken, "scenes" | "over">) => partsIn(taken).flatMap(({ items }) => linesIn(items)).filter((line) => "sound" in line);
+/** Some length for each sound, frames. */
+const someSounds = (): Record<string, number> => Object.fromEntries(Object.values(SOUNDS).map((file) => [file, 1 + from.int(from.chance(0.6) ? 300 : 40)]));
 /** As it comes to its plugin's process and back: as JSON. */
 const sent = <T>(data: T): T => JSON.parse(JSON.stringify(data)) as T;
 
@@ -402,16 +475,16 @@ const TAKEN: Taken[] = [];
 const REFUSED: { text: string; issues: Issue[] }[] = [];
 for (const text of FILES) {
   try {
-    const checked = sent(await checkScenario(PLUGIN, sent(writtenScript(text)!), undefined, SPEAKERS, TIMING, VOLUMES));
+    const checked = sent(await checkScenario(PLUGIN, sent(writtenScript(text)!), undefined, SPEAKERS, TIMING, VOLUMES, SOUNDS));
     if ("issues" in checked) REFUSED.push({ text, issues: checked.issues });
-    else TAKEN.push({ text, ...checked, fps: from.pick([24, 25, 30]), voices: saidIn(checked.scenes).map(() => 1 + from.int(from.chance(0.3) ? 200 : 60)) });
+    else TAKEN.push({ text, ...checked, fps: from.pick([24, 25, 30]), voices: saidIn(checked.scenes).map(() => 1 + from.int(from.chance(0.3) ? 200 : 60)), sounds: someSounds() });
   } catch (e) {
     throw new Error(`${text}\n\nthrows`, { cause: e });
   }
 }
 
-const compiledOf = ({ scenes, fps, voices }: Taken, lengths = voices): Compiled =>
-  compile(scenes, lengths.map((frames, k) => ({ file: `${k}.wav`, duration: frames / fps, mouth: Array.from({ length: frames }, () => 0.5) })), { fps, loudness: -14, moves: MOVES }, "x.yaml");
+const compiledOf = ({ scenes, over, fps, voices, sounds }: Taken, lengths = voices): Compiled =>
+  compile(scenes, lengths.map((frames, k) => ({ file: `${k}.wav`, duration: frames / fps, mouth: Array.from({ length: frames }, () => 0.5) })), { fps, loudness: -14, moves: MOVES }, "x.yaml", Object.fromEntries(Object.entries(sounds).map(([file, frames]) => [file, frames / fps])), over);
 
 /** Tries every script with no mistake, says how many different ones they are, and shows the one that fails. */
 function tried(t: TestContext, check: (taken: Taken) => void): void {
@@ -420,26 +493,35 @@ function tried(t: TestContext, check: (taken: Taken) => void): void {
     try {
       check(taken);
     } catch (e) {
-      throw new Error(`${taken.text}\n\nits voices, at ${taken.fps} frames a second: ${taken.voices}\n\n${e instanceof Error ? e.message : e}`, { cause: e });
+      throw new Error(`${taken.text}\n\nits voices, at ${taken.fps} frames a second: ${taken.voices}; its sounds: ${JSON.stringify(taken.sounds)}\n\n${e instanceof Error ? e.message : e}`, { cause: e });
     }
   }
 }
 
-/** A scenario as it is checked and as it is compiled, side by side, scene by scene: what is around each thing, and when it happens by the laws. */
-function laid({ scenes, fps }: Pick<Taken, "scenes" | "fps">, compiled: Compiled, voices: number[]) {
-  const at = new Map(compiled.scenes.flatMap((scene) => scene.lines).map((line) => [line.line, line]));
+/**
+ * A scenario as it is checked and as it is compiled, side by side, scene by scene, and the cartoon's own script
+ * as a scene over all of them, whose every row begins with it and is left: what is around each thing, and when
+ * it happens by the laws.
+ */
+function laid(taken: Pick<Taken, "scenes" | "over" | "fps" | "sounds">, compiled: Compiled, voices: number[]) {
+  const { scenes, fps, sounds } = taken;
+  const at = new Map([...(compiled.lines ?? []), ...compiled.scenes.flatMap((scene) => scene.lines)].map((line) => [line.line, line]));
   /** How long each line lasts when nothing cuts it, frames, by its line: of what is said, or given its length. */
   const known = new Map<number, number>();
   const framesOf = (span: Span) => Math.round(secondsOf(span, (line) => known.get(line)! / fps) * fps);
   let next = 0;
-  for (const line of scenes.flatMap((scene) => linesIn(scene.items))) {
+  for (const line of partsIn(taken).flatMap((scene) => linesIn(scene.items))) {
     if ("text" in line) known.set(line.line, voices[next++]!);
+    else if ("sound" in line) void (line.action === "play" && known.set(line.line, sounds[line.sound]!));
     else if (line.takes !== undefined) known.set(line.line, Math.max(1, framesOf(line.takes)));
   }
   const pauseOf = (span: Span | undefined) => Math.max(0, framesOf(span!));
 
-  return scenes.map((scene, n) => {
-    const { from, frames } = compiled.scenes[n]!;
+  const PAUSES = { setting: {}, lead: 0, pause: 0, tail: 0 };
+  return partsIn(taken).map((part, n) => {
+    const over = n === scenes.length;
+    const scene: CheckedScene = { ...PAUSES, ...part };
+    const { from, frames } = over ? { from: 0, frames: compiled.frames } : compiled.scenes[n]!;
     const order: Item[] = [];
     const parent = new Map<Item, Block | CheckedScene>();
     const add = (item: Item, around: Block | CheckedScene) => {
@@ -449,10 +531,10 @@ function laid({ scenes, fps }: Pick<Taken, "scenes" | "fps">, compiled: Compiled
     };
     for (const item of scene.items) add(item, scene);
     const isScene = (one: Item | CheckedScene): one is CheckedScene => one === scene;
-    const inOrder = (block: Block | CheckedScene) => isScene(block) || block.order === "in order";
+    const inOrder = (block: Block | CheckedScene) => (isScene(block) ? !over : block.order === "in order");
     const ending = (block: Block | CheckedScene) => !isScene(block) && block.order === "ending together";
-    const open = (item: Item) => !isBlock(item) && "length" in item && item.length === "open";
-    const left = (item: Item) => (isBlock(item) && item.under === true) || open(item);
+    const open = (item: Item) => !isBlock(item) && (("length" in item && item.length === "open") || item.action === "loop");
+    const left = (item: Item) => (isBlock(item) && item.under === true) || open(item) || (over && parent.get(item) === scene);
     /** `x` and the blocks it is in, the inner first, up to the scene's own. */
     const withBlocks = (x: Item): Item[] => {
       const list = [x];
@@ -522,7 +604,7 @@ function laid({ scenes, fps }: Pick<Taken, "scenes" | "fps">, compiled: Compiled
       if (waits.length === 0) return [start + (isScene(block) ? pauseOf(scene.lead) : 0)];
       return [start, ...waits.map((item) => uncutOf(item) + pauseOf(block.pause))];
     };
-    return { scene, from, frames, order, parent, isScene, inOrder, ending, open, left, withBlocks, aboveIn, waited, there, lasts, cutBy, named, startOf, uncutOf, freeOf, momentOf, beginsBy, pauseOf };
+    return { scene, over, from, frames, order, parent, isScene, inOrder, ending, open, left, withBlocks, aboveIn, waited, there, lasts, cutBy, named, startOf, uncutOf, freeOf, momentOf, beginsBy, pauseOf };
   });
 }
 type Laid = ReturnType<typeof laid>[number];
@@ -549,7 +631,7 @@ test("random scripts: none throws, and a mistake is told once, at lines of its f
 });
 
 test("random scripts: there are many with no mistake, and everything a script can have is in them", (t) => {
-  const count = { placedInLine: 0, placedInSpots: 0, scenes: 0, lines: 0, onTwoChannels: 0, twoThingsAtOnce: 0, neverFitted: 0, surelyBegun: 0, open: 0, openInOrder: 0, openBeside: 0, openAnchored: 0, openEnding: 0, openNamed: 0, joined: 0, under: 0, anchored: 0, byWord: 0, byPrev: 0, byBlock: 0, takes: 0, arrives: 0, hurried: 0, slowed: 0, fastest: 0, slowest: 0, lengthsRead: 0, pauseOfLengths: 0, cutShort: 0, notThere: 0, waitedForItsChannel: 0, endingTogether: 0, begunLater: 0, endingLater: 0, setOnScene: 0, setOnBlock: 0, setOnLine: 0, forOne: 0, forAnAction: 0, defaults: 0, quieter: 0, louder: 0, ofTheLibrary: 0, sayVolume: 0, oneVolume: 0, blockVolume: 0 };
+  const count = { placedInLine: 0, placedInSpots: 0, scenes: 0, lines: 0, onTwoChannels: 0, twoThingsAtOnce: 0, neverFitted: 0, surelyBegun: 0, open: 0, openInOrder: 0, openBeside: 0, openAnchored: 0, openEnding: 0, openNamed: 0, joined: 0, under: 0, anchored: 0, byWord: 0, byPrev: 0, byBlock: 0, takes: 0, arrives: 0, hurried: 0, slowed: 0, fastest: 0, slowest: 0, lengthsRead: 0, pauseOfLengths: 0, cutShort: 0, notThere: 0, waitedForItsChannel: 0, endingTogether: 0, begunLater: 0, endingLater: 0, played: 0, playedAnchored: 0, playedEnding: 0, playedCut: 0, playedNotThere: 0, lengthOfOne: 0, looped: 0, loopedUnder: 0, loopedBeside: 0, loopedCut: 0, soundsOfTwo: 0, over: 0, overLoops: 0, overCut: 0, overAnchored: 0, overInOrder: 0, overFromTheEnd: 0, soundVolume: 0, overVolume: 0, setOnScene: 0, setOnBlock: 0, setOnLine: 0, forOne: 0, forAnAction: 0, defaults: 0, quieter: 0, louder: 0, ofTheLibrary: 0, sayVolume: 0, oneVolume: 0, blockVolume: 0 };
   tried(t, (taken) => {
     const compiled = compiledOf(taken);
     count.placedInLine += /walk.* to=(beside|between)\(/.test(taken.text) ? 1 : 0;
@@ -563,12 +645,28 @@ test("random scripts: there are many with no mistake, and everything a script ca
     count.sayVolume += /say\.volume(=|:)/.test(taken.text) ? 1 : 0;
     count.oneVolume += /(pip|mo)\.volume(=|:)/.test(taken.text) ? 1 : 0;
     count.blockVolume += /(in order|together|under)[^:]* volume=/.test(taken.text) ? 1 : 0;
+    count.soundVolume += /(bell|rain|tune|play|loop)\.volume(=|:)/.test(taken.text) ? 1 : 0;
+    count.overVolume += /script: \|\n( {2}.*\n)*? {2}.* (play|loop) volume=/.test(taken.text) ? 1 : 0;
     for (const line of saidIn(taken.scenes)) {
       if (line.volume < 0) count.quieter++;
       if (line.volume > 0) count.louder++;
       if (line.volume === (VOLUMES as Record<string, number>)[line.who]) count.ofTheLibrary++;
     }
     for (const one of laid(taken, compiled, taken.voices)) {
+      if (one.over) {
+        count.over++;
+        for (const line of linesOf(one)) {
+          const there = one.there(line);
+          if (line.action === "loop") count.overLoops++;
+          else if (there && there.frames < one.lasts(line)) count.overCut++;
+          if (line.anchor?.of === "block" && line.anchor.at === "end") count.overFromTheEnd++;
+          else if (line.anchor) count.overAnchored++;
+          if (one.parent.get(line) !== one.scene) count.overInOrder++;
+        }
+        continue;
+      }
+      const sounding = linesOf(one).filter((line) => "sound" in line);
+      count.soundsOfTwo += sounding.some((line) => sounding.some((other) => other !== line && one.there(other) && one.there(line) && one.there(other)!.from < one.there(line)!.from + one.there(line)!.frames && one.there(line)!.from < one.there(other)!.from + one.there(other)!.frames)) ? 1 : 0;
       count.scenes++;
       for (const item of one.order) {
         if (isBlock(item) && item.joined) count.joined++;
@@ -586,6 +684,25 @@ test("random scripts: there are many with no mistake, and everything a script ca
           if (typeof at === "object" && "word" in at) count.byWord++;
         }
         if (item.anchor) count.anchored++;
+        if (!isBlock(item) && "sound" in item) {
+          const there = one.there(item);
+          const block = one.parent.get(item)!;
+          const under = one.withBlocks(item).some((z) => z !== item && one.left(z));
+          if (item.action === "loop") {
+            count.looped++;
+            if (under) count.loopedUnder++;
+            if (!one.inOrder(block)) count.loopedBeside++;
+            if (there && under && there.frames < one.lasts(item)) count.loopedCut++;
+            continue;
+          }
+          count.played++;
+          if (item.anchor) count.playedAnchored++;
+          if (one.ending(block)) count.playedEnding++;
+          if (!there) count.playedNotThere++;
+          else if (there.frames < one.lasts(item)) count.playedCut++;
+          if (one.order.some((other) => spansOf(other).some((span) => typeof span === "object" && span.lengths.some(({ line }) => line === item.line)))) count.lengthOfOne++;
+          continue;
+        }
         if (one.open(item)) {
           const block = one.parent.get(item)!;
           count.open++;
@@ -603,7 +720,7 @@ test("random scripts: there are many with no mistake, and everything a script ca
         if (!there) count.notThere++;
         else if (there.frames < one.lasts(item)) count.cutShort++;
         if (there && !item.anchor && !one.inOrder(one.parent.get(item)!) && !one.ending(one.parent.get(item)!) && there.from > one.startOf(one.parent.get(item)!)) count.waitedForItsChannel++;
-        if ("text" in item) continue;
+        if (!("values" in item)) continue;
         if (item.channels.length > 1) count.onTwoChannels++;
         const beside = there ? linesOf(one).flatMap((other) => (other !== item && other.who === item.who ? (one.there(other) ?? []) : [])) : [];
         if (there && beside.some((other) => other.from < there.from + there.frames && there.from < other.from + other.frames)) count.twoThingsAtOnce++;
@@ -633,6 +750,16 @@ test("random scripts: each compiles to a whole scenario, of plain values, with s
     for (const { setting, lines } of compiled.scenes) {
       for (const x of Object.values((setting as { spots: Record<string, unknown> }).spots)) assert.ok(Number.isFinite(x), `a spot is ${x}`);
       for (const line of lines) if (line.action === "walk" && "values" in line) assert.ok(Number.isFinite((line.values as { to: unknown }).to), `line ${line.line} goes to no x`);
+    }
+    assert.equal(compiled.lines !== undefined, taken.over !== undefined);
+    const own = linesIn(taken.over?.items ?? []).map(({ line }) => line);
+    assert.deepEqual((compiled.lines ?? []).map(({ line }) => line), own.filter((line) => compiled.lines!.some((one) => one.line === line)), "the cartoon's own lines are not in the order written");
+    for (const line of compiled.lines ?? []) {
+      assert.ok(Number.isSafeInteger(line.from) && Number.isSafeInteger(line.frames) && line.frames > 0 && line.from >= 0 && line.from + line.frames <= compiled.frames, `line ${line.line} is from ${line.from} for ${line.frames}`);
+    }
+    for (const line of [...(compiled.lines ?? []), ...compiled.scenes.flatMap((scene) => scene.lines)]) {
+      if (line.action !== "play" && line.action !== "loop") assert.ok(!("sound" in line));
+      else assert.deepEqual(Object.keys(line), ["line", "who", "action", "from", "frames", "sound", "volume"]);
     }
     let end = 0;
     for (const [n, scene] of compiled.scenes.entries()) {
@@ -666,20 +793,21 @@ test("random scripts: each compiles to a whole scenario, of plain values, with s
   });
 });
 
-test("random scripts: what is said is as loud as the nearest level has it, worked out by what its names are there", (t) => {
+test("random scripts: what is said or played is as loud as the nearest level has it, worked out by what its names are there", (t) => {
   let set = 0;
   tried(t, (taken) => {
     const script = writtenScript(taken.text)!;
-    const compiled = new Map(compiledOf(taken).scenes.flatMap((scene) => scene.lines).map((line) => [line.line, line]));
-    const checked = new Map(saidIn(taken.scenes).map((line) => [line.line, line]));
+    const whole = compiledOf(taken);
+    const compiled = new Map([...(whole.lines ?? []), ...whole.scenes.flatMap((scene) => scene.lines)].map((line) => [line.line, line]));
+    const checked = new Map([...saidIn(taken.scenes), ...playedIn(taken)].map((line) => [line.line, line]));
     const library = Object.fromEntries(Object.entries(VOLUMES).map(([who, dB]) => [`${who}.volume`, `${dB}dB`]));
     const texts = (values: Record<string, { text: string }> = {}) => Object.fromEntries(Object.entries(values).map(([name, { text }]) => [name, text]));
-    /** A value's number: each name in it is what the nearest level has for it, the character's first, then what is said's. */
-    const worth = (name: string, who: string, levels: Record<string, string>[]): number => {
+    /** A value's number: each name in it is what the nearest level has for it, the character's or the sound's first, then what is said's or played's. */
+    const worth = (name: string, who: string, action: string, levels: Record<string, string>[]): number => {
       for (const level of levels) {
-        const key = [`${who}.${name}`, `say.${name}`, name].find((one) => Object.hasOwn(level, one));
+        const key = [`${who}.${name}`, `${action}.${name}`, name].find((one) => Object.hasOwn(level, one));
         if (key === undefined) continue;
-        const numbers = level[key]!.replace(/dB/g, "").replace(/([\d.]+)%/g, "($1 / 100)").replace(/[a-z][a-z0-9-]*/g, (one) => `(${worth(one, who, levels)})`);
+        const numbers = level[key]!.replace(/dB/g, "").replace(/([\d.]+)%/g, "($1 / 100)").replace(/[a-z][a-z0-9-]*/g, (one) => `(${worth(one, who, action, levels)})`);
         return Function(`return ${numbers.replace(/-\s*-/g, "+").replace(/-\s*\(-/g, "+ (")}`)() as number;
       }
       throw new Error(`no level sets ${name}`);
@@ -690,8 +818,8 @@ test("random scripts: what is said is as loud as the nearest level has it, worke
           look(item.items, [item.values ?? {}, ...levels]);
           continue;
         }
-        if (item.action !== "say") continue;
-        const expected = worth("volume", item.who, [item.values, ...levels]);
+        if (!["say", "play", "loop"].includes(item.action)) continue;
+        const expected = worth("volume", item.who, item.action, [item.values, ...levels]);
         const { volume } = checked.get(item.line)!;
         assert.ok(Math.abs(volume - expected) < 1e-5, `line ${item.line} is at ${volume} dB, not ${expected}`);
         const there = compiled.get(item.line);
@@ -699,6 +827,7 @@ test("random scripts: what is said is as loud as the nearest level has it, worke
         if (volume !== 0) set++;
       }
     };
+    look(script.over?.items ?? [], [texts(script.values), { ...library, volume: "0dB" }]);
     for (const scene of script.scenes) look(scene.items, [texts(scene.values), texts(script.values), { ...library, volume: "0dB" }]);
   });
   assert.ok(set > FILES.length, `${set}`);
@@ -708,7 +837,7 @@ test("random scripts: without what is open, all the rest is where it was, but wh
   let without = 0;
   tried(t, (taken) => {
     const scenes = laid(taken, compiledOf(taken), taken.voices);
-    for (const [n, { scene, order, open }] of scenes.entries()) {
+    for (const [n, { scene, over, order, open }] of scenes.entries()) {
       for (const z of order.filter(open) as CheckedLine[]) {
         const below = order.slice(order.indexOf(z) + 1);
         const free = !below.some((item) => !isBlock(item) && channelsOf(item.who, item.action).some((channel) => channelsOf(z.who, z.action).includes(channel)));
@@ -716,8 +845,8 @@ test("random scripts: without what is open, all the rest is where it was, but wh
         const named = order.some((item) => anchorsOf(item).some(({ of }) => of === z.label || of === "prev")) || order.some((item) => isBlock(item) && item.joined && item.items.includes(z));
         if (!free || named) continue;
         const drop = (items: Item[]): Item[] => items.filter((item) => item !== z).map((item) => (isBlock(item) ? { ...item, items: drop(item.items) } : item));
-        const rest = { ...taken, scenes: taken.scenes.map((one, k) => (k === n ? { ...scene, items: drop(scene.items) } : one)) };
-        const lines = ({ scenes }: Compiled) => scenes.map(({ from, frames, lines }) => [from, frames, lines.filter(({ line }) => line !== z.line).map(({ line, from, frames }) => [line, from, frames])]);
+        const rest = { ...taken, scenes: taken.scenes.map((one, k) => (k === n ? { ...scene, items: drop(scene.items) } : one)), ...(over ? { over: { ...taken.over!, items: drop(scene.items) } } : {}) };
+        const lines = ({ lines = [], scenes }: Compiled) => [{ from: 0, frames: 0, lines }, ...scenes].map(({ from, frames, lines }) => [from, frames, lines.filter(({ line }) => line !== z.line).map(({ line, from, frames }) => [line, from, frames])]);
         assert.deepEqual(lines(compiledOf(rest)), lines(compiledOf(taken)), `line ${z.line}, which is open, moves something`);
         without++;
       }
@@ -726,10 +855,12 @@ test("random scripts: without what is open, all the rest is where it was, but wh
   assert.ok(without >= FILES.length / 20, `${without}`);
 });
 
-/** The scenes of a script with its voices as they are, with others, and with each a frame long: whatever the lengths, it has one timing. */
+/** The scripts of a scenario with its voices and sounds as they are, with others, and with each a frame long: whatever the lengths, it has one timing. */
 function* timings(taken: Taken): Generator<Laid> {
   const others = taken.voices.map((_, k) => 1 + ((k * 89 + 31) % 240));
-  for (const voices of [taken.voices, others, taken.voices.map(() => 1)]) yield* laid(taken, compiledOf(taken, voices), voices);
+  const long = Object.fromEntries(Object.keys(taken.sounds).map((file, k) => [file, 1 + ((k * 61 + 17) % 190)]));
+  const short = Object.fromEntries(Object.keys(taken.sounds).map((file) => [file, 1]));
+  for (const [voices, sounds] of [[taken.voices, taken.sounds], [others, long], [taken.voices.map(() => 1), short]] as const) yield* laid({ ...taken, sounds }, compiledOf({ ...taken, sounds }, voices), voices);
 }
 
 test("random scripts: nothing begins before what it comes after, whatever the voices' lengths", (t) => {
@@ -763,14 +894,15 @@ test("random scripts: nothing begins before what it comes after, whatever the vo
 test("random scripts: a block ends after all it waits for, and the scene a tail after that", (t) => {
   tried(t, (taken) => {
     for (const one of timings(taken)) {
-      const { scene, from, frames, left, withBlocks, parent, waited, there, lasts, pauseOf, uncutOf } = one;
-      // What a scene waits for is there, whole.
+      const { scene, over, from, frames, left, withBlocks, parent, waited, there, lasts, pauseOf, uncutOf } = one;
+      // What a scene waits for is there, whole; the cartoon waits for none of its own.
       const ends = scene.items.flatMap(waited).map((line) => {
         const placed = there(line);
         assert.ok(placed && placed.frames === lasts(line), `line ${line.line} is cut, and nothing cuts it`);
         return placed.from + placed.frames;
       });
-      assert.equal(from + frames, Math.max(...ends) + pauseOf(scene.tail), `the scene of line ${scene.line}`);
+      if (over) assert.deepEqual(ends, []);
+      else assert.equal(from + frames, Math.max(...ends) + pauseOf(scene.tail), `the scene of line ${scene.line}`);
       // What is cut is cut where its block has ended, and so after all that block waits for.
       for (const line of linesOf(one)) {
         const placed = there(line);
@@ -915,11 +1047,12 @@ test("random scripts: every line is where the laws have it, and no later", (t) =
           exact++;
         }
         if (one.open(line)) {
-          assert.deepEqual(cutBy(line), [parent.get(line)], `line ${line.line} is an action, and under the rest`);
-          const end = uncutOf(parent.get(line)!);
-          return void (Number.isNaN(end) || assert.equal(from + frames, end, `line ${line.line} goes on to the end of its block`));
+          if ("values" in line) assert.deepEqual(cutBy(line), [parent.get(line)], `line ${line.line} is an action, and under the rest`);
+          // What is looped may be cut too, where the block is that its own is under the rest of.
+          const stops = cutBy(line).map(uncutOf);
+          return void (stops.some(Number.isNaN) || assert.equal(from + frames, Math.min(...stops), `line ${line.line} goes on to the end of its block`));
         }
-        if ("text" in line) {
+        if (!("values" in line)) {
           const stops = cutBy(line).map(uncutOf);
           if (!stops.some(Number.isNaN)) assert.equal(frames, Math.min(lasts(line), ...stops.map((stop) => stop - from)), `line ${line.line} lasts`);
           return;

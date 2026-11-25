@@ -11,7 +11,12 @@ the tool's projects, and a session for it is opened in the repo's root.
   tool (`"plugin": "./src/plugin.ts"`), and holds the settings every
   cartoon shares: the narrator's `voice`, the `fps`.
 - `library.yaml`: what the cartoons name: each character, drawn once,
-  with its voice, and the backgrounds (The library, below).
+  with its voice, the backgrounds, and the sounds a script plays (The
+  library, below).
+- `sounds/`: the sounds' files, in git: plain ones, which
+  `sounds/make.mjs` makes with ffmpeg from nothing (`node
+  sounds/make.mjs`, the same bytes every time), under the repo's licence.
+  Any other put there is the user's own, licensed for a public repo.
 - `videos/<name>.yaml`: one cartoon, written by hand or by an AI session:
   `use: cartoon` on top, then its scenario, in names: the library's
   characters and backgrounds, places as marks, each line written once, in
@@ -29,7 +34,8 @@ the tool's projects, and a session for it is opened in the repo's root.
   (the repo's `.claude/skills/episode/`) answers the same prompt itself. Either way a
   new character, with its voice, or a new background goes into
   `library.yaml` without asking (the user's standing yes), and nothing
-  already there changes.
+  already there changes. A sound does not: it is a file, which the user
+  adds.
 - `src/`: the cartoon plugin, the module the tool runs to get a cartoon's
   clip (the tool's `AGENTS.md`, "Plugins"). Its code is part of what the
   tool's cache keys on: a change to a file here draws the clips again.
@@ -291,7 +297,8 @@ once: a chorus, an interruption, words that end with a walk, a radio and a
 murmur lower than the talk over them, its pauses all of one named value, its second
 scene's places worked out from others, and in its third, several who act
 at once, one who walks, waves and talks, two who look at it all the way
-past them, and a background that changes at a word. The plan
+past them, and a background that changes at a word; and a tune under all
+three scenes, a jingle the news waits for and a rustle at a word. The plan
 `docs/plans/compiled-scenario.md` builds this step by step, and the
 seven cartoons stay in beats until its end.
 `make` checks and compiles it (`.cache/<name>/compiled.json`; `--fit`
@@ -399,11 +406,18 @@ scenes:
   places that go round as a scene begins; a construction the plugin has not,
   or without what it takes. A mistake in a place is not said again for what
   rests on it.
-- **How loud:** `volume`, in decibels, on a line that is said, or on a
-  block, a scene or the cartoon for all that is said in it
-  (`radio.volume`); a character's own is its `volume` in the library.
-  `0dB` is the same for every voice, and the nearest wins (the tool's
-  `AGENTS.md`, "How loud"). A cartoon in beats has none.
+- **How loud:** `volume`, in decibels, on a line that is said or a sound
+  that is played, or on a block, a scene or the cartoon for all that is
+  heard in it (`say.volume` for the words alone, `radio.volume`,
+  `tune.volume`); a character's own, and a sound's, is its `volume` in the
+  library. `0dB` is the same for every voice and every sound, and the nearest
+  wins (the tool's `AGENTS.md`, "How loud"). A cartoon in beats has none.
+- **Sounds** are the tool's (its `AGENTS.md`, "A script"): `rustle play`,
+  a line as a voice is, and `tune loop`, again and again to the end of its
+  block, each a sound of the library. Those that go on over the scenes, from
+  one into the next, are in a `script:` on top of the file. The plugin knows
+  nothing of them: they draw nothing, and no action is fitted to one. A
+  cartoon in beats plays none.
 - **How fast:** `walk to=left speed=slow`, `takes=2s` or `arrive=a.end`,
   on the line, or on a block, a scene or the cartoon for all in it
   (`walk.speed=slow`, `pip.speed=slow`). An action given its speed or its
@@ -436,8 +450,8 @@ scenes:
 `library.yaml`, beside `package.json`, draws what the cartoons name, each
 once: the characters and the backgrounds. The tool reads it, takes each
 character's `voice` (Voices, above) and its `volume`, when it has one (The
-script, above), and gives the plugin the rest. A mistake in it is reported
-against `library.yaml`.
+script, above), and the `sounds`, and gives the plugin the rest. A mistake in
+it is reported against `library.yaml`.
 
 ```yaml
 characters:
@@ -458,6 +472,9 @@ backgrounds:
     fill: "#bfe3ff"
     shapes:
       - { shape: rect, at: [960, 950], size: [1920, 260], fill: "#7cc36a" }
+
+sounds:
+  tune: { file: sounds/tune.flac, volume: -20dB } # volume optional
 ```
 
 - **The stage** is 1920 by 1080 pixels: x goes right and y goes down from
@@ -485,6 +502,9 @@ backgrounds:
     the middle of the arm's upper end.
 - **A background** fills the stage with `fill`, then draws its `shapes` in
   stage coordinates.
+- **A sound** is its `file`, a path from this folder, of any format ffmpeg
+  reads, and a `volume` if it is not as loud as a voice. Its name is no
+  character's. Music to be looped ends where it can begin again.
 
 ## Mending
 

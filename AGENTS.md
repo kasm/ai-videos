@@ -42,7 +42,7 @@ the voice model always stay in this tool.
 | Path | What it is |
 | --- | --- |
 | `scenes/clip/scene.html` | The scene template (a HyperFrames sub-composition with `{{placeholders}}`): the plugin's clip, muted, with the captions over it. |
-| `src/` | The pipeline: `video-file` (the file, its settings in layers, and the `script` the pipeline reads) → the plugin in its process (`plugin`, `make`, `host`): its plan → `tts` → `timeline` (and `fit` with `mouth`) → `sound` → the drawing (`moments`, `frames`, `clip`) → `compose` (with `bundle` and `captions`) → `render`; `page`, the web page; `stages` and `lock`, a make's cache and its lock (see The cache); `setup`, what the commands need on the disk; `prompt` and `import`, a story's prompt for a web chat and its reply taken in, and `story`, the two by the clipboard and the episodes made (see prompt, import, story); `loudness`, how loud a voice is (see How loud); `read`, `scenario` with `names` and `labels`, `values` with `formula`, `plan` with `times` and `words`, `compile`, `shown` and `guide`, a video written as a script: its lines and blocks read and checked, what its values come to, when each begins and ends, compiled, what each frame of it shows, and how it is taught (see A script, Values, What happens at once); `random`, what every random test draws from, to say how many different scripts or plans it tried. |
+| `src/` | The pipeline: `video-file` (the file, its settings in layers, and the `script` the pipeline reads) → the plugin in its process (`plugin`, `make`, `host`): its plan → `tts` → `timeline` (and `fit` with `mouth`) → `sound` → the drawing (`moments`, `frames`, `clip`) → `compose` (with `bundle` and `captions`) → `render`; `page`, the web page; `stages` and `lock`, a make's cache and its lock (see The cache); `setup`, what the commands need on the disk; `prompt` and `import`, a story's prompt for a web chat and its reply taken in, and `story`, the two by the clipboard and the episodes made (see prompt, import, story); `loudness`, how loud a voice or a sound is (see How loud); `read`, `scenario` with `names` and `labels`, `values` with `formula`, `plan` with `times` and `words`, `compile`, `shown` and `guide`, a video written as a script: its lines and blocks read and checked, what its values come to, when each begins and ends, compiled, what each frame of it shows, and how it is taught (see A script, Values, What happens at once); `random`, what every random test draws from, to say how many different scripts or plans it tried. |
 | `cartoons/` | A project of the tool's, in this repo: the cartoon plugin (`cartoons/src/plugin.ts`), its library, videos and stories, and its notes, `cartoons/CLAUDE.md`. Its `episode` skill is the repo's, `.claude/skills/episode/`. |
 | `out/voice-samples/` | What `voices` writes. |
 | `.cache/tts/` | Narration audio, keyed by text, voice and speed. |
@@ -110,7 +110,7 @@ A project's plugin draws its videos: a module the tool runs in a child process o
       or failed.
   - `script`, optional: its part of a video written as a script (see A script). A plugin without
     it has no such videos; for a video that is one, none of the functions above is called.
-    - `actions`: what a line may do besides the tool's `say`, by name, each described once: a
+    - `actions`: what a line may do besides the tool's `say`, `play` and `loop`, by name, each described once: a
       `description`, an `example` (one line of a script that names it: `pip walk to=middle`) and
       `values`, a schema of the values a line gives it. An example that is no such line, or fails
       its schema, is refused when the plugin loads. A value its JSON Schema names may be set on any
@@ -203,7 +203,7 @@ scenes: [ … ]
 
 A video may be written as a script: each of its scenes has a `script:`, a block of lines. The tool
 reads and compiles them, and makes the sound, the picture, the captions and the web page from the
-compiled scenario alone. `docs/plans/compiled-scenario.md` builds this step by step. The beats of
+compiled scenario (and the library's drawings and sound files) alone. `docs/plans/compiled-scenario.md` builds this step by step. The beats of
 a cartoon and RayCraft's events go the way the rest of this file describes, as before.
 
 ```yaml
@@ -220,8 +220,8 @@ scenes:
 
 - **A file is a script** when `scenes:` is a list and one of its scenes has a `script:`. Then every
   scene has one, written as a block (`script: |`), so that a line of the script is a line of the
-  file (`writtenScript`, `src/video-file.ts`). Beside its scenes it has the tool's keys and `values:`
-  (see Values), and any other key is refused: nothing reads it.
+  file (`writtenScript`, `src/video-file.ts`). Beside its scenes it has the tool's keys, `values:`
+  (see Values) and a `script:` of its own (below), and any other key is refused: nothing reads it.
 - **A line** is `who action name=value ... @ moment: text` (`readScript`, `src/read.ts`): who does
   it, the action, its values, each a formula (see Values), its anchor, and after the first colon its
   text, as written to the end of the line. Names are lowercase letters, digits and dashes. An empty
@@ -246,26 +246,38 @@ scenes:
   0.08 s on average, and at most 0.21, where the cached voices make a pause.
 - **`say`** is the tool's own action: the line's text, said in its speaker's voice (see The cast).
   `narrator` is the speaker nobody draws, and its lines are said in the video's `voice`. Every
-  other action is the plugin's (see Plugins, `script`), and whose line it may be is for its check to
-  say. One that nobody does has a name of the plugin's for its who (a cartoon's
+  other action, but the two below, is the plugin's (see Plugins, `script`), and whose line it may be is for its
+  check to say. One that nobody does has a name of the plugin's for its who (a cartoon's
   `scene background to=night`), with channels of its own, as a character's.
+- **`play` and `loop`** are the tool's own too, and a sound's: `bell play`, whose who is one of the library's
+  sounds (see The library), plays its file once, and `rain loop` again and again. It takes a `volume` and nothing
+  else. Played once, it is a line as a voice is, as long as its file: waited for, cut, anchored, named and read the
+  length of. Looped, it is open. Each sound is a channel of its own, `sound`, of its name. It has no mouth
+  and no caption, and no action is fitted to it.
+- **The cartoon's own script**, a `script:` on top of the file, beside its scenes, has sounds alone, which go on
+  over all of them: each of its rows, a line or a block, begins with the cartoon, if it has no anchor, and is
+  under the scenes, which wait for none of it; what has not ended is cut where the last one ends. In it, `block` is the
+  cartoon (`@ block.end - 10s`), and its labels are its own. Music that goes on from one scene into the next is
+  in it.
 - **The check** (`checkScenario`) is the pass before the voices, and the only one that refuses:
   1. a row that does not read, a value that a comma cuts (see Values), an action nobody names, values
      the action's schema refuses, a `say`
-     with no words or by someone with no voice; and, when every row reads, a value with no answer (see
+     with no words or by someone with no voice, a sound the library lacks, what is no sound in the cartoon's own
+     script; and, when every row reads, a value with no answer (see
      Values), and what has no time (`timeIssues`, `src/plan.ts`): an anchor to something below it, in another scene or not there, or
      to a word that is not one place of its line; what the laws refuse (What happens at once); and an
      `under:` that would never be heard, or an open action never seen, last in a block in order with no
      anchor, or with nothing else in its block;
   2. what the plugin's `script.check` refuses (a name the library lacks), run only on a script
      with no mistake so far, as it follows the lines in order;
-  3. a speaker's voice that is not one of the tool's.
+  3. a speaker's voice that is not one of the tool's, and a sound that is played whose file is missing, or holds no
+     sound that ffmpeg reads (`measureSound`, `src/sound.ts`): how long each lasts is known from here on.
 
   Every mistake of a pass is shown, each with the file and its line, the line as written, what is
   wrong, the other lines it is between, as written too, and a hint: the names there are, the nearest
   one, the action's example.
 - **`check <file>`** runs the check alone: it speaks and writes nothing, needs nothing from
-  `setup`, says the defaults taken (see Values), and exits with 1 when it refuses. A video file that is not a script it takes as
+  `setup` (for a script that plays sounds, ffmpeg), says the defaults taken (see Values), and exits with 1 when it refuses. A video file that is not a script it takes as
   `import` takes an episode: mended, checked and planned by its plugin, every speaker with a voice
   the tool speaks in.
 - **`make <file>`** runs the check, speaks and measures each said line (the voice cache), and
@@ -275,9 +287,9 @@ scenes:
 - **The compiled scenario** (`compile`, `src/compile.ts`) has every line on whole frames of the
   video's `fps`: `from`, the frame of the video it begins on, and `frames`, how many it lasts.
   They are laid by the laws of What happens at once, each scene in order, with the `lead`, `pause` and
-  `tail` that Values gives it, and each block's `pause`. A voice lasts the frames it sounds in, and an
+  `tail` that Values gives it, and each block's `pause`. A voice lasts the frames it sounds in, as a sound does, and an
   action the length it is given, its own (the plugin's) when it is given none, to the nearest frame, or,
-  one that is fitted, what it is fitted to takes, within `timing.moves`; an open one goes on to its
+  one that is fitted, what it is fitted to takes, within `timing.moves`; an open one, or a looped sound, goes on to its
   block's end. A cut voice has the frames it
   sounds in, and so its mouth, its captions and the voice itself stop there; a line whose block ends
   before it begins is not there (`make` says so).
@@ -286,8 +298,11 @@ scenes:
   the example shows three) and its `captions`. One caption shows at a time, for now: the one begun last, and of two that begin on
   one frame the one written later. It stays up until the next one, a second after its words (a cut
   line's, to the cut), or the scene's end. `loudness` is the video's (see How loud).
+- **A played line** holds its `sound`, the file, a path from the project's folder, and its `volume`; one that is
+  looped is played again and again in its frames. The cartoon's own are the compiled scenario's `lines`, beside
+  its `scenes`; with no script of its own it has none.
 - **It holds plain values,** no name of a value, no formula and no construction: numbers, the lines' texts, file names (a voice's, in the tool's voice
-  cache), and the names of the library and of actions. A place is compiled to its point.
+  cache, a sound's, in the project), and the names of the library and of actions. A place is compiled to its point.
 
 ```json
 {
@@ -321,9 +336,10 @@ scenes:
   its own: `into` and `length` say how far through each was at any moment before, such as the end of
   another (what a cartoon's look leaves is how it was then).
 - **The build** (see make) has the clip and the captions, each on its own frames, and no voices: the
-  video's sound is the tool's one track (see How loud), silent when nobody speaks.
+  video's sound is the tool's one track (see How loud), silent when nothing is said or played. A sound is no part of
+  the picture either: what is played, when and how loud, draws nothing.
 - **The guide** to writing a script (`guideOf`, `src/guide.ts`) is the tool's part (a line's form,
-  `say`, blocks, joining, channels, anchors, values, what is refused), the plugin's `script.guide`, the actions
+  `say`, blocks, joining, channels, anchors, values, sounds, what is refused), the plugin's `script.guide`, the actions
   and the constructions, each with its description and example, an action with its channels and whether it is fitted or open, and the plugin's names for numbers. Each part's examples are compiled by a test. The prompt for
   a web chat does not teach scripts yet.
 
@@ -332,7 +348,7 @@ scenes:
 `src/compile.test.ts`, `src/shown.test.ts`, `src/guide.test.ts` and `src/check.test.ts` show each
 rule; `src/scripts.test.ts` writes random video files, values on every level, and tries that none throws
 and that each with no mistake compiles to a whole scenario (`RANDOM_SCRIPTS=40000` for more of them than
-`npm test` tries); `src/sound.test.ts` finds each voice of a script in its sound; `src/page.test.ts` draws the clip and the page from a compiled
+`npm test` tries); `src/sound.test.ts` finds each voice and each sound of a script in its sound; `src/page.test.ts` draws the clip and the page from a compiled
 scenario and a library, with no video file, and finds their frames the same.
 
 ### Values
@@ -385,15 +401,16 @@ The laws:
    | `takes` | any level | an action's seconds |
    | `speed` | any level | times the action's own speed (2 is twice as fast) |
    | `arrive` | any level | the moment above that it ends at, as an anchor's, within `timing.moves` |
-   | `volume` | any level | how loud what is said is, decibels over any other voice's 0 (see How loud): from -60 to 12 |
+   | `volume` | any level | how loud what is said or played is, decibels over any other voice's 0 (see How loud): from -60 to 12 |
 
    Given `takes` or `speed`, wherever they are set, an action keeps it and is fitted to nothing; one whose
-   plugin says it is never fitted has its own speed, as if given `speed=1`. A voice and an open action
+   plugin says it is never fitted has its own speed, as if given `speed=1`. A voice, a sound and an open action
    take none of the three, and those set on a level are not for them; an action in an `ending together:`
-   takes no `arrive`. A `volume` is for what is said alone: no action has one, and `say.volume` is for all
-   that is said, as `radio.volume` is for one. Beside these, what an action
+   takes no `arrive`. A `volume` is for what is said or played alone: no action has one, `say.volume`, `play.volume`
+   and `loop.volume` are for all that is so, and `radio.volume` and `rain.volume` for one. A value set for a sound is
+   its volume and no other. Beside these, what an action
    takes (`to`) may be set on any level, and any name of the writer's that a formula reads.
-8. **`a.length`** is how long a line above lasts: one that is said, or an action given `takes` or
+8. **`a.length`** is how long a line above lasts: one that is said, or played once, or an action given `takes` or
    `speed`, or never fitted. How long a fitted action lasts, an open one or a block, is known only once everything has
    its place, and is not read. A length is read by a time alone (`takes`, `pause`, an anchor's), and what that comes to
    is kept in bounds: `5s - a.length` is a frame at least for an action, and none at least for a pause.
@@ -411,10 +428,11 @@ action on the channels the plugin names (see Plugins). `compile` lays it. `src/t
 laws promise, below; `src/times.test.ts` tries it on random plans, and `src/scripts.test.ts` on random scripts.
 
 - **A line** is one thing that lasts: a voice, a sound, or a move (any of the plugin's actions). It
-  keeps its **channels** busy: a character's voice, its place, its arm. Lines on other channels go on at
+  keeps its **channels** busy: a character's voice, its place, its arm, a sound itself. Lines on other channels go on at
   once, one character's too.
 - **A block** holds lines and blocks, **in order** or **together**, or lines alone, **ending
-  together**; it is used as a line is. A scene is a block in order, and so is the video, of its scenes.
+  together**; it is used as a line is. A scene is a block in order, and so is the video, of its scenes. With a script
+  of the cartoon's own, the video is a block together: that script's rows, each open or cut, and the block of the scenes.
 
 The laws:
 
@@ -503,13 +521,24 @@ backgrounds: { … }
 ```
 
 - **Its keys:** each character's `voice` is the tool's, and every character has one. The tool takes
-  them as the project's cast (see Settings in layers), and gives the plugin the rest, with the
+  them as the project's cast (see Settings in layers), and gives the plugin the rest (but the sounds), with the
   file's path, for `check` (see Plugins). So is its `volume`, in decibels, which it need not have: the
   level a script's own volumes go over (see Values); a plan's sound has no volumes. A mistake is
   reported against `library.yaml`: a voice missing, or a name or a volume the tool refuses, by the
   tool, the rest by the plugin.
 - **A voice has one home:** a `cast` in the `package.json`'s `"ai-videos"` is refused, pointing
   here. A video file's own `cast:` still goes over the library's, speaker by speaker.
+- **Its sounds**, what a script plays, are the tool's alone: the plugin gets none of them. Each has its
+  `file`, a path from the project's folder, of any format ffmpeg reads, and may have a `volume`, as a character may:
+
+  ```yaml
+  sounds:
+    tune: { file: sounds/tune.flac, volume: -20dB }
+    bell: { file: sounds/bell.wav }
+  ```
+
+  A sound has no name of a character's, nor `narrator`. A file that is missing is refused where a script plays it, and
+  nowhere else.
 - A project with no `library.yaml` has no library: its plugin gets none, and its cast is empty.
 
 ### Settings in layers
@@ -551,9 +580,11 @@ comes before the page: a step of its own when the video is made too, else the pa
 | The page | the sound, the source, the library, the request, the plugin's code, or a recording plugin's clip | `out/<name>.html`, written every time |
 
 A script has no plan and no fit: its `compiled.json` is written every time (see A script). Its sound
-is made from the voices' frames and volumes, the video's frames and the loudness in it; its drawing from
+is made from the voices' and the sounds' frames and volumes, the bytes of the sounds' files (`mixKey`), the video's
+frames and the loudness in it; its drawing from
 the rest but the words and the captions (`pictureOf`, `src/shown.ts`), the library (but its voices and
-volumes) and the plugin's code. So a volume changed redoes the sound alone. The other stages are as any video's.
+volumes) and the plugin's code. So a volume changed, or a sound's file, redoes the sound alone (and the rest, when a
+sound that something waits for has another length). The other stages are as any video's.
 
 - The plugin's code is every file in the plugin's folder (but `node_modules` and dot folders)
   and the tool's files it runs through (`DRAWING`, or a script's `PLAYING`, `src/stages.ts`): keep
@@ -591,7 +622,7 @@ script); its clip is checked against the frames compiled, and the rest is the sa
 2. The voices and the fit: each line spoken (from the voice cache when it has not changed) and
    measured, and the plan fitted to it (see Fitting a clip to the voice): the table, and the
    request. `--fit` stops here, in seconds, to try the lines and `timing` before anything is drawn.
-3. The sound: the voices mixed at the video's loudness (see How loud).
+3. The sound: the voices, and a script's sounds, mixed at the video's loudness (see How loud).
 
 Then what its outputs turn on (see A video file), or the one `--as` names:
 
@@ -688,7 +719,8 @@ nearest `package.json` above the file with a plugin (`src/import.ts`).
   `library.yaml` has them), and its video file: the block without those two keys, as written, its
   comments kept.
 - **The checks:** each episode is checked as `make` checks it, against the library with what the
-  reply adds, before anything is written: a new character's voice is one of the tool's, the file's
+  reply adds, before anything is written: a new character's voice is one of the tool's, no sound is new (a sound is a file, and
+  no chat has one: an episode that adds one is refused), the file's
   `use:` and settings are valid, the plugin mends and checks its source and plans it, and each line
   has a voice the tool speaks in. The plugin runs in its host, for this one call (see Plugins).
 - **What it writes:** `videos/<name>.yaml` for each episode it takes, and the entries the library
@@ -767,23 +799,26 @@ them only when asked. A web chat writes no file at all: its reply to the prompt 
 
 ## How loud
 
-A video's soundtrack is the tool's own (`src/sound.ts`): each line's voice laid where it begins, on a
-track as long as the video, and brought once to the video's `loudness` (LUFS, default -14, the level
+A video's soundtrack is the tool's own (`src/sound.ts`): each line's voice, and each sound a script plays, laid where it
+begins, on a track as long as the video, and brought once to the video's `loudness` (LUFS, default -14, the level
 YouTube and most platforms play at; -16 or -20 is quieter), its peaks 1.5 dB below full scale: stereo,
-the voice in both channels. The video puts it with the render's picture, and the web page plays the
+a voice in both channels. The video puts it with the render's picture, and the web page plays the
 same file. How it is brought there differs:
 
 - **A plan's voices** are mixed as they are, and ffmpeg's `loudnorm` brings the mix to its loudness. A
   line's own level doesn't matter: at -14 LUFS, where a voice's peaks have no room for one gain, it is
   evened out with the rest.
-- **A script's voices** (`writeMix`) are first made as loud as each other, as Kokoro's are not (-17 LUFS
-  for `am_puck`, -23 for `am_michael`): each line is measured as LUFS are (`loudnessOf`,
-  `src/loudness.ts`, which says what ffmpeg's `ebur128` does; `loudnorm` says up to 0.8 LU less of
-  something short), so `volume` 0 is the same for any voice. Then each is at its volume (see
-  Values), and fades out in the 30 ms before its cut, when it is cut. The mix is brought to its loudness
-  by one gain for the whole (`levelMix`, `src/render.ts`), and a limiter, which lets go soon, takes only
-  the peaks; the gain makes up for what that takes, and is found in rounds. `make` says the gain, and
-  how far the highest peak was lowered.
+- **A script's voices and sounds** (`writeMix`) are first made as loud as each other, as Kokoro's are not (-17 LUFS
+  for `am_puck`, -23 for `am_michael`): each line, and each sound's file, whole, is measured as LUFS are (`loudnessOf`,
+  `loudnessIn`, `src/loudness.ts`, which say what ffmpeg's `ebur128` does; `loudnorm` says up to 0.8 LU less of
+  something short), so `volume` 0 is the same for any voice or sound. Then each is at its volume (see
+  Values), and fades out in the 30 ms before its cut, when it is cut; a looped one always is. The mix is brought to its
+  loudness by one gain for the whole (`levelMix`, `src/render.ts`), and a limiter, which lets go soon, takes only
+  the peaks, of both channels alike; the gain makes up for what that takes, and is found in rounds. `make` says the
+  gain, and how far the highest peak was lowered.
+- **A sound keeps its own quality:** the mix of a script is at 48 kHz, in two channels, where a voice (24 kHz, one
+  channel) is in both, and a sound is as ffmpeg reads its file: a stereo one keeps its two, one of another sample rate is
+  resampled, and no treble of it is lost (but what AAC takes, over 19 kHz).
 - So what is written quieter comes out as much quieter, and what is written louder a little less so: the
   loudness is kept, and the limiter takes more of what is loud. On Kokoro's voices at -14 LUFS, -12 dB
   comes out at -11.8, 6 at about 5, and 12 at about 10. Only differences are heard: a whole

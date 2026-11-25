@@ -5,19 +5,19 @@
 // (prompt.ts) will be made from it.
 import type { Described } from "./host.ts";
 import { listed } from "./names.ts";
-import { VOICE } from "./plan.ts";
-import { SAY } from "./read.ts";
+import { SOUND, VOICE } from "./plan.ts";
+import { LOOP, PLAY, SAY } from "./read.ts";
 
 /** The tool's part, in Markdown. Each `script` block in it is a script the tool takes, and each `yaml` block a file's, its characters, `go` and `nod` made up (guide.test.ts). */
 export const SCRIPT = `
-A scene's \`script\` says what happens in it, a row for each thing. It is written as a block: \`script: |\`, then its rows under it. A row is a line, or the header of a block of lines. The characters in the examples here are made up, and so are three actions, \`go\`, \`nod\` and \`watch\`: yours are the library's, and the actions below.
+A scene's \`script\` says what happens in it, a row for each thing. It is written as a block: \`script: |\`, then its rows under it. A row is a line, or the header of a block of lines. The characters and the sounds in the examples here are made up, and so are three actions, \`go\`, \`nod\` and \`watch\`: yours are the library's, and the actions below.
 
 ### Lines
 
-A line is one thing one character does or says:
+A line is one thing one character does or says, or one sound that is played:
 
-- who does it comes first: a character's name, or \`narrator\`, whom nobody sees; for an action below that nobody does, the name its example has;
-- then the action: \`${SAY}\`, or one of the actions below;
+- who does it comes first: a character's name, or \`narrator\`, whom nobody sees; for a sound, the sound's name; for an action below that nobody does, the name its example has;
+- then the action: \`${SAY}\`, one of the actions below, or for a sound \`${PLAY}\` or \`${LOOP}\` (Sounds, below);
 - then the action's values, each as \`name=value\`: the actions below say what each takes;
 - then, for \`${SAY}\`, a colon and the words, to the end of the line, as they are said: no quotes.
 
@@ -169,15 +169,15 @@ Use your own names for numbers the story repeats, and these, which are the tool'
 
 - \`pause\`: the seconds between what is in order. On the file, a scene or a block.
 - \`lead\` and \`tail\`: the seconds before a scene's first row and after its last. On the file or a scene.
-- \`volume\`: how loud what is said is (How loud, below). On any level.
+- \`volume\`: how loud what is said or played is (How loud, below). On any level.
 - how long an action lasts, one of these three, on any level:
   - \`takes=2s\`, its seconds;
   - \`speed=0.5\`, so many times its own speed: 0.5 is half as fast, 2 twice;
   - \`arrive=a.end - 0.5s\`, a moment of something above, written as after an \`@\`: it is hurried or slowed, within reason, to end then.
 
-An action given its seconds or its speed keeps them, whatever is said beside it. Given none of the three, it goes at its own speed, or, one that is fitted, takes as long as the words it is joined to. A voice lasts as long as its words, and an open action to the end of its block: they take none of the three.
+An action given its seconds or its speed keeps them, whatever is said beside it. Given none of the three, it goes at its own speed, or, one that is fitted, takes as long as the words it is joined to. A voice lasts as long as its words, a sound as long as its file, and an open action to the end of its block: they take none of the three.
 
-\`a.length\` is how long a line above lasts, if that line is said, or is an action given its seconds or its speed, or one that is neither fitted nor open. It is read by \`takes\`, by \`pause\` and after an anchor's moment. \`pause=5s - a.length\` is what is left of 5 seconds, and none when the line is longer:
+\`a.length\` is how long a line above lasts, if that line is said or played once, or is an action given its seconds or its speed, or one that is neither fitted nor open. It is read by \`takes\`, by \`pause\` and after an anchor's moment. \`pause=5s - a.length\` is what is left of 5 seconds, and none when the line is longer:
 
 \`\`\`script
 [a] ann ${SAY}: It is a long way to the pond.
@@ -190,7 +190,7 @@ narrator ${SAY} @ prev.end + 1s: Nobody waited.
 
 ### How loud
 
-Everybody's words are equally loud, whichever voice says them. \`volume\`, in decibels, makes what is said quieter or louder than that: at \`-6dB\` somebody talks a little lower, at \`-12dB\` in a murmur or far off, and at \`-20dB\` is hardly heard under the others. It is a value as any: on a line, a block, a scene or the file, for everything that is said or for one character (\`radio.volume\`), and the nearest wins. A character may have its own in the library, which any of these replaces.
+Everybody's words are equally loud, whichever voice says them. \`volume\`, in decibels, makes what is said quieter or louder than that: at \`-6dB\` somebody talks a little lower, at \`-12dB\` in a murmur or far off, and at \`-20dB\` is hardly heard under the others. It is a value as any: on a line, a block, a scene or the file, for everything that is heard, for what is said alone (\`${SAY}.volume\`) or for one character (\`radio.volume\`), and the nearest wins. A character may have its own in the library, which any of these replaces.
 
 Here the counting is a murmur under the talk, and the cat talks low:
 
@@ -208,17 +208,57 @@ ann ${SAY}: Nobody ever could.
 - Only differences are heard: a whole video at \`-10dB\` is as loud as one at \`0dB\`. A volume is from \`-60dB\` to \`12dB\`.
 - What is quieter comes out as much quieter as it is written, and what is louder a little less so: a shout at \`6dB\` is about 5 over the rest, and one at \`12dB\` about 10.
 
+### Sounds
+
+The library's \`sounds\` are files, each by its name: music, a noise, a jingle. There are no others, and a story that needs one does without. A sound is played by a line of its own, which begins with the sound's name:
+
+- \`bell ${PLAY}\` plays it once. It is a line as any other: what comes after it waits for it, \`&\` or a block has it at once with others, an anchor begins it at a word, and an \`under:\` cuts it.
+- \`rain ${LOOP}\` plays it again and again. It is open: it goes on to the end of the block it is in, and nothing waits for it.
+
+Here the bell rings before anybody talks, and again at a word; the rain goes on under the talk, and is over where the block ends:
+
+\`\`\`script
+bell ${PLAY}
+in order:
+  rain ${LOOP} volume=-20dB
+  [a] ann ${SAY}: Somebody rings the bell, and in this rain!
+  bell ${PLAY} @ a.word(bell)
+  ben ${SAY}: I hear nothing.
+ben ${SAY}: And now not even the rain.
+\`\`\`
+
+Music or a noise under a whole scene is a \`${LOOP}\` in the scene's first row. Music that goes on from one scene into the next is the cartoon's own: a \`script\` on top of the file, with sounds alone. All its rows begin with the cartoon, and go on under all the scenes: nothing waits for them, and what has not ended is cut where the last scene ends. One that begins later has an anchor, as \`@ prev.end\` or \`@ block.end - 10s\` (here the block is the cartoon), and several, one after another, are in an \`in order:\`.
+
+\`\`\`yaml
+values: { rain.volume: -24dB }
+script: |
+  tune ${LOOP} volume=-20dB
+scenes:
+  - script: |
+      rain ${LOOP}
+      ann ${SAY}: What a day to stay at home.
+      ben ${SAY}: We always stay at home.
+  - script: |
+      ann ${SAY}: Now the rain is over, and here we are.
+\`\`\`
+
+- At \`0dB\` a sound is as loud as anybody's words, whichever file it is. Music and rain under a talk are at \`-18dB\` to \`-24dB\`, and a noise beside words at \`-6dB\` to \`-12dB\`. A sound may have its own volume in the library, as a character may: then leave it out of the line, unless the story has the sound louder or quieter than it is. \`tune.volume\` is for one sound.
+- A \`volume\` on a block, a scene or the file is for its sounds too. For the words alone, write \`${SAY}.volume\`.
+- A sound has no mouth and no caption, so nobody sees what it is: the words or the picture say it.
+- One sound does one thing at a time. To have it twice at once, or both over the scenes and in one, is refused.
+
 ### What is refused
 
 - An anchor to something below it, or in another scene.
 - A row that waits for what waits for it: \`@ block.end\` in a block that waits for the row, or the end of a line that is \`under:\` in the same block. Begin it by a start, a share or a word.
-- An action in an \`under:\`. Only what is said may be cut.
+- An action in an \`under:\`. Only what is said or played may be cut.
 - A line by somebody who is \`under:\` in the same block: they are busy until it ends. Give it to another, or write it after the block.
-- An \`under:\` with nothing to be under, and an open action with nothing to go with: last in a block in order, or alone in its block.
+- An \`under:\` with nothing to be under, and an open action or a \`${LOOP}\` with nothing to go with: last in a block in order, or alone in its block, an \`under:\` too. A \`${LOOP}\` needs no \`under:\`.
 - A row on a channel that an open action above it keeps busy, in the same block. Write it after the block, or join the open action to what it goes with, so that it ends sooner.
 - Two rows on one channel of one character, directly in one \`together:\` or joined by \`&\`, the later with no start of its own.
 - In an \`ending together:\`, a row that has a time of its own, by an \`@\` or by \`arrive\`; a block, or a row joined by \`&\`; and two rows on one channel of one character. Anchor the whole block, and write a block beside it, in a \`together:\` around both.
-- A \`volume\` that is not in decibels, and one for an action: only what is said has one.
+- A \`volume\` that is not in decibels, and one for an action: only what is said or played has one.
+- A sound that the library does not have, one whose file is not there, and anything but sounds in the cartoon's own script.
 - A value that nothing reads, values that read each other in a circle, and two of \`takes\`, \`speed\` and \`arrive\` set for one action on one level.
 - The length of a block, or of an action that is fitted to words or open: those are known only once everything has its place.
 
@@ -247,6 +287,8 @@ export function guideOf(script: NonNullable<Described["script"]>): string {
     "## The actions",
     "",
     `- **${SAY}**: The character says the words after the colon, in its voice; the narrator's are said in the video's. ${onChannels([VOICE])} ${forExample(`narrator ${SAY}: Once upon a time.`)}`,
+    `- **${PLAY}**: The sound is played once, for as long as its file lasts. ${onChannels([SOUND])} ${forExample(`bell ${PLAY}`)}`,
+    `- **${LOOP}**: The sound is played again and again. ${onChannels([SOUND], "; it is open")} ${forExample(`tune ${LOOP} volume=-20dB`)}`,
     ...actions,
     "",
     ...(constructions.length > 0 ? ["## The constructions", "", CONSTRUCTED, "", ...constructions, ""] : []),

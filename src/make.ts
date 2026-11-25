@@ -139,11 +139,11 @@ export interface PluginHost extends Described {
   check(file: string, source: unknown, library: Library | undefined): Promise<{ repaired: string[]; plan: Plan }>;
   /**
    * Checks a video written as a script (scenario.ts), writing nothing: the scenario worked out, or
-   * every mistake in it. `speakers` are the names with a voice, `timing` the video's pauses, and
-   * `volumes` the library's, dB, by whose they are.
+   * every mistake in it. `speakers` are the names with a voice, `timing` the video's pauses,
+   * `volumes` the library's, dB, by whose they are, and `sounds` the library's, each with its file.
    * Throws when the plugin takes no script, or its library does not read.
    */
-  checkScript(file: string, script: WrittenScript, library: Library | undefined, speakers: string[], timing: Timing, volumes: Record<string, number>): Promise<Checked>;
+  checkScript(file: string, script: WrittenScript, library: Library | undefined, speakers: string[], timing: Timing, volumes: Record<string, number>, sounds: Record<string, string>): Promise<Checked>;
   /** Draws a compiled scenario's clip (compile.ts) from its file and the library, its progress logged; throws why it failed. */
   play(call: Omit<PlayCall, "step">, library: Library | undefined, log: (msg: string) => void): Promise<void>;
   /** Ends its process. */
@@ -174,8 +174,8 @@ export async function startPlugin(plugin: PluginFile, log: (msg: string) => void
       const done = await ask({ call: { step: "check" }, file, source, ...withLibrary(library) });
       return { repaired: done.repaired ?? [], plan: done.plan! };
     },
-    async checkScript(file, script, library, speakers, { lead, gap, tail }, volumes) {
-      return (await ask({ call: { step: "script", script, speakers, timing: { lead, gap, tail }, volumes }, file, source: undefined, ...withLibrary(library) })).script!;
+    async checkScript(file, script, library, speakers, { lead, gap, tail }, volumes, sounds) {
+      return (await ask({ call: { step: "script", script, speakers, timing: { lead, gap, tail }, volumes, sounds }, file, source: undefined, ...withLibrary(library) })).script!;
     },
     async play(call, library, log) {
       log(`${scene}: ${shown(call.clip)}, drawn from ${path.basename(call.compiled)} (${call.format})`);

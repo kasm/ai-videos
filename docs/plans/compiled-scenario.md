@@ -250,7 +250,36 @@
 - Left by step 9: the narrator's volume is the file's to set
   (`narrator.volume`), as it is not in the library; for step 10, a script's
   mix is mono, at the voices' 24 kHz.
-- **Next: step 10, play music and sound effects.**
+- **Step 10 done 2026-11-26**, `all-at-once`'s music and effects accepted by
+  the user that day. The user's picks: a sound is the one who does its line
+  (`rustle play`, `tune loop`), and what is looped is open; music over the
+  scenes is in a script of the cartoon's own, on top of the file, sounds alone,
+  from the first frame to where the last scene ends; at `0dB` a sound is as
+  loud as a voice, its file measured; a stereo file keeps its two channels, so a
+  script's mix has two, at 48 kHz. No law changed: the cartoon's own rows are together with its scenes,
+  each open or cut. Checked: `npm test` and `npm run typecheck` here and in
+  `cartoons/`; RayCraft's media typecheck and `test:libs`, no file of it
+  changed; `make --fit` of the ten gives requests equal to the baseline, byte
+  for byte, the seven cartoons draw the same 6,942 frames, and each of the ten's
+  `sound.m4a`, made anew, is the same bytes, its key too; `hello-script`
+  compiles to the same bytes as before, and `all-at-once` without its sounds
+  too, but for its line numbers; `all-at-once` made whole has the frames
+  compiled (1,412), at -14.0 LUFS, its 23 voices, its jingle and its rustle at
+  their compiled times, its tune where it should be over both cuts, each as
+  loud as it is written to 0.1 dB (the rustle 1.1 dB less, as the limiter takes
+  more of it), and the page's own drawing gives the video's `.svgs`; a rustle of
+  other bytes and the same length had the sound alone made anew, the clip, the
+  check and the render from the cache; 40,000 different random scripts with
+  sounds over the scenes and in them, 20,151 of them with no mistake, neither
+  throw nor break a compiled scenario, and each is laid by the laws and as loud
+  as a plain re-telling says; of 162 rules broken on purpose, 160 fail a test,
+  and the other 2 change no result. Not tried: the guide on a fresh `claude -p`.
+- Left by step 10: music under some of the scenes and not the others is not
+  written yet (groups of scenes, a `script:` and `scenes:` in a row of
+  `scenes:`, would have it, and change no script); what is cut stops in 30 ms,
+  music too, as a fade is out; for step 12, the prompt shows `library.yaml`
+  with its `sounds:` while it still teaches beats, which play none.
+- **Next: step 11, caption everyone who speaks.**
 
 
 ## Goal

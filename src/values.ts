@@ -6,16 +6,16 @@
 //
 // It needs none of the tool's packages, as scenario.ts: plugin.ts gives both to the plugins' tests.
 import { KINDS, Wrong, calculate, exact, minus, namesIn, readFormula, shownAs, spanOf, type Amount, type Construction, type Formula, type Span, type Unit, type Worked } from "./formula.ts";
-import { momentIssue, named, nameOf, placesOf, unnamed, type Place } from "./labels.ts";
+import { momentIssue, named, nameOf, partsOf, placesOf, unnamed, type Place } from "./labels.ts";
 import { listed, nearest } from "./names.ts";
-import { SAY, SET, isBlock } from "./read.ts";
+import { LOOP, PLAY, SAY, SET, TOOL_ACTIONS, isBlock, isPlayed } from "./read.ts";
 import { NARRATOR, linesIn, type Action, type Anchor, type Default, type Issue, type Placed, type ScriptItem, type ScriptLine, type Timing, type WrittenScene, type WrittenScript, type WrittenValue } from "./scenario.ts";
 
 /** The tool's own values that are a block's or a scene's: seconds. */
 export const PAUSES = ["pause", "lead", "tail"] as const;
 /** The tool's own values that say how long an action lasts, one of them: seconds, times its own speed, or a moment it arrives at. */
 export const LENGTHS = ["takes", "speed", "arrive"] as const;
-/** The tool's own value that says how loud what is said is: decibels over the rest, or under it. */
+/** The tool's own value that says how loud what is said or played is: decibels over the rest, or under it. */
 export const VOLUME = "volume";
 /** The tool's own values: no action of a plugin's takes one of these names. */
 export const OWN: readonly string[] = [...PAUSES, ...LENGTHS, VOLUME];
@@ -33,12 +33,18 @@ export interface WorkedLine extends Placed<Anchor> {
   who: string;
   action: string;
   text?: string;
-  /** How loud what is said is, dB. */
+  /** How loud what is said or played is, dB. */
   volume?: number;
   /** What its action is given, by name, and the line of the file that sets it; none when one of them has no answer. */
   values?: Record<string, { value: Worked; line: number }>;
-  /** None for what is said, for an action that is open, and for one that is given no length and is fitted. */
+  /** None for what is said or played, for an action that is open, and for one that is given no length and is fitted. */
   lasts?: Lasts;
+}
+
+/** The cartoon's own script with its values worked out. */
+export interface WorkedOver {
+  line: number;
+  items: ScriptItem<WorkedLine>[];
 }
 
 /** A scene with its values worked out. */
@@ -68,9 +74,11 @@ export interface Given {
   tables?: string[];
   /** Who has a voice. */
   speakers: string[];
+  /** The library's sounds, by name. */
+  sounds?: string[];
   /** The video's pauses, seconds. */
   timing: Timing;
-  /** The library's volumes, dB, by whose they are. */
+  /** The library's volumes, dB, by whose they are: a character's or a sound's. */
   volumes?: Record<string, number>;
 }
 
@@ -136,10 +144,12 @@ const refused = (found: Found, message: string, hint: string, also: number[] = [
 const IN_SECONDS = "write it in seconds: 0.5s";
 const IN_DECIBELS = `write it in decibels: -12dB is quieter, and ${VOLUMES.own}dB as loud as any voice`;
 /** Why an action has no volume: by its line, or by a level for it. */
-const noVolume = (action: string) => `${action} takes no ${VOLUME}: only what is said has one`;
+const noVolume = (action: string) => `${action} takes no ${VOLUME}: only what is said or played has one`;
+/** How long what the tool's own actions do lasts, so that nothing else says it. */
+const LASTING: Record<string, string> = { [SAY]: "a voice lasts as long as its words", [PLAY]: "a sound lasts as long as its file", [LOOP]: "it lasts to the end of its block" };
 
-/** Who a script's characters are: those with a voice, and whoever does something in it. */
-const peopleOf = (script: WrittenScript, { speakers }: Given) => [NARRATOR, ...speakers, ...script.scenes.flatMap((scene) => linesIn(scene.items)).map(({ who }) => who)];
+/** Who a script's characters are: those with a voice, and whoever does something in it. A sound is none. */
+const peopleOf = (script: WrittenScript, { speakers }: Given) => [NARRATOR, ...speakers, ...script.scenes.flatMap((scene) => linesIn(scene.items)).flatMap(({ who, action }) => (isPlayed(action) ? [] : [who]))];
 
 /** The plugin's, the video's and the library's: the level around the cartoon. */
 const outermost = ({ names, timing, volumes = {} }: Given): Level => {
@@ -187,7 +197,7 @@ function lengthsOf({ level, who, action }: Cell): Found[] {
  * and every mistake, each at the line of the file that sets the value, and the lines that read it. The
  * rest is worked out as if a value with a mistake had none.
  */
-export function workOut(script: WrittenScript, given: Given): { scenes: WorkedScene[]; defaults: Default[]; issues: Issue[] } {
+export function workOut(script: WrittenScript, given: Given): { scenes: WorkedScene[]; over?: WorkedOver; defaults: Default[]; issues: Issue[] } {
   const issues: Issue[] = [];
   /** A mistake, once: the lines that read it are gathered. */
   const report = ({ line, also = [], message, hint }: Issue) => {
@@ -217,7 +227,7 @@ export function workOut(script: WrittenScript, given: Given): { scenes: WorkedSc
   const base = outermost(given);
   const cartoon: Level = { values: script.values ?? {}, around: base };
   const people = peopleOf(script, given);
-  const all = script.scenes.map((scene, n) => placesOf(scene, n));
+  const all = partsOf(script.scenes, script.over).map((part, n) => placesOf<ScriptLine>(part, n));
   const cellOf = new Map<ScriptItem, Cell>();
 
   /** Every name that has a value for a cell, for a hint. */
@@ -234,7 +244,7 @@ export function workOut(script: WrittenScript, given: Given): { scenes: WorkedSc
 
   /** Whether an action that is given no length may be fitted to the words it is together with. */
   const fits = (action: string) => given.fits?.includes(action) ?? true;
-  const isOpen = (action: string) => given.open?.includes(action) ?? false;
+  const isOpen = (action: string) => action === LOOP || (given.open?.includes(action) ?? false);
 
   /** How many times a cell has the length of what `of` names: a line that is said, or an action whose length does not wait for what is beside it. */
   const lengthOf = (of: string, found: Found, { place }: Cell): Amount => {
@@ -246,13 +256,13 @@ export function workOut(script: WrittenScript, given: Given): { scenes: WorkedSc
       throw new Refused(found.set.line === issue.line ? issue : { ...issue, line: found.set.line, also: [issue.line, ...(issue.also ?? [])], message: `${valueOf(found)}: for line ${issue.line}, ${issue.message}` });
     }
     const whose = target === "scene" ? "the scene" : nameOf(target.item);
-    const label = "a line that is said, or an action given its length (takes, speed) or never fitted, has a length that is known before everything has its place: label one of those";
+    const label = "a line that is said or played once, or an action given its length (takes, speed) or never fitted, has a length that is known before everything has its place: label one of those";
     if (target === "scene" || isBlock(target.item)) throw refused(found, `${valueOf(found)}: how long ${whose} lasts is known only once all in it has its place`, label, target === "scene" ? [] : [target.item.line]);
     const { line, action } = target.item;
     if (isOpen(action)) throw refused(found, `${valueOf(found)}: ${whose} lasts to the end of its block, and where that is, is known only once all in it has its place`, label, [line]);
     const told = lengthsOf(cellOf.get(target.item)!);
     const own = told.length === 0 && !fits(action);
-    if (action !== SAY && !own && !told.some(({ key }) => !key.endsWith("arrive"))) {
+    if (!TOOL_ACTIONS.includes(action) && !own && !told.some(({ key }) => !key.endsWith("arrive"))) {
       throw refused(found, `${valueOf(found)}: how long ${whose} lasts is ${told.length > 0 ? "what it needs to arrive" : "its own, or what the words beside it take"}, known only once they have their place`, label, [line]);
     }
     return { unit: "s", number: 0, lengths: new Map([[line, 1]]) };
@@ -340,7 +350,7 @@ export function workOut(script: WrittenScript, given: Given): { scenes: WorkedSc
     return spanOf(amount);
   };
 
-  /** How loud what a line says is, dB, as the nearest level sets it. */
+  /** How loud what a line says or plays is, dB, as the nearest level sets it. */
   const volumeOf = (cell: Cell, line: number): number => {
     const found = find(VOLUME, cell)!;
     if (found.on === base && found.key === VOLUME) byDefault(VOLUME, found.set.text, line);
@@ -473,7 +483,8 @@ export function workOut(script: WrittenScript, given: Given): { scenes: WorkedSc
     return setting;
   };
 
-  const scenes = script.scenes.map((scene, n): WorkedScene => {
+  /** The `n`th script's own lines and blocks, worked out, in the level around them. */
+  const workedIn = (own: ScriptItem[], n: number, around: Level): ScriptItem<WorkedLine>[] => {
     const placeOf = new Map(all[n]!.map((place) => [place.item, place]));
     /** Each line's and block's cell, those above first. */
     const enter = (items: ScriptItem[], around: Level) => {
@@ -483,8 +494,7 @@ export function workOut(script: WrittenScript, given: Given): { scenes: WorkedSc
         if (isBlock(item)) enter(item.items, level);
       }
     };
-    const own: Level = { values: scene.values ?? {}, around: cartoon };
-    enter(scene.items, own);
+    enter(own, around);
     const worked = (item: ScriptItem): ScriptItem<WorkedLine> => {
       const cell = cellOf.get(item)!;
       const placed = anchored(item);
@@ -496,18 +506,23 @@ export function workOut(script: WrittenScript, given: Given): { scenes: WorkedSc
       }
       const { who, action, text } = item;
       const line = { ...placed, who, action, ...(text === undefined ? {} : { text }) };
-      if (action === SAY) return { ...line, volume: volumeOf(cell, item.line) };
+      if (TOOL_ACTIONS.includes(action)) return { ...line, volume: volumeOf(cell, item.line) };
       for (const name of PAUSES.filter((name) => Object.hasOwn(item.values, name))) {
         report({ line: item.line, message: `${action} takes no ${name}`, hint: name === "pause" ? "a pause is a block's: set it on its header, or begin the next row later (@ prev.end + 1s)" : `${name} is a scene's: set it on the scene or the cartoon` });
       }
       if (Object.hasOwn(item.values, VOLUME)) report({ line: item.line, message: noVolume(action), hint: `leave ${VOLUME} out` });
       return { ...line, ...takenBy(item, cell), ...lastsOf(item, cell) };
     };
+    return own.map(worked);
+  };
+  const over = script.over && { line: script.over.line, items: workedIn(script.over.items, script.scenes.length, cartoon) };
+  const scenes = script.scenes.map((scene, n): WorkedScene => {
+    const own: Level = { values: scene.values ?? {}, around: cartoon };
     const cell: Cell = { level: own, known: new Map() };
-    return { line: scene.line, setting: settingOf(scene, own), lead: pauseOf("lead", cell, scene.line), pause: pauseOf("pause", cell, scene.line, scene.items.length > 1), tail: pauseOf("tail", cell, scene.line), items: scene.items.map(worked) };
+    return { line: scene.line, setting: settingOf(scene, own), lead: pauseOf("lead", cell, scene.line), pause: pauseOf("pause", cell, scene.line, scene.items.length > 1), tail: pauseOf("tail", cell, scene.line), items: workedIn(scene.items, n, own) };
   });
   issues.push(...setIssues(script, given, base, worthOf).filter((one) => !issues.some(({ line, message }) => line === one.line && message === one.message)));
-  return { scenes, defaults: [...defaults.values()], issues };
+  return { scenes, ...(over ? { over } : {}), defaults: [...defaults.values()], issues };
 }
 
 /**
@@ -534,12 +549,14 @@ function setIssues(script: WrittenScript, given: Given, base: Level, worthOf: (n
   const scenes = script.scenes.map((scene) => ({ ...scene, values: scene.values ?? {} }));
   for (const { text } of [script, ...scenes].flatMap(({ values }) => Object.values(values ?? {}))) reads(text);
   scenes.forEach((scene) => scene.items.forEach(look));
+  script.over?.items.forEach(look);
   for (const { found } of scenes.flatMap((scene) => inTables(scene, given.tables))) reads(found.set.text);
 
   const taken = Object.values(given.actions).flatMap((values) => Object.keys(values));
-  const actions = [SAY, ...Object.keys(given.actions)];
+  const actions = [...TOOL_ACTIONS, ...Object.keys(given.actions)];
   const isOpen = (whose: string) => given.open?.includes(whose) ?? false;
   const people = peopleOf(script, given);
+  const sounds = given.sounds ?? [];
   /** Where a scene says how a character begins, for a hint: it may be written as a value of that character's. */
   const begins = (key: string, text: string) => {
     const who = key.split(".")[0]!;
@@ -557,12 +574,14 @@ function setIssues(script: WrittenScript, given: Given, base: Level, worthOf: (n
       }
       const [whose, name] = key.includes(".") ? (key.split(".") as [string, string]) : [undefined, key];
       const ours = OWN.includes(name);
-      if (whose !== undefined && !people.includes(whose) && !actions.includes(whose)) {
-        const near = nearest(whose, [...new Set([...people, ...actions])]);
-        issue(`"${whose}" is neither a character nor an action`, `a value is for everything (${name}), for a character (pip.${name}) or an action (${actions.findLast((one) => !isOpen(one))}.${name})${near ? `: did you mean ${near}?` : ""}`);
+      const ofSound = whose !== undefined && sounds.includes(whose) && !people.includes(whose);
+      if (whose !== undefined && !people.includes(whose) && !ofSound && !actions.includes(whose)) {
+        const near = nearest(whose, [...new Set([...people, ...sounds, ...actions])]);
+        issue(`"${whose}" is neither a character, a sound nor an action`, `a value is for everything (${name}), for a character (pip.${name}) or an action (${actions.findLast((one) => !isOpen(one))}.${name})${near ? `: did you mean ${near}?` : ""}`);
       } else if (whose !== undefined && (PAUSES as readonly string[]).includes(name)) issue(`${name} is nobody's own: it is the same for everyone`, `write ${name}`);
-      else if (name === VOLUME && whose !== undefined && !people.includes(whose) && whose !== SAY) issue(noVolume(whose), `it is for everything that is said (${VOLUME}, ${SAY}.${VOLUME}) or for a character (pip.${VOLUME})`);
-      else if (whose === SAY && ours && name !== VOLUME) issue(`${SAY} takes no ${name}: a voice lasts as long as its words`, `${name} is an action's: leave it out`);
+      else if (name === VOLUME && whose !== undefined && !people.includes(whose) && !ofSound && !TOOL_ACTIONS.includes(whose)) issue(noVolume(whose), `it is for everything that is heard (${VOLUME}), for what is said (${SAY}.${VOLUME}) or for a character (pip.${VOLUME})`);
+      else if (whose !== undefined && TOOL_ACTIONS.includes(whose) && ours && name !== VOLUME) issue(`${whose} takes no ${name}: ${LASTING[whose]}`, `${name} is an action's: leave it out`);
+      else if (ofSound && ours && name !== VOLUME) issue(`${whose} takes no ${name}: ${LASTING[PLAY]}`, `${name} is an action's: leave it out`);
       else if (whose !== undefined && isOpen(whose) && ours) issue(noLength(whose, name), `${name} is another action's: leave it out`);
       else if (level === "block" && (name === "lead" || name === "tail")) issue(`${name} is a scene's, and not a block's`, "set it on the scene or the cartoon; a block has a pause");
       else if (people.includes(name)) issue(`${name} is a character's name, and no value's`, `call it something else: in a formula, ${name} is the character${begins(name, value.text)}`);
@@ -585,6 +604,7 @@ function setIssues(script: WrittenScript, given: Given, base: Level, worthOf: (n
   };
   const cartoon = set(script.values ?? {}, "cartoon", base);
   for (const scene of scenes) blocks(scene.items, set(scene.values, "scene", cartoon));
+  blocks(script.over?.items ?? [], cartoon);
   const once = new Map(issues.map(({ also, ...issue }) => [`${issue.line} ${issue.message}`, also && also.length > 0 ? { ...issue, also } : issue]));
   return [...once.values()];
 }

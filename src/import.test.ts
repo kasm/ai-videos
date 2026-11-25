@@ -209,6 +209,25 @@ test("a reply imported: each episode the plugin takes is written, what it adds g
   assert.doesNotMatch(again.join("\n"), /Library:/);
   assert.equal(await readFile(path.join(videos, "sq-2.yaml"), "utf8"), "use: square\ncolour: red\n");
 
+  // A sound is a file, which no chat has: an episode that adds one is refused, and one that has the library's again is not.
+  const withSounds = `${await readFile(path.join(root, "library.yaml"), "utf8")}\nsounds:\n  bell: { file: sounds/bell.wav }\n`;
+  await writeFile(path.join(root, "library.yaml"), withSounds);
+  const sounds = path.join(root, "stories", "sounds.reply.md");
+  await writeFile(
+    sounds,
+    [
+      episode("sq-7", "library:\n  sounds:\n    drum:\n      file: sounds/drum.wav\nuse: square\ncolour: red\n"),
+      episode("sq-8", "library:\n  sounds:\n    bell: { file: sounds/bell.wav }\n  colours:\n    black: '#000000'\nuse: square\ncolour: black\n"),
+      episode("sq-9", "library:\n  colours:\n    white: '#ffffff'\n  sounds: { horn: { file: a.wav }, fife: { file: b.wav }, bell: { file: c.wav } }\nuse: square\ncolour: white\n"),
+      "All episodes written.\n",
+    ].join("\n"),
+  );
+  const heard = await importReply(sounds, () => {});
+  assert.deepEqual(heard.videos, [path.join(videos, "sq-8.yaml")]);
+  assert.match(heard.refused!, /- sq-7: it adds a sound to the library \(drum\): a sound is a file, which only a person adds, so leave sounds: out of library:\n- sq-9: it adds sounds to the library \(horn and fife\): a sound is a file/);
+  const now = await readFile(path.join(root, "library.yaml"), "utf8");
+  assert.ok(now.includes("black: '#000000'") && now.includes("bell: { file: sounds/bell.wav }") && !/drum|horn|fife|white/.test(now), now);
+
   // A file with no block in it is no reply.
   const empty = path.join(root, "stories", "empty.md");
   await writeFile(empty, "Sure! Here is a summary of the story.\n");

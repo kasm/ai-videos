@@ -14,13 +14,17 @@ import { MARKS, PACE, readLibrary } from "./scenario.ts";
 import type { Did, Setting, Walk } from "./script.ts";
 
 const root = path.join(import.meta.dirname, "..");
-/** The project's library as the tool gives it to the plugin, without each character's voice; and who has one. */
-const { library, speakers } = (() => {
+/** The project's library as the tool gives it to the plugin, without each character's voice and its sounds; who has a voice; each sound's file, and how loud it is, dB. */
+const { library, speakers, sounds, volumes } = (() => {
   const file = path.join(root, "library.yaml");
-  const raw = parse(readFileSync(file, "utf8"));
+  const { sounds, ...raw } = parse(readFileSync(file, "utf8")) as { sounds: Record<string, { file: string; volume?: string }>; [key: string]: any };
   for (const character of Object.values(raw.characters)) delete (character as { voice?: string }).voice;
-  return { library: { file, raw }, speakers: Object.keys(raw.characters) };
+  const files = Object.fromEntries(Object.entries(sounds).map(([name, sound]) => [name, sound.file]));
+  const volumes = Object.fromEntries(Object.entries(sounds).flatMap(([name, { volume }]) => (volume === undefined ? [] : [[name, Number.parseFloat(volume)]])));
+  return { library: { file, raw }, speakers: Object.keys(raw.characters), sounds: files, volumes };
 })();
+/** How long each of its sounds lasts, seconds, by its file: measuring is the tool's. */
+const LENGTHS: Record<string, number> = { "sounds/tune.flac": 8, "sounds/jingle.flac": 1.4, "sounds/rustle.flac": 1 };
 
 /**
  * A cartoon's file as the tool reads a script: its values, each scene's own keys and values, and its
@@ -34,20 +38,29 @@ function written(text: string): WrittenScript {
     const line = rows.findIndex((row, i) => i >= from && /^\s*(- )?values: \{/.test(row)) + 1;
     return Object.fromEntries(Object.entries(values ?? {}).map(([name, value]) => [name, { line, text: String(value) }]));
   };
-  const file = parse(text) as { values?: unknown; scenes: Record<string, unknown>[] };
+  const file = parse(text) as { values?: unknown; script?: string; scenes: Record<string, unknown>[] };
+  /** The cartoon's own script, whose lines begin on the row after its `|`. */
+  const overOf = () => {
+    if (file.script === undefined) return {};
+    const line = rows.findIndex((row) => /^script: \|/.test(row)) + 1;
+    const read = readScript(file.script, line + 1);
+    issues.push(...read.issues);
+    return { over: { line, items: read.items } };
+  };
+  const over = overOf();
   const scenes = file.scenes.map(({ script, values, ...setting }) => {
     // The scene's `- ` row, then its script's `|` row: the lines begin on the row after it.
     const begins = rows.findIndex((row, i) => i >= next && /^\s*- /.test(row));
-    const header = rows.findIndex((row, i) => i >= begins && /^\s*(- )?script: \|/.test(row));
+    const header = rows.findIndex((row, i) => i >= begins && /^\s+(- )?script: \|/.test(row));
     next = header + 1;
     const read = readScript(String(script), header + 2);
     issues.push(...read.issues);
     return { line: begins + 1, setting, values: valuesOf(values, begins), items: read.items };
   });
-  return { values: valuesOf(file.values, 0), scenes, issues };
+  return { values: valuesOf(file.values, 0), ...over, scenes, issues };
 }
 /** Checked as the tool does it: who speaks has a voice in the library, or in the file's cast. */
-const check = (text: string) => checkScenario(plugin.script, written(text), library, [...speakers, ...Object.keys(parse(text).cast ?? {})], TIMING);
+const check = (text: string) => checkScenario(plugin.script, written(text), library, [...speakers, ...Object.keys(parse(text).cast ?? {})], TIMING, volumes, sounds);
 /** The mistakes the check finds in a scene of the meadow with Pip and Mo, and these lines. */
 const SCENE = ["scenes:", "  - background: meadow", "    places: { pip: off-left, mo: right }", "    faces: { mo: left }", "    script: |"];
 const issuesOf = async (lines: string[], scene = SCENE) => {
@@ -132,9 +145,9 @@ test("a compiled scenario holds nothing but numbers, texts and file names, and t
     const rows = script.scenes.map((scene) => linesIn(scene.items));
     const said = rows.flat().filter((line) => line.action === SAY);
     const voices = said.map((_, n) => voiced(`${String(n).padStart(20, "0")}.wav`, 1 + n / 7));
-    const compiled = compile(checked.scenes, voices, SETTINGS, "../../videos/a-cartoon.yaml");
+    const compiled = compile(checked.scenes, voices, SETTINGS, "../../videos/a-cartoon.yaml", LENGTHS, checked.over);
     const cast = Object.keys(parse(text).cast ?? {});
-    const names = new Set([NARRATOR, "scene", SAY, ...cast, ...Object.keys(plugin.script.actions), ...Object.keys(library.raw.characters), ...Object.keys(library.raw.backgrounds)]);
+    const names = new Set([NARRATOR, "scene", SAY, "play", "loop", ...Object.keys(sounds), ...cast, ...Object.keys(plugin.script.actions), ...Object.keys(library.raw.characters), ...Object.keys(library.raw.backgrounds)]);
     const texts = new Set(said.map((line) => line.text));
     const files = new Set(["../../videos/a-cartoon.yaml", ...voices.map((voice) => voice.file)]);
     for (const [at, value] of leaves(compiled)) {
@@ -144,6 +157,7 @@ test("a compiled scenario holds nothing but numbers, texts and file names, and t
       else if (where === "format" || where === "made.by") assert.match(value, /^ai-videos[ -]compiled?$/);
       else if (at.at(-1) === "text") assert.ok(texts.has(value), `${where}: ${value}`);
       else if (at.at(-1) === "file" || where === "made.from") assert.ok(files.has(value), `${where}: ${value}`);
+      else if (at.at(-1) === "sound") assert.ok(Object.values(sounds).includes(value), `${where}: ${value}`);
       else assert.ok(names.has(value), `${where} is a name: ${value}`);
       // A mark is written in a script, and compiled to its point.
       assert.ok(!(String(value) in MARKS), `${where} is the mark ${value}`);
@@ -172,7 +186,7 @@ test("a compiled scenario holds nothing but numbers, texts and file names, and t
 async function compiledOf(text: string, voices: Voiced[]): Promise<Compiled> {
   const checked = await check(text);
   assert.ok("scenes" in checked, JSON.stringify(checked));
-  return JSON.parse(JSON.stringify(compile(checked.scenes, voices, SETTINGS, "x.yaml")));
+  return JSON.parse(JSON.stringify(compile(checked.scenes, voices, SETTINGS, "x.yaml", LENGTHS, checked.over)));
 }
 const size = { width: 1920, height: 1080 };
 /** Every frame's SVG, drawn as the tool does it: from the compiled scenario and the library, and nothing else. */
@@ -325,9 +339,11 @@ test("all-at-once's third scene: one walks in while another hops and a third tur
   const told = scene.lines.map((line) => [line.who, line.action, line.from - scene.from, line.frames]);
   // In the first block the walk is fitted to the words, the hops and the turn keep their own pace, and Mo turns a second later, then points.
   assert.deepEqual(told.slice(0, 5), [["badger", "walk", 18, 57], ["tuk", "jump", 18, 36], ["mo", "turn", 48, 15], ["mo", "point", 63, 9], ["narrator", "say", 18, 57]]);
+  // At "badger", which is 13 of the 41 the words weigh, somebody rustles in the reeds, for a second of them.
+  assert.deepEqual(told[5], ["rustle", "play", 18 + Math.round((13 / 41) * 57), 30]);
   // In the second Pip's walk is as long as its words, and its arm is up 0.3 s after they begin.
   // So are the looks of Tuk and Mo, at Pip.
-  assert.deepEqual(told.slice(5, 11), [["pip", "walk", 87, 71], ["pip", "wave", 87, 9], ["pip", "say", 87, 71], ["mo", "stand", 87, 9], ["tuk", "look-at", 87, 71], ["mo", "look-at", 87, 71]]);
+  assert.deepEqual(told.slice(6, 12), [["pip", "walk", 87, 71], ["pip", "wave", 87, 9], ["pip", "say", 87, 71], ["mo", "stand", 87, 9], ["tuk", "look-at", 87, 71], ["mo", "look-at", 87, 71]]);
   const at = (frame: number) => Object.fromEntries(stagingOf(compiled, scene.from + frame).characters.map((one) => [one.name, one]));
   assert.deepEqual([at(18).mo!.facing, at(48).mo!.facing, at(63).mo!.facing], [-1, -1, 1], "Mo turns to look");
   assert.deepEqual([at(63).mo!.arm, at(72).mo!.arm, at(96).mo!.arm], [0, -90, 0], "points, and stands as Pip comes by");
@@ -361,15 +377,47 @@ test("all-at-once's third scene: one walks in while another hops and a third tur
   for (const who of ["pip", "mo", "tuk"]) assert.deepEqual(then[who]!.at, before[who]!.at);
 });
 
+test("all-at-once's sounds: a tune under all three scenes, a jingle that the news waits for, and a rustle at a word, each at its volume", async () => {
+  const compiled = await compiledOf(AT_ONCE, AT_ONCE_VOICES);
+  const { lines, scenes, frames } = compiled;
+  assert.equal(scenes.length, 3);
+  assert.deepEqual(lines!.map(({ line: _, ...rest }) => rest), [{ who: "tune", action: "loop", from: 0, frames, sound: "sounds/tune.flac", volume: -20 }]);
+  const of = (words: string) => scenes.flatMap((scene) => scene.lines).find((line) => "text" in line && line.text.startsWith(words))!;
+  const played = (who: string) => scenes.flatMap((scene) => scene.lines).find((line) => line.who === who && line.action === "play")!;
+  const [jingle, rustle] = [played("jingle"), played("rustle")];
+  // The jingle begins a beat after the line before it, and the radio two beats after it, as that is the block's pause.
+  assert.equal(jingle.from, of("Hush").from + of("Hush").frames + 12);
+  assert.deepEqual([jingle.frames, "volume" in jingle && jingle.volume], [42, -8]);
+  assert.equal(of("Good morning, and").from, jingle.from + 42 + 24);
+  assert.equal(of("That was me").from > of("A badger was").from, true, "the talk over the radio waits with it");
+  assert.equal(rustle.from, of("And then the badger").from + Math.round((13 / 41) * of("And then the badger").frames));
+  assert.deepEqual([rustle.frames, "volume" in rustle && rustle.volume], [30, -6]);
+  assert.ok(rustle.from + rustle.frames < of("And then the badger").from + of("And then the badger").frames, "it is over within the words");
+  // Nothing of them is seen: the picture is the same without them.
+  const quiet = AT_ONCE.replace(/script: \|\r?\n  tune loop\r?\n/, "").replace(/ *rustle play.*\r?\n/, "");
+  const without = await compiledOf(quiet, AT_ONCE_VOICES);
+  assert.ok(!("lines" in without));
+  assert.deepEqual(pictureOf(without), pictureOf(compiled));
+});
+
+test("the library's sounds are files in the project, made from nothing by the script beside them", () => {
+  const made = readFileSync(path.join(root, "sounds", "make.mjs"), "utf8");
+  for (const file of Object.values(sounds)) {
+    assert.equal(readFileSync(path.join(root, file)).subarray(0, 4).toString("latin1"), "fLaC", file);
+    assert.ok(made.includes(`"${path.basename(file)}"`), file);
+  }
+  assert.deepEqual(Object.values(sounds).sort(), Object.keys(LENGTHS).sort());
+});
+
 test("all-at-once, with one value changed, has another timing and nothing else of it", async () => {
-  assert.match(AT_ONCE, /\nvalues: \{ beat: 0\.4s, pause: beat, radio\.volume: -8dB \}\r?\n/);
+  assert.match(AT_ONCE, /\nvalues: \{ beat: 0\.4s, pause: beat, radio\.volume: -8dB, jingle\.volume: -8dB \}\r?\n/);
   const [before, after] = await Promise.all([AT_ONCE, AT_ONCE.replace("beat: 0.4s", "beat: 0.8s")].map((text) => compiledOf(text, AT_ONCE_VOICES)));
   assert.ok(after!.frames > before!.frames + 100, `${before!.frames} frames, and ${after!.frames}`);
   const lines = (compiled: Compiled) => compiled.scenes.flatMap((scene) => scene.lines);
   const moved = lines(after!).filter((line, k) => line.from - lines(before!)[k]!.from > 0);
   // All but the walk and the words joined to it, that the first scene begins with.
   assert.equal(moved.length, lines(before!).length - 2);
-  const without = (compiled: Compiled) => lines(compiled).map(({ line, who, action, ...rest }) => [line, who, action, "text" in rest ? [rest.text, rest.file] : rest.values]);
+  const without = (compiled: Compiled) => lines(compiled).map(({ line, who, action, ...rest }) => [line, who, action, "text" in rest ? [rest.text, rest.file] : "sound" in rest ? rest.sound : rest.values]);
   assert.deepEqual(without(after!), without(before!));
   // The pause between lines is a beat, and the radio's two.
   for (const [compiled, beat] of [[before!, 12], [after!, 24]] as const) {
@@ -435,7 +483,7 @@ test("a character's line opens its mouth as the voice goes, and nobody else's; t
 });
 
 test("the check refuses an unknown action, a wrong value and an unknown name, each with its line and a hint", async () => {
-  assert.deepEqual(await issuesOf(["pip wlak to=middle"]), [{ line: 6, message: 'no action is named "wlak"', hint: "the actions are say, walk, jump, turn, look-at, wave, point, stand and background: did you mean walk?" }]);
+  assert.deepEqual(await issuesOf(["pip wlak to=middle"]), [{ line: 6, message: 'no action is named "wlak"', hint: "the actions are say, walk, jump, turn, look-at, wave, point, stand, background, play and loop: did you mean walk?" }]);
   assert.deepEqual(await issuesOf(["narrator say: Here is Pip.", "pip walk to=centre"]), [
     { line: 7, message: '"pip" walks to centre: no place is called "centre"', hint: "a place is a mark (off-left, left, middle, right and off-right), a character of the scene (pip and mo), or a point that values set (values: { centre: 300 })" },
   ]);
@@ -667,7 +715,7 @@ test("the check follows who stands where: a walk by someone the scene does not p
   assert.deepEqual((await issuesOf(["pip walk to=middle", "pip walk to=middle"])).map((i) => [i.line, i.message]), [[7, '"pip" stands at middle already']]);
   const moved = await check([...SCENE, "      pip walk to=middle", "      mo walk to=off-right", "      mo say: Goodbye!", "      pip walk to=right", ""].join("\n"));
   assert.ok("scenes" in moved);
-  assert.deepEqual(linesIn(moved.scenes[0]!.items).map((line) => ("length" in line ? [line.values, line.length] : line.text)), [
+  assert.deepEqual(linesIn(moved.scenes[0]!.items).map((line) => ("length" in line ? [line.values, line.length] : "text" in line && line.text)), [
     [{ from: [-250, 880], to: [960, 880] }, 3.781],
     [{ from: [1440, 880], to: [2170, 880] }, 2.281],
     "Goodbye!",

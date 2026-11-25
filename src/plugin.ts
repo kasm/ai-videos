@@ -17,12 +17,12 @@ export { moments } from "./moments.ts";
 export { listed, nearest } from "./names.ts";
 export { SAY, isBlock, readScript } from "./read.ts";
 export { NARRATOR, checkScenario, linesIn } from "./scenario.ts";
-export type { Action, ActionLine, Anchor, Checked, CheckedLine, CheckedScene, ConstructionOf, Default, Issue, Plain, SceneActions, SceneChecked, ScriptBlock, ScriptItem, ScriptLine, ScriptPlugin, Timing, WrittenAnchor, WrittenScene, WrittenScript, WrittenValue } from "./scenario.ts";
+export type { Action, ActionLine, Anchor, Checked, CheckedLine, CheckedOver, CheckedScene, ConstructionOf, Default, Issue, Plain, SceneActions, SceneChecked, ScriptBlock, ScriptItem, ScriptLine, ScriptPlugin, Timing, WrittenAnchor, WrittenOver, WrittenScene, WrittenScript, WrittenValue } from "./scenario.ts";
 export { shownAs } from "./formula.ts";
 export type { Construction, Span, Worked } from "./formula.ts";
 export { plainValues } from "./values.ts";
 export { compile } from "./compile.ts";
-export type { Compiled, CompiledCaption, CompiledLine, CompiledScene, CompileSettings, Said, Voiced } from "./compile.ts";
+export type { Compiled, CompiledCaption, CompiledLine, CompiledScene, CompileSettings, Said, Sounded, Voiced } from "./compile.ts";
 /** What each frame of a compiled scenario shows, as the host gives it to a plugin's `script.draw`: for a plugin's tests. */
 export { pictureOf, shownAt } from "./shown.ts";
 export type { CompiledPicture, Shown, ShownAction } from "./shown.ts";
@@ -103,12 +103,12 @@ export interface Camera {
 /**
  * The project's library, `library.yaml` beside its package.json: what its videos name (a cartoon's
  * characters and backgrounds). The tool reads it, takes each character's `voice` for the cast and its
- * `volume`, and gives the plugin the rest.
+ * `volume`, and the `sounds`, and gives the plugin the rest.
  */
 export interface Library {
   /** The library's file, for an error to name. */
   file: string;
-  /** The file, parsed from YAML, without each character's `voice` and `volume`. */
+  /** The file, parsed from YAML, without each character's `voice` and `volume`, and without its `sounds`. */
   raw: unknown;
 }
 

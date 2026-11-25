@@ -62,6 +62,37 @@ test("the library: each character's voice is the project's cast, and the plugin 
   });
 });
 
+test("the library: its sounds are the tool's alone, each with its file and how loud it is, and the plugin gets none of them", async () => {
+  const text = "characters:\n  pip: { voice: am_puck, volume: -2dB, parts: {} }\nsounds:\n  tune: { file: sounds/tune.flac, volume: -20dB }\n  bell: { file: ../shared/bell.mp3 }\n";
+  const root = await project("library-sounds", {}, { "meet.yaml": "use: cartoon\nscenes: []\n" }, text);
+  const video = await readVideoFile(path.join(root, "videos", "meet.yaml"));
+  assert.deepEqual(video.sounds, { tune: "sounds/tune.flac", bell: "../shared/bell.mp3" });
+  assert.deepEqual(video.volumes, { pip: -2, tune: -20 });
+  assert.deepEqual(video.library!.raw, { characters: { pip: { parts: {} } } });
+  // A library with no sounds has none, and so has a project with no library.
+  for (const [name, library] of [["sounds-none", "characters: {}\n"], ["sounds-no-library", undefined]] as const) {
+    const bare = await project(name, {}, { "meet.yaml": "use: cartoon\n" }, library);
+    assert.deepEqual((await readVideoFile(path.join(bare, "videos", "meet.yaml"))).sounds, {});
+  }
+  const wrong = async (name: string, sounds: string) => {
+    const bad = await project(`sounds-${name}`, {}, { "a.yaml": "use: cartoon\n" }, `characters:\n  pip: { voice: am_puck }\nsounds: ${sounds}\n`);
+    let said = "";
+    await assert.rejects(readVideoFile(path.join(bad, "videos", "a.yaml")), (e: Error) => ((said = e.message), true));
+    return said;
+  };
+  assert.match(await wrong("no-file", "{ bell: { volume: -6dB } }"), /library\.yaml: its sounds are not valid:[\s\S]*give each sound its file, a path from this folder[\s\S]*bell\.file/);
+  assert.match(await wrong("empty-file", '{ bell: { file: "" } }'), /give each sound its file/);
+  assert.match(await wrong("path", "{ bell: sounds/bell.wav }"), /its sounds are not valid/);
+  assert.match(await wrong("absolute", `{ bell: { file: '${path.resolve("bell.wav")}' } }`), /a sound's file is a path from this folder, not an absolute one/);
+  assert.match(await wrong("volume", "{ bell: { file: b.wav, volume: -6 } }"), /a sound's volume is in decibels, -4dB: 0dB is as loud as any voice[\s\S]*bell\.volume/);
+  assert.match(await wrong("far", "{ bell: { file: b.wav, volume: 13dB } }"), /a volume is from -60dB to 12dB/);
+  assert.match(await wrong("key", "{ bell: { file: b.wav, loop: true } }"), /its sounds are not valid[\s\S]*loop/);
+  assert.match(await wrong("name", "{ Bell: { file: b.wav } }"), /a sound's name is lowercase letters, digits and dashes, a letter first/);
+  // A name is one thing: its volume is.
+  assert.match(await wrong("character", "{ pip: { file: b.wav } }"), /library\.yaml: pip is a character and a sound: call the sound something else/);
+  assert.match(await wrong("narrator", "{ narrator: { file: b.wav } }"), /library\.yaml: narrator is the narrator and a sound: call the sound something else/);
+});
+
 test("the library: a character's volume is the tool's too, in decibels, and the plugin gets none of it", async () => {
   const root = await project("library-volumes", {}, { "meet.yaml": "use: cartoon\nscenes: []\n" }, "characters:\n  pip: { voice: am_puck, volume: -4.5dB, parts: {} }\n  mo: { voice: bf_emma, parts: {} }\n  tuk: { voice: bm_fable, volume: +3dB }\n");
   const video = await readVideoFile(path.join(root, "videos", "meet.yaml"));
@@ -327,6 +358,29 @@ test("a number in values is taken as it is written, as a line's is, and not as Y
   assert.deepEqual(script("near: 0x10").issues.map(({ line, message }) => [line, message]), [[2, 'near=0x10: "0x" has no unit that is known']]);
 });
 
+test("a script on top of the file is the cartoon's own, its lines those of the file, before its scenes or after them", () => {
+  const scene = ["scenes:", "  - script: |", "      pip say: Hi."];
+  const script = writtenScript(["use: cartoon", "script: |", "  tune loop volume=-20dB", "  in order:", "    bell play", ...scene, ""].join("\n"))!;
+  assert.deepEqual(script.issues, []);
+  assert.deepEqual(script.over, {
+    line: 2,
+    items: [
+      { line: 3, who: "tune", action: "loop", values: { volume: "-20dB" } },
+      { line: 4, order: "in order", items: [{ line: 5, who: "bell", action: "play", values: {} }] },
+    ],
+  });
+  assert.deepEqual(script.scenes.map(({ line }) => line), [7]);
+  assert.deepEqual(writtenScript([...scene, "script: |", "  tune loop", ""].join("\n"))!.over, { line: 4, items: [{ line: 5, who: "tune", action: "loop", values: {} }] });
+  assert.ok(!("over" in writtenScript([...scene, ""].join("\n"))!));
+  // It is a block of lines, as a scene's.
+  const refused = (...rows: string[]) => writtenScript([...rows, ...scene, ""].join("\n"))!.issues.map(({ line, message }) => [line, message]);
+  assert.deepEqual(refused("script: tune loop"), [[1, "this script is not a block of lines"]]);
+  assert.deepEqual(refused("script: |", "  # nothing yet"), [[1, "this script has no line"]]);
+  assert.deepEqual(refused("script: |", "  tune"), [[2, "tune does nothing: the action comes after the name"]]);
+  // Without scenes that have one, it is no script's file.
+  assert.equal(writtenScript("script: |\n  tune loop\nscenes:\n  - beats: []\n"), undefined);
+});
+
 test("values that do not read, and a key on top of a script that nothing reads, are refused with their lines", () => {
   const scene = ["scenes:", "  - script: |", "      pip say: Hi."];
   const refused = (...rows: string[]) => writtenScript([...rows, ...scene, ""].join("\n"))!.issues.map(({ line, message }) => [line, message]);
@@ -344,7 +398,7 @@ test("values that do not read, and a key on top of a script that nothing reads, 
     {
       line: 2,
       message: 'nothing reads "valuse"',
-      hint: "on top of a script are use, voice, cast, speed, fps, loudness, timing, quality, outputs, values and scenes: did you mean values?",
+      hint: "on top of a script are use, voice, cast, speed, fps, loudness, timing, quality, outputs, values, script and scenes: did you mean values?",
     },
   ]);
   const [inScene] = writtenScript(["scenes:", "  - values: { pause: 1 s }", "    script: |", "      pip say: Hi.", ""].join("\n"))!.issues;

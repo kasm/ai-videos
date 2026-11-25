@@ -1,7 +1,7 @@
 // `check <file>` and a script's `make`, as they are typed (cli.ts), on a cache with nothing in it:
 // the check speaks nothing, so it needs no voice model. A script's mistakes come each with the file,
-// its line as written and a hint; any other video file is checked as its plugin checks it. The
-// plugin here is a small one written for the test.
+// its line as written and a hint; a sound's file is measured; any other video file is checked as its
+// plugin checks it. The plugin here is a small one written for the test.
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -9,6 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
 import { run } from "./render.ts";
+import { encodeWav } from "./tts.ts";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const scratch = await mkdtemp(path.join(os.tmpdir(), "ai-videos-check-"));
@@ -110,7 +111,7 @@ test("check refuses an unknown action, a wrong value and an unknown name, each w
       "",
       "wrong.yaml:5: sq slid to=right",
       '  no action is named "slid"',
-      "  Hint: the actions are say and slide: did you mean slide?",
+      "  Hint: the actions are say, slide, play and loop: did you mean slide?",
       "",
       "wrong.yaml:6: sq slide to=up",
       "  slide, to=up: it is left or right",
@@ -265,6 +266,59 @@ test("check refuses a name the plugin does not find, at its scene's line, and a 
   const odd = await cli(["check", await video("odd", script(["odd say: Hello."]))]);
   assert.equal(odd.code, 1);
   assert.match(odd.stderr, /odd\.yaml:5: odd say: Hello\.\n {2}odd speaks in am_nobody, which is not one of the tool's voices\n {2}Hint: odd's voice is in library\.yaml, or the file's cast: give one that npm run -s video -- voices lists\n$/);
+});
+
+test("check refuses a sound whose file is missing, by its name, and one that holds no sound, with the lines that play it", async () => {
+  // The library's bell has its file, and so has the tune; the gong's is missing, and the words are none.
+  const library = `${LIBRARY}sounds:\n  bell: { file: sounds/bell.wav }\n  gong: { file: sounds/gong.flac }\n  words: { file: sounds/words.wav }\n  tune: { file: sounds/tune.wav, volume: -20dB }\n`;
+  await writeFile(path.join(root, "library.yaml"), library);
+  await mkdir(path.join(root, "sounds"), { recursive: true });
+  const tone = Float32Array.from({ length: 4800 }, (_, i) => 0.3 * Math.sin(i / 10));
+  await writeFile(path.join(root, "sounds", "bell.wav"), encodeWav(tone, 48000));
+  await writeFile(path.join(root, "sounds", "tune.wav"), encodeWav(tone, 48000));
+  await writeFile(path.join(root, "sounds", "words.wav"), "These are words, and no sound.");
+  try {
+    const file = await video("sounds", script(["bell play", "gong loop", "sq say: Here I am.", "words play", "in order:", "  gong play", "  odd say: Hello."]));
+    const { code, stdout, stderr } = await cli(["check", file]);
+    assert.equal(code, 1);
+    assert.equal(stdout, "");
+    // The first pass is the script's own: one sound does one thing at a time.
+    assert.match(stderr, /1 mistake in .*\n\n.*:10: gong play\n {2}gong's sound is busy with line 6, which goes on to the end of the scene\n/);
+    const again = await video("sounds", script(["bell play", "gong play", "sq say: Here I am.", "words play", "gong play", "odd say: Hello."]));
+    const missing = await cli(["check", again]);
+    assert.equal(missing.code, 1);
+    assert.equal(
+      missing.stderr.replaceAll(path.relative(ROOT, again), "sounds.yaml").replaceAll(again, "sounds.yaml"),
+      [
+        "3 mistakes in sounds.yaml:",
+        "",
+        "sounds.yaml:6: gong play",
+        "  there is no file sounds/gong.flac, which library.yaml has for gong",
+        "  sounds.yaml:9: gong play",
+        "  Hint: put it there, a path from the folder of library.yaml, or give gong another file",
+        "",
+        "sounds.yaml:8: words play",
+        "  sounds/words.wav, which library.yaml has for words, holds no sound that ffmpeg reads",
+        "  Hint: put a sound there, a path from the folder of library.yaml, or give words another file",
+        "",
+        "sounds.yaml:10: odd say: Hello.",
+        "  odd speaks in am_nobody, which is not one of the tool's voices",
+        "  Hint: odd's voice is in library.yaml, or the file's cast: give one that npm run -s video -- voices lists",
+        "",
+      ].join("\n"),
+    );
+    // A file nothing plays is nobody's mistake, and neither is one over the scenes that is there.
+    const good = await video("sounds", ["use: square", "script: |", "  tune loop", "scenes:", "  - colour: red", "    script: |", "      bell play", "      sq say: Here I am.", ""].join("\n"));
+    const taken = await cli(["check", good]);
+    assert.equal(taken.code, 0, taken.stderr);
+    assert.match(taken.stdout, /sounds\.yaml, a script of 1 scene and 3 lines, 1 of them said and 2 played\.\nBy default, as nothing sets it:\n[^]*\n {2}volume: 0dB \(line 7\)\n$/);
+    const over = await video("sounds", ["use: square", "script: |", "  gong loop", "scenes:", "  - colour: red", "    script: |", "      sq say: Here I am.", ""].join("\n"));
+    assert.match((await cli(["check", over])).stderr, /sounds\.yaml:3: gong loop\n {2}there is no file sounds\/gong\.flac/);
+    // Any other video file plays none, so its library's files are nothing to it.
+    assert.equal((await cli(["check", await video("events", "use: square\nwait: 1\n")])).code, 0);
+  } finally {
+    await writeFile(path.join(root, "library.yaml"), LIBRARY);
+  }
 });
 
 test("check takes any other video file as its plugin checks it: mended, planned, every speaker with a voice", async () => {

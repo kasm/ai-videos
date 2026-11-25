@@ -16,19 +16,20 @@ import type { Compiled } from "./compile.ts";
 import { readFormula } from "./formula.ts";
 import type { Call } from "./make.ts";
 import type { DrawingPlugin, EventLimits as Limits, Library, Plan, Plugin, RecordingPlugin, Schema } from "./plugin.ts";
-import { SAY, isBlock, readScript } from "./read.ts";
+import { TOOL_ACTIONS, isBlock, readScript } from "./read.ts";
 import { checkScenario, type Action, type Checked, type ConstructionOf, type ScriptPlugin, type Timing, type WrittenScript } from "./scenario.ts";
 import { EventLimits, FORMATS, slug } from "./script.ts";
 import { pictureOf, shownAt } from "./shown.ts";
 import { OWN, plainValues, valuesTaken } from "./values.ts";
 
-/** The check of a video written as a script (scenario.ts): its scenes as written, the names with a voice, the video's pauses, and the library's volumes. */
+/** The check of a video written as a script (scenario.ts): its scenes as written, the names with a voice, the video's pauses, and the library's volumes and sounds. */
 export interface ScriptCall {
   step: "script";
   script: WrittenScript;
   speakers: string[];
   timing: Timing;
   volumes: Record<string, number>;
+  sounds: Record<string, string>;
 }
 
 /** The drawing of a video written as a script: its compiled scenario, and the clip to draw from it. */
@@ -201,7 +202,7 @@ export async function loadPlugin(file: string): Promise<Plugin> {
   }
   // An action's example is one line of a script that names it, with no block, label or anchor, its values what the action takes.
   for (const [name, { example, values }] of Object.entries(plugin.script?.actions ?? {})) {
-    if (name === SAY) throw new Error(`${file}: "${SAY}" is the tool's own action: give the plugin's another name`);
+    if (TOOL_ACTIONS.includes(name)) throw new Error(`${file}: "${name}" is the tool's own action: give the plugin's another name`);
     const read = readScript(example);
     const [line] = read.items;
     let why = read.issues[0] && `  ${read.issues[0].message}`;
@@ -375,7 +376,7 @@ export async function runJob(plugin: Plugin, pluginFile: string, job: Job): Prom
   const { call, file } = job;
   if (call.step === "script") {
     if (!plugin.script) throw new Error(`${file} is written as a script, and the ${plugin.scene} plugin takes none: it has no script (AGENTS.md, "A script")`);
-    return { script: await checkScenario(plugin.script, call.script, job.library, call.speakers, call.timing, call.volumes) };
+    return { script: await checkScenario(plugin.script, call.script, job.library, call.speakers, call.timing, call.volumes, call.sounds) };
   }
   if (call.step !== "check") fills(plugin, call.format, call.step === "draw" ? call : FORMATS[call.format]);
   const repaired = plugin.repair?.(job.source, job.library) ?? { source: job.source, did: [] };

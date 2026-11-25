@@ -176,6 +176,90 @@ test("how loud what is said is, is found on the nearest level: the line's, a blo
   assert.deepEqual(result.defaults.filter(({ name }) => name === "volume"), [{ name: "volume", value: "0dB", lines: [1, 3] }]);
 });
 
+/** The files of the library's sounds. */
+const SOUNDS = { bell: "bell.wav", rain: "rain.wav" };
+
+test("how loud a sound is, is found as what is said is: its own line's, a block's, for it alone or for all that is heard, and the library's", async () => {
+  const played = async (rows: string[], levels?: Levels, library: Record<string, number> = {}) => {
+    const result = await checkScenario(PLUGIN, scenario(rows, levels), undefined, SPEAKERS, TIMING, library, SOUNDS);
+    assert.ok("scenes" in result, JSON.stringify(result));
+    return result.scenes.flatMap((scene) => linesIn(scene.items)).flatMap((line) => ("volume" in line ? [line.volume] : []));
+  };
+  const rows = ["rain loop", "sq say: One.", "in order volume=-10dB:", "  bell play", "  bell play volume=-3dB", "  sq say: Two.", "bell play"];
+  assert.deepEqual(await played(rows), [0, 0, -10, -3, -10, 0]);
+  assert.deepEqual(await played(rows, { cartoon: { volume: "-1dB" } }), [-1, -1, -10, -3, -10, -1]);
+  // Of one level, one sound's goes over what is played, or looped, and that over all that is heard; what is said has its own.
+  assert.deepEqual(await played(rows, { scene: { volume: "-2dB", "play.volume": "-4dB", "loop.volume": "-5dB" } }), [-5, -2, -10, -3, -10, -4]);
+  assert.deepEqual(await played(rows, { scene: { "say.volume": "-2dB", "play.volume": "-4dB", "bell.volume": "-6dB" } }), [0, -2, -10, -3, -10, -6]);
+  // The library's is under every level of the file.
+  assert.deepEqual(await played(rows, {}, { rain: -20, sq: -1 }), [-20, -1, -10, -3, -10, 0]);
+  assert.deepEqual(await played(rows, { cartoon: { "rain.volume": "low + 3dB", low: "-20dB" } }, { rain: -25 }), [-17, 0, -10, -3, -10, 0]);
+  assert.deepEqual(await played(rows, { cartoon: { volume: "-9dB" } }, { rain: -25 }), [-9, -9, -10, -3, -10, -9]);
+  const { defaults } = (await checkScenario(PLUGIN, scenario(rows), undefined, SPEAKERS, TIMING, { rain: -20 }, SOUNDS)) as { defaults: { name: string; lines: number[] }[] };
+  assert.deepEqual(defaults.filter(({ name }) => name === "volume").map(({ lines }) => lines), [[2, 7]]);
+});
+
+test("a value set for a sound is its volume, and it is no character: a value of the writer's may have its name", async () => {
+  const refused = async (cartoon: Record<string, string>, rows = ["bell play"]) => {
+    const result = await checkScenario(PLUGIN, scenario(rows, { cartoon }), undefined, SPEAKERS, TIMING, {}, SOUNDS);
+    return "issues" in result ? result.issues.map(({ line, message, hint }) => [line, message, hint]) : [];
+  };
+  const leave = (name: string) => `${name} is an action's: leave it out`;
+  assert.deepEqual(await refused({ "bell.takes": "2s" }), [[100, "bell takes no takes: a sound lasts as long as its file", leave("takes")]]);
+  assert.deepEqual(await refused({ "play.speed": "2" }), [[100, "play takes no speed: a sound lasts as long as its file", leave("speed")]]);
+  assert.deepEqual(await refused({ "loop.arrive": "a.end" }), [[100, "loop takes no arrive: it lasts to the end of its block", leave("arrive")]]);
+  assert.deepEqual(await refused({ "say.takes": "2s" }), [[100, "say takes no takes: a voice lasts as long as its words", leave("takes")]]);
+  assert.deepEqual((await refused({ "bel.volume": "-6dB" }))[0]!.slice(0, 2), [100, '"bel" is neither a character, a sound nor an action']);
+  assert.match(String((await refused({ "bel.volume": "-6dB" }))[0]![2]), /did you mean bell\?$/);
+  // One that nothing plays in this file may be set too, as the library's.
+  assert.deepEqual(await refused({ "rain.volume": "-6dB", "bell.volume": "-6dB" }), []);
+  assert.deepEqual((await refused({ bell: "2" }, ["bell play", "sq slide far=bell * 2"])), []);
+  assert.deepEqual((await refused({ bell: "2" }))[0]!.slice(0, 2), [100, 'nothing reads "bell"']);
+  // A name that is a character's and a sound's (a cast's radio that is played too) has a character's values, and one volume.
+  const both = await checkScenario(PLUGIN, scenario(["sq play", "sq say: Hi.", "sq slide"], { cartoon: { "sq.takes": "3s", "sq.volume": "-6dB" } }), undefined, SPEAKERS, TIMING, {}, { ...SOUNDS, sq: "sq.wav" });
+  assert.ok("scenes" in both, JSON.stringify(both));
+  assert.deepEqual(linesIn(both.scenes[0]!.items).map((line) => ("volume" in line ? line.volume : "takes" in line && line.takes)), [-6, -6, 3]);
+});
+
+test("the cartoon's own script is at the cartoon's level: its values, and its blocks' over them", async () => {
+  const { items } = readScript(["rain loop", "in order volume=low * 2 pause=0.1s:", "  bell play", "  bell play volume=-1dB"].join("\n"), 300);
+  const written = { ...scenario(["sq say: One."], { cartoon: { volume: "-4dB", low: "-6dB" }, scene: { volume: "-9dB" } }), over: { line: 299, items } };
+  const result = await checkScenario(PLUGIN, written, undefined, SPEAKERS, TIMING, { rain: -20 }, SOUNDS);
+  assert.ok("scenes" in result, JSON.stringify(result));
+  assert.deepEqual(result.over, {
+    line: 299,
+    items: [
+      { line: 300, who: "rain", action: "loop", sound: "rain.wav", volume: -4 },
+      {
+        line: 301,
+        order: "in order",
+        pause: 0.1,
+        items: [
+          { line: 302, who: "bell", action: "play", sound: "bell.wav", volume: -12 },
+          { line: 303, who: "bell", action: "play", sound: "bell.wav", volume: -1 },
+        ],
+      },
+    ],
+  });
+  // A value that only it reads is read, and a block's that nothing reads is refused.
+  const spare = { ...written, over: { line: 299, items: readScript("in order spare=2:\n  bell play", 300).items } };
+  const wrong = await checkScenario(PLUGIN, spare, undefined, SPEAKERS, TIMING, {}, SOUNDS);
+  assert.ok("issues" in wrong);
+  assert.deepEqual(wrong.issues.map(({ line, message }) => [line, message]), [[101, 'nothing reads "low"'], [300, 'nothing reads "spare"']]);
+});
+
+test("a line's length is a sound's too, that is played once; a loop's is known only once everything has its place", async () => {
+  const one = async (...rows: string[]) => checkScenario(PLUGIN, scenario(rows), undefined, SPEAKERS, TIMING, {}, SOUNDS);
+  const good = await one("[b] bell play", "sq slide takes=b.length * 2", "mo hop @ prev.end + b.length");
+  assert.ok("scenes" in good, JSON.stringify(good));
+  const { scenes } = compile(good.scenes, [], { fps: 10, loudness: -14, moves: { slowest: 0.5, fastest: 2 } }, "x.yaml", { "bell.wav": 0.72 });
+  // 0.72 s sounds in 8 frames.
+  assert.deepEqual(scenes[0]!.lines.map((line) => [line.line, line.from, line.frames]), [[1, 5, 8], [2, 16, 16], [3, 40, 10]]);
+  const wrong = await one("[r] rain loop", "& sq slide takes=r.length");
+  assert.ok("issues" in wrong);
+  assert.deepEqual(wrong.issues.map(({ line, also, message }) => [line, also, message]), [[2, [1], "takes=r.length: line 1 lasts to the end of its block, and where that is, is known only once all in it has its place"]]);
+});
+
 test("a volume that is none, or too much of one, is refused where it is set, and so is one for what is not said", async () => {
   const one = async (volume: string) => (await issues([`[a] sq say: Hi.`, `mo say volume=${volume}: Ho.`])).map(({ line, message, hint }) => [line, message, hint]);
   const decibels = "write it in decibels: -12dB is quieter, and 0dB as loud as any voice";
@@ -192,11 +276,11 @@ test("a volume that is none, or too much of one, is refused where it is set, and
   // At the line that sets it, with those that read it.
   assert.deepEqual(await why(["sq say: Hi.", "mo say: Ho."], { scene: { volume: "-6" } }), [[201, [1, 2], "volume=-6: it is a number, and not a volume"]]);
   // What is not said has none, and a volume is no time and no number.
-  assert.deepEqual(await issues(["sq slide volume=-6dB"]), [{ line: 1, message: "slide takes no volume: only what is said has one", hint: "leave volume out" }]);
-  assert.deepEqual(await why(["sq watch volume=-6dB", "& mo say: Hi."]), [[1, [], "watch takes no volume: only what is said has one"]]);
+  assert.deepEqual(await issues(["sq slide volume=-6dB"]), [{ line: 1, message: "slide takes no volume: only what is said or played has one", hint: "leave volume out" }]);
+  assert.deepEqual(await why(["sq watch volume=-6dB", "& mo say: Hi."]), [[1, [], "watch takes no volume: only what is said or played has one"]]);
   for (const action of ["slide", "watch"]) {
     assert.deepEqual(await issues(["sq say: Hi."], { cartoon: { [`${action}.volume`]: "-6dB" } }), [
-      { line: 100, message: `${action} takes no volume: only what is said has one`, hint: "it is for everything that is said (volume, say.volume) or for a character (pip.volume)" },
+      { line: 100, message: `${action} takes no volume: only what is said or played has one`, hint: "it is for everything that is heard (volume), for what is said (say.volume) or for a character (pip.volume)" },
     ]);
   }
   assert.deepEqual(await why(["sq slide takes=3dB"]), [[1, [], "takes=3dB: it is a volume, and not a time"]]);
@@ -206,7 +290,7 @@ test("a volume that is none, or too much of one, is refused where it is set, and
   // A wrong one counts as the tool's own: it is the one mistake.
   assert.deepEqual(await why(["sq say volume=2: Hi."]), [[1, [], "volume=2: it is a number, and not a volume"]]);
   // For a character or an action nobody is, as any value.
-  assert.deepEqual(await why(["sq say: Hi."], { cartoon: { "sk.volume": "-6dB" } }), [[100, [], '"sk" is neither a character nor an action']]);
+  assert.deepEqual(await why(["sq say: Hi."], { cartoon: { "sk.volume": "-6dB" } }), [[100, [], '"sk" is neither a character, a sound nor an action']]);
 });
 
 test("a formula is inherited as it is written, and worked out where it is read", async () => {
@@ -406,7 +490,7 @@ test("a length that is known only once everything has its place is not read, and
   assert.deepEqual(await why([`[b] sq say: ${TEN}`, "[a] sq slide arrive=b.end + 1s", "mo slide takes=a.length"]), [[3, [2], `takes=a.length: how long line 2 lasts is what it needs to arrive, ${known}`]]);
   assert.deepEqual(await why(["[a] in order:", "  sq say: Hi.", "mo slide takes=a.length"]), [[3, [1], "takes=a.length: how long the block of line 1 lasts is known only once all in it has its place"]]);
   assert.deepEqual(await why(["sq say: Hi.", "mo slide takes=block.length"]), [[2, [], "takes=block.length: how long the scene lasts is known only once all in it has its place"]]);
-  assert.match(await hint(["[a] sq slide", "mo slide takes=a.length"]), /^a line that is said, or an action given its length \(takes, speed\) or never fitted, /);
+  assert.match(await hint(["[a] sq slide", "mo slide takes=a.length"]), /^a line that is said or played once, or an action given its length \(takes, speed\) or never fitted, /);
   assert.deepEqual(await why([`[b] sq say: ${TEN}`, "[a] sq hop arrive=b.end + 1s", "mo slide takes=a.length"]), [[3, [2], `takes=a.length: how long line 2 lasts is what it needs to arrive, ${known}`]]);
   // Nothing from below, from another scene, or of nobody.
   assert.deepEqual(await why(["mo slide takes=a.length", "[a] sq say: Hi."]), [[1, [2], '"a" is below, at line 2: a length is read of a line above']]);
@@ -468,9 +552,9 @@ test("a value nothing reads is refused, and whose nobody is, and one set where i
   assert.equal((await checked(say, { scene: { near: "1", "sq.far": "near", speed: "slow" } })).lines.length, 1);
   assert.deepEqual(await why(["sq say: Hi.", "mo say @ prev.end + lag: Ho."], { cartoon: { lag: "1s", lagg: "1s" } }), [[101, [], 'nothing reads "lagg"']]);
   assert.deepEqual(await issues(say, { cartoon: { "sk.speed": "1" } }), [
-    { line: 100, message: '"sk" is neither a character nor an action', hint: "a value is for everything (speed), for a character (pip.speed) or an action (hop.speed): did you mean sq?" },
+    { line: 100, message: '"sk" is neither a character, a sound nor an action', hint: "a value is for everything (speed), for a character (pip.speed) or an action (hop.speed): did you mean sq?" },
   ]);
-  assert.deepEqual(await why(say, { cartoon: { "slid.speed": "1" } }), [[100, [], '"slid" is neither a character nor an action']]);
+  assert.deepEqual(await why(say, { cartoon: { "slid.speed": "1" } }), [[100, [], '"slid" is neither a character, a sound nor an action']]);
   assert.deepEqual(await why(say, { cartoon: { "sq.pause": "1s" } }), [[100, [], "pause is nobody's own: it is the same for everyone"]]);
   assert.deepEqual(await why(say, { cartoon: { "say.speed": "2" } }), [[100, [], "say takes no speed: a voice lasts as long as its words"]]);
   assert.deepEqual(await why(["in order lead=1s:", "  sq say: Hi."]), [[1, [], "lead is a scene's, and not a block's"]]);

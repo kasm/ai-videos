@@ -30,18 +30,20 @@ const bare: ScriptPlugin = {
   draw: () => () => "<svg/>",
 };
 
+/** The library's sounds, of which the bell lasts half a second. */
+const SOUNDS = { bell: "bell.wav", rain: "rain.wav", tune: "tune.wav" };
 const TIMING = { lead: 0.6, gap: 0.4, tail: 1 };
 const SETTINGS = { fps: 30, loudness: -14, moves: { slowest: 0.5, fastest: 2 } };
 
-/** A script checked and compiled, each voice as many frames as its line has letters and at least 30: its scenes' lines, and the frame each ends on. */
+/** A script checked and compiled, each voice as many frames as its line has letters and at least 30: its scenes' lines, then the cartoon's own, and the frame each ends on. */
 async function compiledScenes(script: WrittenScript): Promise<(CompiledLine & { end: number })[][]> {
   assert.deepEqual(script.issues, []);
-  const checked = await checkScenario(bare, script, undefined, ["ann", "ben", "cat", "radio"], TIMING);
+  const checked = await checkScenario(bare, script, undefined, ["ann", "ben", "cat", "radio"], TIMING, {}, SOUNDS);
   assert.ok("scenes" in checked, JSON.stringify(checked));
   const said = script.scenes.flatMap((scene) => linesIn(scene.items)).flatMap((line) => line.text ?? []);
   const voices = said.map((text, n) => ({ file: `${n}.wav`, duration: Math.max(30, text.length) / 30, mouth: [] }));
-  const { scenes } = compile(checked.scenes, voices, SETTINGS, "example.yaml");
-  return scenes.map((scene) => scene.lines.map((line) => ({ ...line, end: line.from + line.frames })));
+  const { lines, scenes } = compile(checked.scenes, voices, SETTINGS, "example.yaml", { "bell.wav": 0.5, "rain.wav": 3, "tune.wav": 8 }, checked.over);
+  return [...scenes.map((scene) => scene.lines), ...(lines ? [lines] : [])].map((lines) => lines.map((line) => ({ ...line, end: line.from + line.frames })));
 }
 /** An example of one scene, by itself. */
 async function compiled(example: string): Promise<(CompiledLine & { end: number })[]> {
@@ -53,12 +55,12 @@ async function compiled(example: string): Promise<(CompiledLine & { end: number 
 const example = (said: string) => EXAMPLES.find((text) => text.includes(said))!;
 
 test("the tool's part shows scripts the tool takes, with no action but its own and three made up, and they compile", async () => {
-  assert.equal(EXAMPLES.length, 11);
+  assert.equal(EXAMPLES.length, 12);
   for (const text of EXAMPLES) {
     assert.ok((await compiled(text)).length > 0);
-    assert.deepEqual(new Set(linesIn(readScript(text).items).map(({ action }) => action)), new Set(["say", ...["go", "nod", "watch"].filter((action) => text.includes(` ${action} `) || text.includes(` ${action}\n`))]));
+    assert.deepEqual(new Set(linesIn(readScript(text).items).map(({ action }) => action)), new Set(["say", ...["go", "nod", "watch", "play", "loop"].filter((action) => text.includes(` ${action} `) || text.includes(` ${action}\n`))]));
   }
-  assert.equal(FILES.length, 1);
+  assert.equal(FILES.length, 2);
   // They show every kind of block, and what joins, labels and anchors.
   const seen = new Set<string>();
   const look = (item: ScriptItem) => {
@@ -154,12 +156,58 @@ test("how loud: a murmur under a talk, and one who talks low", async () => {
   assert.equal(lines[1]!.end, lines[3]!.end, "it is cut where the talk ends");
 });
 
+test("sounds: one that is waited for, one at a word, and one under a talk to the end of its block", async () => {
+  const [bell, rain, ann, again, ben, last] = await compiled(example("bell play"));
+  assert.deepEqual([bell!.from, bell!.frames], [18, 15], "half a second, and nothing has begun before it");
+  assert.deepEqual([rain!.from, rain!.end], [bell!.end + 12, ben!.end], "as long as its block");
+  assert.equal("volume" in rain! && rain.volume, -20);
+  assert.equal(ann!.from, rain!.from);
+  // "Somebody rings the " is 19 of the 46 its letters and marks weigh, the last one none.
+  assert.equal(again!.from, ann!.from + Math.round((19 / 45) * ann!.frames));
+  assert.equal(ben!.from, Math.max(ann!.end, again!.end) + 12);
+  assert.equal(last!.from, ben!.end + 12);
+});
+
+test("sounds: music that goes on from one scene into the next, and rain under the whole of one", async () => {
+  const script = writtenScript(FILES[1]!)!;
+  const [first, second, own] = await compiledScenes(script);
+  assert.deepEqual(own!.map(({ who, action, from, end }) => [who, action, from, end]), [["tune", "loop", 0, second!.at(-1)!.end + 30]]);
+  const [rain, ann, ben] = first!;
+  assert.deepEqual([rain!.from, rain!.end], [ann!.from, ben!.end + 30], "to the scene's end, its tail too");
+  assert.equal("volume" in rain! && rain.volume, -24);
+  assert.equal("volume" in own![0]! && own![0].volume, -20);
+});
+
 test("what the tool's part says is refused, is refused", async () => {
   const refused = async (...rows: string[]) => {
     const { items, issues } = readScript(rows.join("\n"));
-    const checked = await checkScenario(bare, { scenes: [{ line: 1, setting: {}, items }], issues }, undefined, ["ann", "ben", "radio"], TIMING);
+    const checked = await checkScenario(bare, { scenes: [{ line: 1, setting: {}, items }], issues }, undefined, ["ann", "ben", "radio"], TIMING, {}, SOUNDS);
     return "issues" in checked ? checked.issues.length : 0;
   };
+  // Of sounds: one it does not have, twice at once, a loop alone, or under the rest, and what a sound does not take.
+  assert.equal(await refused("drum play"), 1);
+  assert.equal(await refused("bell play", "& bell play"), 1);
+  assert.equal(await refused("bell play", "bell play"), 0);
+  assert.equal(await refused("rain loop", "ann say: One.", "rain play"), 1);
+  assert.equal(await refused("ann say: One.", "rain loop"), 1);
+  assert.equal(await refused("in order:", "  under:", "    rain loop", "  ann say: One."), 1);
+  assert.equal(await refused("in order:", "  under:", "    bell play", "  ann say: One."), 0);
+  for (const given of ["takes=2s", "speed=2", "arrive=prev.end"]) assert.equal(await refused("ann say: One.", `bell play ${given}`), 1);
+  assert.equal(await refused("bell play: Ding."), 1);
+  assert.equal(await refused("[b] bell play", "ann go to=pond takes=b.length"), 0);
+  assert.equal(await refused("[r] rain loop", "ann go to=pond takes=r.length"), 1);
+  assert.equal(await refused("in order bell.volume=-6dB play.volume=-5dB loop.volume=-4dB volume=-5dB:", "  bell play", "  ann say: One."), 0);
+  const over = async (own: string, ...rows: string[]) => {
+    const script = writtenScript(["script: |", ...own.split("\n").map((row) => `  ${row}`), "scenes:", "  - script: |", ...rows.map((row) => `      ${row}`), ""].join("\n"))!;
+    const checked = await checkScenario(bare, script, undefined, ["ann", "ben"], TIMING, {}, SOUNDS);
+    return "issues" in checked ? checked.issues.length : 0;
+  };
+  assert.equal(await over("tune loop", "ann say: One."), 0);
+  assert.equal(await over("ann say: One.", "ben say: Two."), 1);
+  assert.equal(await over("ann go to=pond", "ben say: Two."), 1);
+  assert.equal(await over("tune loop", "tune loop", "ann say: One."), 1);
+  assert.equal(await over("bell play\ntune loop @ prev.end\nrain play @ block.end - 10s", "ann say: One."), 0);
+  assert.equal(await over("in order:\n  bell play\n  rain play", "ann say: One."), 0);
   assert.equal(await refused("ann say @ b.end: One.", "[b] ben say: Two."), 1);
   assert.equal(await refused("ann say: One.", "ben say @ block.end: Two."), 1);
   assert.equal(await refused("in order:", "  under:", "    [a] ann say: One.", "  ben say @ a.end: Two."), 1);
@@ -200,7 +248,7 @@ test("what the tool's part says is refused, is refused", async () => {
 });
 
 test("the tool's part says what a script has: a line's form, say, blocks, joining, labels and anchors", () => {
-  for (const said of ["`script: |`", "`narrator`", "for an action below that nobody does, the name its example has", "`say`", "`name=value`", "a colon and the words", "in order", "on its channel `voice`", "One channel does one thing at a time", "`#`", "`together:`", "`ending together:`", "`in order:`", "`under:`", "`&`", "`@`", "`prev`", "`block`", "`a.word(mole)`", "`- 0.5s`", "`values:`", "`50%`", "`pause`", "`lead`", "`tail`", "`takes=2s`", "`speed=0.5`", "`arrive=a.end - 0.5s`", "`volume`", "`-12dB`", "`radio.volume`", "`a.length`", "`ann.speed`", "`go.speed`", "An action that is open", "goes on to the end of the block it is in, and nothing waits for it", "An open action keeps its channel busy to the end of its block"]) {
+  for (const said of ["`script: |`", "`narrator`", "for an action below that nobody does, the name its example has", "`say`", "`name=value`", "a colon and the words", "in order", "on its channel `voice`", "One channel does one thing at a time", "`#`", "`together:`", "`ending together:`", "`in order:`", "`under:`", "`&`", "`@`", "`prev`", "`block`", "`a.word(mole)`", "`- 0.5s`", "`values:`", "`50%`", "`pause`", "`lead`", "`tail`", "`takes=2s`", "`speed=0.5`", "`arrive=a.end - 0.5s`", "`volume`", "`-12dB`", "`radio.volume`", "`a.length`", "`ann.speed`", "`go.speed`", "### Sounds", "`bell play`", "`rain loop`", "nothing waits for it", "a `script` on top of the file", "`@ block.end - 10s`", "`tune.volume`", "`say.volume`", "An action that is open", "goes on to the end of the block it is in, and nothing waits for it", "An open action keeps its channel busy to the end of its block"]) {
     assert.ok(SCRIPT.includes(said), said);
   }
 });
@@ -218,6 +266,7 @@ test("a plugin's guide: the tool's part, the plugin's, each action and construct
   assert.match(guide, /^## A script\n\nA scene's `script` says what happens in it/);
   assert.match(guide, /\n## The format\n\nA square slides to a side\.\n\n## The actions\n\n/);
   assert.match(guide, /\n- \*\*say\*\*: The character says the words after the colon.* Channel: `voice`\. For example: `narrator say: Once upon a time\.`\n/);
+  assert.match(guide, /\n- \*\*play\*\*: The sound is played once.* Channel: `sound`\. For example: `bell play`\n- \*\*loop\*\*: The sound is played again and again\. Channel: `sound`; it is open\. For example: `tune loop volume=-20dB`\n/);
   assert.match(guide, /\n- \*\*slide\*\*: The square slides to a side\. Channel: `place`; it is fitted\. For example: `sq slide to=right`\n$/);
   const watch = { description: "It watches.", example: "sq watch", channels: ["facing"], open: true };
   assert.match(guideOf({ ...square, actions: { watch }, names: {} }), /\n- \*\*watch\*\*: It watches\. Channel: `facing`; it is open\. For example: `sq watch`\n$/);

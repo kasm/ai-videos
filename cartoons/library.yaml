@@ -1,6 +1,7 @@
-# What the cartoons name: each character, drawn once, with its voice, and the backgrounds. A video
-# file names them; the format is in CLAUDE.md ("The library"). `voice` is the video tool's (one of
-# Kokoro's: npm run -s video -- voices lists them); the rest is the cartoon plugin's.
+# What the cartoons name: each character, drawn once, with its voice, the backgrounds, and the sounds a
+# script plays. A video file names them; the format is in CLAUDE.md ("The library"). `voice` is the video
+# tool's (one of Kokoro's: npm run -s video -- voices lists them), and so is `sounds`; the rest is the
+# cartoon plugin's.
 
 characters:
   pip:
@@ -201,3 +202,8 @@ backgrounds:
       - { shape: ellipse, at: [960, 520], size: [1480, 860], fill: "#593722" }
       - { shape: ellipse, at: [1520, 420], size: [260, 260], fill: "#f7c85c" }
       - { shape: rect, at: [960, 950], size: [1920, 260], fill: "#6e472b" }
+
+sounds: # a script plays them; each its file, from this folder, and how loud it is (sounds/make.mjs made these)
+  tune: { file: sounds/tune.flac, volume: -20dB } # eight quiet seconds of music, to be looped
+  jingle: { file: sounds/jingle.flac } # four notes up, as on a radio before the news
+  rustle: { file: sounds/rustle.flac, volume: -6dB } # somebody in the reeds

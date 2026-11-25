@@ -2,7 +2,7 @@
 // order written, with the pauses of the video's timing, and each said line's mouth and captions.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { compile, compiledText, saidLines } from "./compile.ts";
+import { compile, compiledText, playedLines, saidLines } from "./compile.ts";
 import type { CheckedScene } from "./scenario.ts";
 
 /** Ten frames a second. */
@@ -143,6 +143,73 @@ test("what is at once: a joined action fitted to the words, a voice over another
   const mouths = saidLines([scene!]).map((line) => [line.file, line.mouth.length]);
   assert.deepEqual(mouths, [["slides.wav", 14], ["news.wav", 9], ["more.wav", 2], ["here.wav", 12], ["hm.wav", 6]]);
   assert.deepEqual(saidLines([scene!])[2]!.mouth, [0.01, 0.02]);
+});
+
+/** A sound of this file. */
+const sound = (line: number, who: string, action: "play" | "loop", file: string, volume = 0) => ({ line, who, action, sound: file, volume });
+
+test("a sound lasts the frames it sounds in, and is cut as a voice is; a loop goes on to the end of its block; each has its file and how loud it is", () => {
+  const scenes: CheckedScene[] = [
+    {
+      line: 1,
+      setting: {},
+      ...PAUSES,
+      items: [
+        sound(2, "bell", "play", "sounds/bell.wav", -6),
+        {
+          line: 3,
+          order: "in order",
+          pause: 0.3,
+          items: [
+            sound(4, "rain", "loop", "sounds/rain.mp3", -20),
+            { line: 5, order: "in order", pause: 0.3, under: true, items: [sound(6, "gong", "play", "sounds/gong.wav"), sound(7, "bell", "play", "sounds/bell.wav")] },
+            say(8, "sq", "Here I am."),
+          ],
+        },
+        { ...sound(9, "bell", "play", "sounds/bell.wav"), anchor: { of: "prev", at: "start", plus: 0.5 } },
+      ],
+    },
+  ];
+  const lengths = { "sounds/bell.wav": 0.41, "sounds/rain.mp3": 60, "sounds/gong.wav": 3 };
+  const { scenes: [scene], frames, ...rest } = compile(scenes, [voiced("here.wav", 12)], SETTINGS, "sq.yaml", lengths);
+  assert.deepEqual(scene!.lines, [
+    // 0.41 s sounds in 5 frames.
+    { line: 2, who: "bell", action: "play", from: 5, frames: 5, sound: "sounds/bell.wav", volume: -6 },
+    { line: 4, who: "rain", action: "loop", from: 13, frames: 12, sound: "sounds/rain.mp3", volume: -20 },
+    // The gong's 30 frames are cut where the block ends, and the bell after it never begins.
+    { line: 6, who: "gong", action: "play", from: 13, frames: 12, sound: "sounds/gong.wav", volume: 0 },
+    { line: 8, who: "sq", action: "say", from: 13, frames: 12, text: "Here I am.", volume: 0, file: "here.wav", mouth: voiced("here.wav", 12).mouth, captions: [{ text: "Here I am.", from: 13, frames: 22 }] },
+    // Its sound was kept busy by the one under the rest to the end of that block.
+    { line: 9, who: "bell", action: "play", from: 25, frames: 5, sound: "sounds/bell.wav", volume: 0 },
+  ]);
+  assert.equal(frames, 40);
+  assert.ok(!("lines" in rest), "with no script of its own, a cartoon has no lines of its own");
+  // One that nobody measured is a mistake of the tool's.
+  assert.throws(() => compile(scenes, [voiced("here.wav", 12)], SETTINGS, "sq.yaml", { "sounds/bell.wav": 1 }), /plays sounds\/rain\.mp3, which was not measured/);
+});
+
+test("the cartoon's own lines go on over its scenes, which are as they are without them", () => {
+  const over = {
+    line: 20,
+    items: [
+      sound(21, "tune", "loop", "tune.ogg", -20),
+      { ...sound(22, "gong", "play", "gong.wav"), anchor: { of: "block", at: "end" as const, plus: -1 } },
+      { line: 23, order: "in order" as const, pause: 0.3, items: [sound(24, "bell", "play", "bell.wav"), sound(25, "bell", "play", "bell.wav")] },
+    ],
+  };
+  const without = compile(SCENES, VOICES, SETTINGS, "sq.yaml");
+  const { lines, ...rest } = compile(SCENES, VOICES, SETTINGS, "sq.yaml", { "tune.ogg": 8, "gong.wav": 30, "bell.wav": 0.5 }, over);
+  assert.deepEqual(rest, without);
+  assert.deepEqual(lines, [
+    { line: 21, who: "tune", action: "loop", from: 0, frames: 65, sound: "tune.ogg", volume: -20 },
+    { line: 22, who: "gong", action: "play", from: 55, frames: 10, sound: "gong.wav", volume: 0 },
+    { line: 24, who: "bell", action: "play", from: 0, frames: 5, sound: "bell.wav", volume: 0 },
+    { line: 25, who: "bell", action: "play", from: 8, frames: 5, sound: "bell.wav", volume: 0 },
+  ]);
+  // The played lines, the cartoon's own first, then the scenes'.
+  const scenes = [{ ...without.scenes[0]!, lines: [...without.scenes[0]!.lines, { ...lines![3]!, line: 9 }] }];
+  assert.deepEqual(playedLines({ lines: lines!, scenes }).map(({ line }) => line), [21, 22, 24, 25, 9]);
+  assert.deepEqual(playedLines(without), []);
 });
 
 test("an action joined to words is no faster than the video's fastest and no slower than its slowest, and alone goes at its own speed", () => {

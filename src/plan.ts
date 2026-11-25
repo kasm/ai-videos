@@ -4,12 +4,12 @@
 // that has no timing is refused before the voices, with the lines it is between, and what has surely
 // begun before an action ends is known.
 import type { Span } from "./formula.ts";
-import { momentIssue, nameOf, named, placesOf, sceneName, type Place } from "./labels.ts";
+import { momentIssue, nameOf, named, partsOf, placesOf, sceneName, type Place } from "./labels.ts";
 import { listed } from "./names.ts";
-import { SAY, isBlock } from "./read.ts";
+import { LOOP, PLAY, SAY, TOOL_ACTIONS, isBlock, isPlayed } from "./read.ts";
 import { linesIn, type Action, type Anchor, type Issue, type Placed, type ScriptBlock, type ScriptItem } from "./scenario.ts";
 import { refusals, surelyBegun, type Block, type Fitted, type Item, type Line, type Moment, type Refusal } from "./times.ts";
-import type { WorkedLine, WorkedScene } from "./values.ts";
+import type { WorkedLine, WorkedOver, WorkedScene } from "./values.ts";
 import { sharesOf } from "./words.ts";
 
 /** A line of a script as the plan reads it, worked out or checked. */
@@ -22,28 +22,32 @@ interface PlanScene<L extends PlanLine> {
   items: ScriptItem<L>[];
 }
 
-/** What a line is to the plan, and how long it lasts, frames: a move, on its action's channels, that is given no length is open, or fitted where something fits it, or to the moment it arrives at. */
-export type Lasting = { kind: "voice"; length: number } | { kind: "move"; channels: string[]; length: number | "open" } | { kind: "move"; channels: string[]; length: Omit<Fitted, "arrive">; arrive?: Anchor | undefined };
+/** What a line is to the plan, and how long it lasts, frames: a sound that is looped is open, and a move, on its action's channels, that is given no length is open too, or fitted where something fits it, or to the moment it arrives at. */
+export type Lasting = { kind: "voice"; length: number } | { kind: "sound"; length: number | "open" } | { kind: "move"; channels: string[]; length: number | "open" } | { kind: "move"; channels: string[]; length: Omit<Fitted, "arrive">; arrive?: Anchor | undefined };
 
-/** The channel of what a character says: the tool's own. Any other is the plugin's. */
+/** The channels of what a character says, and of what a sound plays: the tool's own. Any other is the plugin's. */
 export const VOICE = "voice";
+export const SOUND = "sound";
 
 /** A plugin's actions, by name, as a plan's shape reads them. */
 export type Channels = Record<string, Pick<Action, "channels" | "open">>;
 
 /** Whether an action is open: it goes on to the end of its block. */
-const isOpen = (action: string, actions: Channels) => Object.hasOwn(actions, action) && actions[action]!.open === true;
+const isOpen = (action: string, actions: Channels) => action === LOOP || (Object.hasOwn(actions, action) && actions[action]!.open === true);
 
 /**
- * The plan of a scenario: the video, a block in order, of its scenes, each a block in order too.
+ * The plan of a scenario: the video, a block in order, of its scenes, each a block in order too. With a
+ * script of the cartoon's own (`over`), the video is the rows of that, together with the block of the
+ * scenes: each begins with the video, and goes on under the scenes, open, or cut where the last one ends.
  * `lasting` says what each line is, and `frames` what the scenario's seconds are on the video's
  * frames. `items` has each line's and block's own item of the plan.
  */
-export function planOf<L extends PlanLine>(scenes: PlanScene<L>[], frames: (seconds: Span) => number, lasting: (line: L) => Lasting) {
+export function planOf<L extends PlanLine>(scenes: PlanScene<L>[], frames: (seconds: Span) => number, lasting: (line: L) => Lasting, over?: { items: ScriptItem<L>[] }) {
   /** A pause that comes to less than 0, once the lengths it reads are known, is none. */
   const pauseOf = (seconds: Span) => Math.max(0, frames(seconds));
   const items = new Map<ScriptItem<L>, Item>();
-  const blocks = scenes.map((scene, n): Block => {
+  /** The `n`th script's lines and blocks, in the plan. */
+  const planned = (scene: { items: ScriptItem<L>[] }, n: number): Item[] => {
     const places = placesOf(scene, n);
     const placeOf = new Map(places.map((place) => [place.item, place]));
     const moment = ({ of, at, plus }: Anchor, place: Place<L>): Moment => {
@@ -62,21 +66,28 @@ export function planOf<L extends PlanLine>(scenes: PlanScene<L>[], frames: (seco
         made = { kind: "block", ...placed, order, ...(order === "in order" ? { pause: pauseOf(pause) } : {}), ...(under ? { cut: true } : {}), items: item.items.map(itemOf) };
       } else {
         const lasts = lasting(item);
-        const channels = lasts.kind === "voice" ? [VOICE] : lasts.channels;
+        const channels = lasts.kind === "voice" ? [VOICE] : lasts.kind === "sound" ? [SOUND] : lasts.channels;
         const length = "arrive" in lasts && lasts.arrive ? { ...lasts.length, arrive: moment(lasts.arrive, place) } : lasts.length;
         made = { kind: lasts.kind, ...placed, on: channels.map((channel) => `${item.who} ${channel}`), length };
       }
       items.set(item, made);
       return made;
     };
+    return scene.items.map(itemOf);
+  };
+  const blocks = scenes.map((scene, n): Block => {
     const [lead, pause, tail] = [scene.lead, scene.pause, scene.tail].map(pauseOf) as [number, number, number];
-    return { kind: "block", name: sceneName(n), order: "in order", items: scene.items.map(itemOf), lead, pause, tail };
+    return { kind: "block", name: sceneName(n), order: "in order", items: planned(scene, n), lead, pause, tail };
   });
-  const video: Block = { kind: "block", order: "in order", items: blocks };
+  const inOrder: Block = { kind: "block", order: "in order", items: blocks };
+  if (!over) return { video: inOrder, scenes: blocks, items };
+  const rows = planned(over, scenes.length);
+  for (const row of rows) if (row.kind === "block" || row.length !== "open") row.cut = true;
+  const video: Block = { kind: "block", name: sceneName(scenes.length), order: "together", items: [...rows, inOrder] };
   return { video, scenes: blocks, items };
 }
 
-/** What is wrong with the labels and the anchors of a scene: a label given twice, and an anchor that names nothing above it, or no word of it. */
+/** What is wrong with the labels and the anchors of a script: a label given twice, and an anchor that names nothing above it, or no word of it. */
 function nameIssues(all: Place<WorkedLine>[][], n: number): Issue[] {
   const issues: Issue[] = [];
   const places = all[n]!;
@@ -93,26 +104,35 @@ function nameIssues(all: Place<WorkedLine>[][], n: number): Issue[] {
 /**
  * What goes on to the end of its block with nothing to say where that is, so that it is never there: a
  * block in which all is under the rest, or open, which waits for nothing, and what is so last in a block
- * in order, which would begin when the block ends.
+ * in order, which would begin when the block ends. The cartoon's own script is under its scenes, so that
+ * is so of its blocks alone.
  */
-function leftIssues(scene: WorkedScene, actions: Channels): Issue[] {
+function leftIssues(scene: WorkedScene | WorkedOver, actions: Channels): Issue[] {
   const issues: Issue[] = [];
   const isUnder = (item: ScriptItem<WorkedLine>) => isBlock(item) && item.under === true;
   const isLeft = (item: ScriptItem<WorkedLine>) => isUnder(item) || (!isBlock(item) && isOpen(item.action, actions));
-  const look = (items: ScriptItem<WorkedLine>[], order: ScriptBlock["order"], block: string, line: number) => {
+  const isLoop = (item: ScriptItem<WorkedLine>) => !isBlock(item) && item.action === LOOP;
+  const beside = "a loop goes on to the end of its block by itself, and nothing waits for it: write it beside the under:, in the block that is in";
+  const look = (items: ScriptItem<WorkedLine>[], order: ScriptBlock["order"], block: string, line: number, under = false) => {
     const rest = items.findLastIndex((item) => !isLeft(item));
-    if (items.length > 0 && rest < 0) {
+    if (items.length > 0 && rest < 0 && under && items.every(isLoop)) issues.push({ line, message: `everything in ${block} is a loop, and nothing in it says where it ends`, hint: beside });
+    else if (items.length > 0 && rest < 0) {
       if (items.every(isUnder)) issues.push({ line, message: `everything in ${block} is under the rest, and there is no rest`, hint: "write the lines they are under in it too, or leave out under:" });
-      else issues.push({ line, message: `everything in ${block} goes on to its end, and nothing in it says where that is`, hint: "write in it too what it goes with: what is said, or an action with a length" });
+      else issues.push({ line, message: `everything in ${block} goes on to its end, and nothing in it says where that is`, hint: "write in it too what it goes with: what is said or played, or an action with a length" });
     } else if (order === "in order") {
       for (const item of items.slice(rest + 1).filter(({ anchor }) => !anchor)) {
-        if (isUnder(item)) issues.push({ line: item.line, message: `nothing comes after this in ${block}, so there is nothing for it to be under`, hint: "write the lines it is under below it, at its own margin, or join it to the line above with &" });
+        if (under && isLoop(item)) issues.push({ line: item.line, message: `nothing comes after this in ${block}, so there is nothing for it to go with`, hint: beside });
+        else if (isUnder(item)) issues.push({ line: item.line, message: `nothing comes after this in ${block}, so there is nothing for it to be under`, hint: "write the lines it is under below it, at its own margin, or join it to the line above with &" });
         else issues.push({ line: item.line, message: `nothing comes after this in ${block}, so there is nothing for it to go with`, hint: "join it to what it goes with (&), or write that below it" });
       }
     }
-    for (const item of items) if (isBlock(item)) look(item.items, item.order, nameOf(item), item.line);
+    inside(items);
   };
-  look(scene.items, "in order", "the scene", scene.line);
+  const inside = (items: ScriptItem<WorkedLine>[]) => {
+    for (const item of items) if (isBlock(item)) look(item.items, item.order, nameOf(item), item.line, isUnder(item));
+  };
+  if ("lead" in scene) look(scene.items, "in order", "the scene", scene.line);
+  else inside(scene.items);
   return issues;
 }
 
@@ -121,29 +141,33 @@ function leftIssues(scene: WorkedScene, actions: Channels): Issue[] {
  * whether a move has one does: what is fitted waits for what fits it. An action nobody knows is on no
  * channel.
  */
-const shapeOf = (scenes: WorkedScene[], actions: Channels) =>
+const shapeOf = (scenes: WorkedScene[], actions: Channels, over?: WorkedOver) =>
   planOf(scenes, () => 0, ({ action, lasts }): Lasting => {
     if (action === SAY) return { kind: "voice", length: 1 };
+    if (action === PLAY) return { kind: "sound", length: 1 };
+    if (action === LOOP) return { kind: "sound", length: "open" };
     const { channels } = Object.hasOwn(actions, action) ? actions[action]! : { channels: [] };
     if (isOpen(action, actions)) return { kind: "move", channels, length: "open" };
     if (lasts && !("arrive" in lasts)) return { kind: "move", channels, length: 1 };
     return { kind: "move", channels, length: { own: 1, least: 1, most: 1 }, arrive: lasts?.arrive };
-  });
+  }, over);
 
 /**
- * For each action of a script with a timing, by its line: the lines of its scene's other actions that
+ * For each of the plugin's actions of a script with a timing, by its line: the lines of its scene's others that
  * have surely begun before it ends, or by then, however long the voices turn out to be (times.ts, surelyBegun).
+ * The cartoon's own script is nothing to them: no sound of it is one of theirs, and they wait for none of it.
  */
 export function begunBy(scenes: WorkedScene[], actions: Channels): Map<number, number[]> {
   const { video, items } = shapeOf(scenes, actions);
   const sure = surelyBegun(video);
-  const acts = scenes.map((scene) => linesIn(scene.items).filter(({ action }) => action !== SAY));
+  const acts = scenes.map((scene) => linesIn(scene.items).filter(({ action }) => !TOOL_ACTIONS.includes(action)));
   return new Map(acts.flatMap((own) => own.map((by) => [by.line, own.filter((line) => line !== by && sure(items.get(line)!, items.get(by) as Line)).map(({ line }) => line)] as const)));
 }
 
 /** Why the plan has no timing (times.ts), each reason as a mistake of the lines it is between. */
-function refusalIssues(scenes: WorkedScene[], actions: Channels): Issue[] {
-  const { video, scenes: blocks, items } = shapeOf(scenes, actions);
+function refusalIssues(scenes: WorkedScene[], actions: Channels, over: WorkedOver | undefined): Issue[] {
+  const { video, scenes: blocks, items } = shapeOf(scenes, actions, over);
+  const isOver = (item: Item) => over !== undefined && linesIn(over.items).some((line) => items.get(line) === item);
   const written = new Map([...items].map(([item, made]): [Item, ScriptItem<WorkedLine>] => [made, item]));
   const around = new Map<Item, Block>();
   const look = (block: Block) => {
@@ -157,6 +181,7 @@ function refusalIssues(scenes: WorkedScene[], actions: Channels): Issue[] {
     const own = written.get(item);
     const arrives = own !== undefined && !isBlock(own) && own.lasts !== undefined && "arrive" in own.lasts;
     if (own) return { line: own.line, name: nameOf(own), waits: isBlock(own) && own.joined ? "wait" : "waits", anchored: own.anchor !== undefined || arrives };
+    // What no row wrote is a scene: what is told is never the cartoon, as nothing in it waits for its own script.
     return { line: scenes[blocks.indexOf(item as Block)]!.line, name: "the scene", waits: "waits", anchored: false };
   };
   /** What is busy: `pip's place`, of the plan's channel `pip place`. */
@@ -165,6 +190,8 @@ function refusalIssues(scenes: WorkedScene[], actions: Channels): Issue[] {
     if (refusal.why === "held") {
       const [own, by] = [written.get(refusal.item) as WorkedLine, told(refusal.by)];
       const issue = (message: string, hint: string) => ({ line: own.line, also: [by.line], message: `${busy(refusal.channel)} ${by.name}, which goes on ${message}`, hint });
+      if (isOver(refusal.by) && !isOver(refusal.item)) return issue("over all the scenes", "play it in one place: in the cartoon's own script, or in the scenes");
+      if (around.get(refusal.by) === video) return issue("to the end of the cartoon", "play one of the two, or write them one after the other, in an in order: of the cartoon's own script");
       if (refusal.by.length !== "open") return issue("under the rest to the end of the block both are in", "write it after that block, or in the same under:, below that line");
       const block = around.get(refusal.by)!;
       const after = blocks.includes(block) ? "" : "write it after that block, or ";
@@ -207,9 +234,12 @@ function refusalIssues(scenes: WorkedScene[], actions: Channels): Issue[] {
 }
 
 /** What has no timing in a script with these actions, whatever its voices turn out to last: every mistake, with the lines it is between. */
-export function timeIssues(scenes: WorkedScene[], actions: Channels): Issue[] {
-  const all = scenes.map(placesOf<WorkedLine>);
-  const names = scenes.flatMap((_, n) => nameIssues(all, n));
+export function timeIssues(scenes: WorkedScene[], actions: Channels, over?: WorkedOver): Issue[] {
+  const parts = partsOf(scenes, over);
+  const all = parts.map((part, n) => placesOf<WorkedLine>(part, n));
+  const names = parts.flatMap((_, n) => nameIssues(all, n));
+  // What is no sound is refused in the cartoon's own script for that (scenario.ts): its times are not tried.
+  const tried = over && linesIn(over.items).every(({ action }) => isPlayed(action)) ? over : undefined;
   // With an anchor that names nothing there is no plan to try.
-  return [...names, ...scenes.flatMap((scene) => leftIssues(scene, actions)), ...(names.length > 0 ? [] : refusalIssues(scenes, actions))];
+  return [...names, ...parts.flatMap((part) => leftIssues(part, actions)), ...(names.length > 0 ? [] : refusalIssues(scenes, actions, tried))];
 }

@@ -6,10 +6,11 @@ import { parse } from "yaml";
 import { checkScenario, GROUND, MARKS, moveOf, PACE } from "./scenario.ts";
 
 const root = path.join(import.meta.dirname, "..");
-/** The project's library, as the tool gives it to the plugin: without each character's voice. */
+/** The project's library, as the tool gives it to the plugin: without each character's voice, and without its sounds. */
 const libraryOf =(file = path.join(root, "library.yaml")) => {
   const raw = parse(readFileSync(file, "utf8"));
   for (const character of Object.values(raw.characters ?? {})) delete (character as { voice?: string }).voice;
+  delete raw.sounds;
   return { file, raw };
 };
 /** A cartoon's file, read as the tool reads it for the plugin: without the tool's `use:`. */

@@ -1,14 +1,14 @@
 // A scenario written as a script (AGENTS.md, "A script"): its lines and blocks as they are read
 // (read.ts), and the check, the pass before the voices and the only one that refuses. The grammar,
-// what values come to (values.ts), `say` and when things happen (plan.ts) are the tool's; every other
-// action is the plugin's, named in its `script` with what it takes.
+// what values come to (values.ts), `say`, `play` and `loop`, and when things happen (plan.ts) are the
+// tool's; every other action is the plugin's, named in its `script` with what it takes.
 //
 // It needs none of the tool's packages: plugin.ts gives it to the plugins' tests.
 import { shownAs, type Span } from "./formula.ts";
 import { listed, nearest } from "./names.ts";
 import { begunBy, timeIssues } from "./plan.ts";
 import type { Library, Schema } from "./plugin.ts";
-import { SAY, isBlock } from "./read.ts";
+import { LOOP, PLAY, SAY, TOOL_ACTIONS, isBlock, isPlayed } from "./read.ts";
 import type { Shown } from "./shown.ts";
 import { VOLUME, valuesTaken, workOut, type WorkedLine } from "./values.ts";
 
@@ -37,7 +37,7 @@ export interface Placed<A = WrittenAnchor> {
   anchor?: A;
 }
 
-/** One line of a script: one thing one character does or says. */
+/** One line of a script: one thing one character does or says, or a sound that is played. */
 export interface ScriptLine extends Placed {
   who: string;
   action: string;
@@ -88,9 +88,16 @@ export interface WrittenScene {
   items: ScriptItem[];
 }
 
-/** A scenario as written: the values set on the whole of it, its scenes, and what could not be read of them. */
+/** The cartoon's own script as written, which goes on over its scenes: where it begins in the file, and its lines and blocks. */
+export interface WrittenOver {
+  line: number;
+  items: ScriptItem[];
+}
+
+/** A scenario as written: the values set on the whole of it, its own script, its scenes, and what could not be read of them. */
 export interface WrittenScript {
   values?: Record<string, WrittenValue>;
+  over?: WrittenOver;
   scenes: WrittenScene[];
   issues: Issue[];
 }
@@ -158,7 +165,7 @@ export interface SceneChecked {
 
 /** A plugin's part of a script (plugin.ts, `script`): its actions, its guide, its check and its picture. */
 export interface ScriptPlugin {
-  /** The actions a line may name, besides the tool's `say`. */
+  /** The actions a line may name, besides the tool's `say`, `play` and `loop`. */
   actions: Record<string, Action>;
   /** Its names for numbers, which any value may use (`slow: 0.6`), unless the file sets them otherwise. */
   names?: Record<string, number>;
@@ -193,11 +200,12 @@ export interface ScriptPlugin {
 }
 
 /**
- * A line checked: what is said, and how loud, dB, or one of the plugin's actions in plain numbers with
- * its own length, seconds, on its channels, or `open`. An action that is given how long it lasts, or is
- * never fitted, has that (`takes`), or the moment it arrives at.
+ * A line checked: what is said, and how loud, dB; a sound's file, a path from the project's folder, and how
+ * loud; or one of the plugin's actions in plain numbers with its own length, seconds, on its channels, or
+ * `open`. An action that is given how long it lasts, or is never fitted, has that (`takes`), or the moment it
+ * arrives at.
  */
-export type CheckedLine = Placed<Anchor> & { who: string; action: string } & ({ text: string; volume: number } | { values: Plain; channels: string[]; length: number | "open"; takes?: Span; arrive?: Anchor });
+export type CheckedLine = Placed<Anchor> & { who: string; action: string } & ({ text: string; volume: number } | { sound: string; volume: number } | { values: Plain; channels: string[]; length: number | "open"; takes?: Span; arrive?: Anchor });
 
 /** A scene checked: how it begins, in plain numbers, its pauses (AGENTS.md, "Values"), and its lines and blocks. */
 export interface CheckedScene {
@@ -210,6 +218,12 @@ export interface CheckedScene {
   items: ScriptItem<CheckedLine>[];
 }
 
+/** The cartoon's own script checked: where it begins in the file, and its lines and blocks, all of them sounds. */
+export interface CheckedOver {
+  line: number;
+  items: ScriptItem<CheckedLine>[];
+}
+
 /** A value that nothing sets, what it is then, and the lines that take it. */
 export interface Default {
   name: string;
@@ -218,7 +232,7 @@ export interface Default {
 }
 
 /** A scenario checked, with the defaults it takes, or every mistake found in it. */
-export type Checked = { scenes: CheckedScene[]; defaults: Default[] } | { issues: Issue[] };
+export type Checked = { scenes: CheckedScene[]; over?: CheckedOver; defaults: Default[] } | { issues: Issue[] };
 
 /** The video's pauses, seconds, where a script sets none (script.ts, settings). */
 export interface Timing {
@@ -255,25 +269,51 @@ const pathOf = (path: ReadonlyArray<PropertyKey | { readonly key: PropertyKey }>
 /**
  * The check (AGENTS.md, "A script"): every line's action known, its values worked out (values.ts) and
  * what the action takes, who speaks someone with a voice (`speakers`, the cast's names, or the
- * narrator), and a time for everything (plan.ts); then the plugin's own check, of the scenes' settings
+ * narrator), what is played one of the library's `sounds` (each with its file), the cartoon's own script
+ * sounds alone, and a time for everything (plan.ts); then the plugin's own check, of the scenes' settings
  * and its actions against the library. It gives the scenario worked out, with the defaults it took
  * (`timing`, the video's pauses, among them; `volumes` are the library's, dB, by whose they are), or
  * every mistake with its line and a hint. The values
  * and the times are tried on a script whose every row reads, and the plugin's check runs only on one
  * with no mistake before it: it follows the lines in the order written, so one missing would mislead it.
  */
-export async function checkScenario(plugin: ScriptPlugin, script: WrittenScript, library: Library | undefined, speakers: string[], timing: Timing, volumes?: Record<string, number>): Promise<Checked> {
+export async function checkScenario(plugin: ScriptPlugin, script: WrittenScript, library: Library | undefined, speakers: string[], timing: Timing, volumes?: Record<string, number>, sounds: Record<string, string> = {}): Promise<Checked> {
   const issues = [...script.issues];
-  const actions = [SAY, ...Object.keys(plugin.actions)];
+  const actions = [SAY, ...Object.keys(plugin.actions), PLAY, LOOP];
   const { names = {}, constructions = {}, tables = [] } = plugin;
   const those = (how: "fits" | "open") => Object.keys(plugin.actions).filter((name) => plugin.actions[name]![how]);
-  const worked = workOut(script, { actions: valuesTaken(plugin.actions), fits: those("fits"), open: those("open"), names, constructions, tables, speakers, timing, volumes });
+  const worked = workOut(script, { actions: valuesTaken(plugin.actions), fits: those("fits"), open: those("open"), names, constructions, tables, speakers, sounds: Object.keys(sounds), timing, volumes });
   const workedLines = new Map(worked.scenes.flatMap((scene) => linesIn(scene.items)).map((line) => [line.line, line]));
+  /** What is wrong with a line that plays a sound, each with its hint. */
+  const playedIssues = ({ who, action, values, text }: ScriptLine): [message: string, hint: string][] => {
+    const found: [string, string][] = [];
+    const named = Object.keys(values).filter((name) => name !== VOLUME);
+    const form = `write only the sound, and how loud it is: ${who} ${action} ${VOLUME}=-12dB`;
+    if (named.length > 0) found.push([`${action} takes no ${listed(named)}`, form]);
+    if (text !== undefined) found.push([`${action} takes no words after a colon: only ${SAY} does`, form]);
+    if (!Object.hasOwn(sounds, who)) {
+      const names = Object.keys(sounds);
+      const near = nearest(who, names);
+      found.push([`no sound is named "${who}"`, names.length > 0 ? `the library's sounds are ${listed(names)}${near ? `: did you mean ${near}?` : ""}` : "the library has no sound: its sounds: name each with its file"]);
+    }
+    return found;
+  };
+  for (const line of linesIn(script.over?.items ?? [])) {
+    const found: [string, string][] = isPlayed(line.action)
+      ? playedIssues(line)
+      : [[`the cartoon's own script plays sounds alone, and ${line.who} ${line.action} is none`, `write it in a scene's script; a sound is played by ${PLAY} or ${LOOP}: tune ${LOOP}`]];
+    issues.push(...found.map(([message, hint]) => ({ line: line.line, message, hint })));
+  }
   const taken: Omit<ActionLine, "begun">[][] = [];
   for (const [n, scene] of script.scenes.entries()) {
     const own: (typeof taken)[number] = [];
-    for (const { line, who, action, values, text } of linesIn(scene.items)) {
+    for (const written of linesIn(scene.items)) {
+      const { line, who, action, values, text } = written;
       const issue = (message: string, hint: string, also: number[] = []) => void issues.push({ line, ...(also.length > 0 ? { also } : {}), message, hint });
+      if (isPlayed(action)) {
+        for (const [message, hint] of playedIssues(written)) issue(message, hint);
+        continue;
+      }
       if (action === SAY) {
         const named = Object.keys(values).filter((name) => name !== VOLUME);
         if (named.length > 0) issue(`${SAY} takes no ${listed(named)}`, `write only who says it, how loud if it is not as the rest, and the words: ${who} ${SAY} ${VOLUME}=-6dB: Hello!`);
@@ -288,7 +328,8 @@ export async function checkScenario(plugin: ScriptPlugin, script: WrittenScript,
       const known = Object.hasOwn(plugin.actions, action) ? plugin.actions[action] : undefined;
       if (!known) {
         const near = nearest(action, actions);
-        issue(`no action is named "${action}"`, `the actions are ${listed(actions)}${near ? `: did you mean ${near}?` : ""}`);
+        if (isPlayed(who) && Object.hasOwn(sounds, action)) issue(`no action is named "${action}"`, `a sound's name comes first: ${action} ${who}`);
+        else issue(`no action is named "${action}"`, `the actions are ${listed(actions)}${near ? `: did you mean ${near}?` : ""}`);
         continue;
       }
       const hint = `as in: ${known.example}`;
@@ -310,7 +351,7 @@ export async function checkScenario(plugin: ScriptPlugin, script: WrittenScript,
     taken.push(own);
   }
   // A row that does not read may be the one a label or a value is on.
-  if (script.issues.length === 0) issues.push(...worked.issues, ...timeIssues(worked.scenes, plugin.actions));
+  if (script.issues.length === 0) issues.push(...worked.issues, ...timeIssues(worked.scenes, plugin.actions, worked.over));
   // One line may make a mistake twice, as where it begins and where it arrives: it is said once.
   const once = issues.filter((one, k) => issues.findIndex(({ line, message }) => line === one.line && message === one.message) === k);
   if (once.length > 0) return { issues: once };
@@ -325,6 +366,12 @@ export async function checkScenario(plugin: ScriptPlugin, script: WrittenScript,
   // What the plugin gives is the tool's to trust from here on: a scene for each, an action for each, in plain numbers.
   const wrong = (what: string) => new Error(`the plugin's check of the script gave ${what}`);
   if (result.scenes.length !== acted.length) throw wrong(`${result.scenes.length} scenes for ${acted.length}`);
+  /** What is said or played, checked; none for an action of the plugin's. */
+  const heard = (item: WorkedLine): CheckedLine | undefined => {
+    const { values: _values, text, volume, lasts: _lasts, ...rest } = item;
+    if (item.action === SAY) return { ...rest, text: text!, volume: volume! };
+    return isPlayed(item.action) ? { ...rest, sound: sounds[item.who]!, volume: volume! } : undefined;
+  };
   const scenes = worked.scenes.map(({ items, ...scene }, i): CheckedScene => {
     const { setting, actions: did } = result.scenes[i]!;
     const where = `scene ${i + 1} (line ${scene.line})`;
@@ -333,9 +380,10 @@ export async function checkScenario(plugin: ScriptPlugin, script: WrittenScript,
     let next = 0;
     const check = (item: ScriptItem<WorkedLine>): ScriptItem<CheckedLine> => {
       if (isBlock(item)) return { ...item, items: item.items.map(check) };
-      const { values: _values, text, volume, lasts, ...rest } = item;
+      const sounding = heard(item);
+      if (sounding) return sounding;
+      const { values: _values, text: _text, volume: _volume, lasts, ...rest } = item;
       const { line, action } = item;
-      if (action === SAY) return { ...rest, text: text!, volume: volume! };
       const { values, length = NaN } = did[next++]!;
       const { channels, open } = plugin.actions[action]!;
       if (!isPlain(values)) throw wrong(`line ${line} values that are not numbers and names alone`);
@@ -347,5 +395,7 @@ export async function checkScenario(plugin: ScriptPlugin, script: WrittenScript,
     };
     return { ...scene, setting, items: items.map(check) };
   });
-  return { scenes, defaults: worked.defaults };
+  const played = (item: ScriptItem<WorkedLine>): ScriptItem<CheckedLine> => (isBlock(item) ? { ...item, items: item.items.map(played) } : heard(item)!);
+  const over = worked.over && { line: worked.over.line, items: worked.over.items.map(played) };
+  return { scenes, ...(over ? { over } : {}), defaults: worked.defaults };
 }
