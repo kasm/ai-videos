@@ -7,7 +7,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { build } from "esbuild";
-import { CAPTION_FADE, clipStyle, compiledCaptions, sceneCaptions, type Caption } from "./compose.ts";
+import { CAPTION_FADE, captionClass, clipStyle, compiledCaptions, sceneCaptions, type Caption } from "./compose.ts";
 import { FONT, fontSheet } from "./bundle.ts";
 import type { Compiled } from "./compile.ts";
 import type { Library } from "./plugin.ts";
@@ -244,7 +244,7 @@ export async function writePage(root: string, opts: { title: string; source: str
   const { width, height } = video.size;
   const fonts = await fontSheet(root, FONT.pkg, FONT.weight, (file) => dataUrl(file, "font/woff2"));
   const captions = video.captions
-    .map((c) => `      <div id="${c.id}" class="cl-cap" style="display: none"><p>${esc(c.text)}</p></div>`)
+    .map((c) => `      <div id="${c.id}" class="${captionClass(c)}" style="display: none"><p>${esc(c.text)}</p></div>`)
     .join("\n");
   const shown =
     "clip" in picture

@@ -295,9 +295,14 @@ scenes:
   before it begins is not there (`make` says so).
 - **A said line** holds all of itself: its `text`, its `volume` (decibels, see Values), its voice's
   `file`, its `mouth` (how open, a number for each of its frames, as in Fitting a clip to the voice;
-  the example shows three) and its `captions`. One caption shows at a time, for now: the one begun last, and of two that begin on
-  one frame the one written later. It stays up until the next one, a second after its words (a cut
-  line's, to the cut), or the scene's end. `loudness` is the video's (see How loud).
+  the example shows three) and its `captions`. `loudness` is the video's (see How loud).
+- **Its captions** (`rowsOf`, `src/captions.ts`): each is up through its words, whatever else is said,
+  and then until another begins, a second after them (a cut line's, to the cut), or the scene's end. A
+  line that sounds alone has its captions as any video's line. One that sounds at once with another has
+  them, all through, in a small `row` of its own, each piece one row long: the upper, 1, when it is
+  free as the line begins, else the lower, 2. So of two the one begun first is above, or of two begun
+  together the one written first, and a row is kept while its line sounds. Two at most have captions at
+  once: of three, the quietest has none, and of equally loud ones the one begun last, or written last.
 - **A played line** holds its `sound`, the file, a path from the project's folder, and its `volume`; one that is
   looped is played again and again in its frames. The cartoon's own are the compiled scenario's `lines`, beside
   its `scenes`; with no script of its own it has none.
@@ -335,7 +340,8 @@ scenes:
   began, and `length`, the seconds it lasts. A plugin's `script.draw` draws that, and counts no frames of
   its own: `into` and `length` say how far through each was at any moment before, such as the end of
   another (what a cartoon's look leaves is how it was then).
-- **The build** (see make) has the clip and the captions, each on its own frames, and no voices: the
+- **The build** (see make) has the clip and the captions, each on its own frames (the lower row on a
+  track of its own), and no voices: the
   video's sound is the tool's one track (see How loud), silent when nothing is said or played. A sound is no part of
   the picture either: what is played, when and how loud, draws nothing.
 - **The guide** to writing a script (`guideOf`, `src/guide.ts`) is the tool's part (a line's form,
@@ -345,9 +351,10 @@ scenes:
 
 `src/read.test.ts`, `src/formula.test.ts`, `src/values.test.ts`, `src/scenario.test.ts`,
 `src/plan.test.ts`, `src/words.test.ts`,
-`src/compile.test.ts`, `src/shown.test.ts`, `src/guide.test.ts` and `src/check.test.ts` show each
-rule; `src/scripts.test.ts` writes random video files, values on every level, and tries that none throws
-and that each with no mistake compiles to a whole scenario (`RANDOM_SCRIPTS=40000` for more of them than
+`src/compile.test.ts`, `src/captions.test.ts`, `src/shown.test.ts`, `src/guide.test.ts` and
+`src/check.test.ts` show each rule; `src/scripts.test.ts` writes random video files, values on every
+level, and tries that none throws and that each with no mistake compiles to a whole scenario, its
+captions as a plain re-telling of the rules has them (`RANDOM_SCRIPTS=40000` for more of them than
 `npm test` tries); `src/sound.test.ts` finds each voice and each sound of a script in its sound; `src/page.test.ts` draws the clip and the page from a compiled
 scenario and a library, with no video file, and finds their frames the same.
 
@@ -941,7 +948,9 @@ The request also lists the lines, in the video's order, each with its voice as m
 timeline registered as `window.__timelines[id]`, and every tween a `fromTo` with
 `immediateRender: false` so any frame can be drawn on its own. No timers, no `Date.now()`, no
 unseeded randomness, no network calls. In portrait, the captions keep between x 120 and 888 and
-end above y 1248, the area social apps leave clear.
+end above y 1248, the area social apps leave clear. Two at once, a script's (see A script), are
+smaller, 44 px, in two rows from y 880, below the ground a cartoon's characters stand on, to 44 px
+above the frame's edge; in portrait, 40 px, each with room for two rows, in the same area as one.
 
 ## Known quirks
 

@@ -4,7 +4,7 @@
 // lines and blocks (plan.ts).
 //
 // It needs none of the tool's packages: plugin.ts gives it to the plugins' tests.
-import { LINGER, captionsOf } from "./captions.ts";
+import { LINGER, captionsOf, rowsOf } from "./captions.ts";
 import { secondsOf, type Span } from "./formula.ts";
 import { planOf, type Lasting } from "./plan.ts";
 import { LOOP } from "./read.ts";
@@ -31,11 +31,15 @@ export interface CompileSettings {
   moves: { slowest: number; fastest: number };
 }
 
-/** One caption: its words, the frame of the video it shows from, and for how many. */
+/**
+ * One caption: its words, the frame of the video it shows from, and for how many. One of a line that sounds
+ * at once with another is in a small row, 1 over 2; any other is alone.
+ */
 export interface CompiledCaption {
   text: string;
   from: number;
   frames: number;
+  row?: 1 | 2;
 }
 
 /** What is played: the sound's file, a path from the project's folder, and how loud, dB. One that is looped is played again and again in its frames. */
@@ -99,24 +103,32 @@ export const saidLines = (scenes: Pick<CompiledScene, "lines">[]) => scenes.flat
 export const playedLines = ({ lines = [], scenes }: Pick<Compiled, "lines" | "scenes">) => [...lines, ...scenes.flatMap((scene) => scene.lines)].filter((line) => "sound" in line);
 
 /**
- * The captions of a scene that ends on frame `end`: each said line's, split (captions.ts), given to
- * it. One shows at a time: it stays through the pause after its words, until the next one, `linger`
- * frames, or the scene's end, and a cut line's goes with its voice. Of two that begin on one frame,
- * the one written later shows. `lasts` is how many frames a line's words take, cut or not.
+ * The captions of a scene that ends on frame `end`: each said line's, split, each in its row (captions.ts),
+ * given to it. One is up through its words, whatever else is said, and then until another begins, `linger`
+ * frames, or the scene's end; a cut line's goes with its voice. `lasts` is how many frames a line's words
+ * take, cut or not.
  */
 function caption(lines: CompiledLine[], lasts: (line: CompiledLine) => number, end: number, linger: number): void {
-  const pieces = saidLines([{ lines }])
+  const said = saidLines([{ lines }]);
+  const rows = rowsOf(said);
+  const pieces = said
+    .filter((line) => rows.has(line))
     .flatMap((line) => {
+      const row = rows.get(line);
       const stop = line.from + line.frames;
       const cut = line.frames < lasts(line);
-      return captionsOf(line.text, line.from, lasts(line)).map(({ text, start, end: words }) => ({ line, text, from: Math.round(start), until: cut ? stop : Math.round(words) + linger }));
+      return captionsOf(line.text, line.from, lasts(line), row !== undefined).map(({ text, start, end }) => {
+        const words = Math.round(end);
+        return { line, row, text, from: Math.round(start), words, until: cut ? stop : words + linger };
+      });
     })
     .filter(({ from, until }) => from < until)
     .sort((a, b) => a.from - b.from);
-  pieces.forEach(({ line, text, from, until }, k) => {
-    const frames = Math.min(pieces[k + 1]?.from ?? end, until, end) - from;
-    if (frames > 0) line.captions.push({ text, from, frames });
-  });
+  for (const [k, { line, row, text, from, words, until }] of pieces.entries()) {
+    const next = pieces.slice(k + 1).find((one) => one.from >= words);
+    const frames = Math.min(next?.from ?? end, until, end) - from;
+    if (frames > 0) line.captions.push({ text, from, frames, ...(row === undefined ? {} : { row }) });
+  }
 }
 
 /**

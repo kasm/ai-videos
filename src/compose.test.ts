@@ -71,3 +71,25 @@ test("a compiled scenario's build: its clip for its frames, its captions on thei
   assert.deepEqual(up, captions.map((c) => [c.from, c.frames]));
   assert.deepEqual(compiledCaptions("sq", compiled).map((c) => c.id), ["sq-cap-1", "sq-cap-2"]);
 });
+
+test("two said at once: each caption in its row, the lower one on a track of its own", async () => {
+  const together = { line: 4, order: "together" as const, items: [{ line: 5, who: "sq", action: "say", text: "Here I am.", volume: 0 }, { line: 6, who: "mo", action: "say", text: "Me too.", volume: 0 }] };
+  const scenes = [{ line: 3, setting: {}, lead: 0.6, pause: 0.4, tail: 1, items: [together, { line: 7, who: "sq", action: "say", text: "Good.", volume: 0 }] }];
+  const voices = [{ file: "a.wav", duration: 1.2, mouth: [] }, { file: "b.wav", duration: 0.8, mouth: [] }, { file: "c.wav", duration: 0.5, mouth: [] }];
+  const compiled = compile(scenes, voices, { fps: 30, loudness: -14, moves: { slowest: 0.5, fastest: 2 } }, "../../videos/two.yaml");
+  assert.deepEqual(compiledCaptions("two", compiled).map(({ id, row }) => [id, row]), [["two-cap-1", 1], ["two-cap-2", 2], ["two-cap-3", undefined]]);
+  const file = path.join(scratch, "two-landscape.mp4");
+  await writeFile(file, Buffer.from("not really a clip"));
+  const clip = { file, video: { width: 1920, height: 1080, fps: 30, duration: compiled.frames / 30 } };
+  const project = await composeCompiled(ROOT, { name: "two", file: path.join(scratch, "videos", "two.yaml") }, compiled, clip, "landscape", path.join(scratch, ".cache", "two", "build"));
+  const scene = await readFile(path.join(project, "compositions", "two.html"), "utf8");
+  const boxes = [...scene.matchAll(/<div id="(two-cap-\d)" class="([^"]*)" data-start="[\d.]+" data-duration="[\d.]+" data-track-index="(\d)"><p>(.*?)<\/p>/g)].map((m) => m.slice(1));
+  assert.deepEqual(boxes, [
+    ["two-cap-1", "clip cl-cap cl-row cl-row-1", "2", "Here I am."],
+    ["two-cap-2", "clip cl-cap cl-row cl-row-2", "3", "Me too."],
+    ["two-cap-3", "clip cl-cap", "2", "Good."],
+  ]);
+  // The scene's style has both rows, the upper one higher, in each format.
+  assert.match(scene, /\.cl-row-1 \{\s*padding-bottom: calc\(var\(--cl-row-bottom\) \+ var\(--cl-row-rise\)\);/);
+  assert.equal([...scene.matchAll(/--cl-row-rise: \d+px;/g)].length, 2);
+});

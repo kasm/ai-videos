@@ -193,7 +193,7 @@ scenes:
 - A line is a sentence or two, said by one character or by the narrator. A longer speech is several lines, one under another.
 - Keep a line to about 45 characters: a longer one is a caption of two rows, and its upper row covers the characters' feet.
 - What a character says in the story, it says: write reported speech as the words themselves.
-- People who talk over each other are drawn so, and heard so, but only one caption shows at a time. Keep it for what the story has at once: a chorus, someone breaking in, talk over a radio, a crowd under two who talk.
+- People who talk over each other are drawn so, and heard so, and two of them have a caption each at once. Keep it for what the story has at once: a chorus, someone breaking in, talk over a radio, a crowd under two who talk.
 - The narrator says what nobody says and the picture cannot show: where we are, who somebody is, what somebody feels, time passing.
 - Write for the ear: plain words, no brackets, no stage directions. The line is also the caption.
 `;

@@ -274,18 +274,25 @@ test("an open action goes on to the end of its block, which waits for none of it
   assert.deepEqual(compile([{ line: 1, setting: {}, ...PAUSES, items: ending }], [voiced("go.wav", 8)], SETTINGS, "sq.yaml").scenes[0]!.lines.map((line) => [line.line, line.from, line.frames]), [[3, 5, 20], [4, 5, 20], [5, 17, 8]]);
 });
 
-test("captions of what is said at once: one shows, the line's begun last, and a cut line's goes with its voice", () => {
+test("captions of what is said at once: each in a row through its words, the one begun first above, and a cut line's goes with its voice", () => {
   const captions = (items: CheckedScene["items"], voices: ReturnType<typeof voiced>[]) =>
-    saidLines(compile([{ line: 1, setting: {}, ...PAUSES, tail: 2, items }], voices, SETTINGS, "sq.yaml").scenes).map((line) => line.captions.map((c) => [c.from, c.frames]));
-  // Begun on one frame: the one written later shows, and the other has none.
-  assert.deepEqual(captions([{ line: 2, order: "together", items: [say(3, "sq", "Hi!"), say(4, "mo", "Hi!")] }], [voiced("a.wav", 8), voiced("b.wav", 6)]), [[], [[5, 16]]]);
-  // One begun part-way into another takes its place, and the other's next words theirs: frames 5 to 55 are 30 of a and 20 of b.
-  const long = `${"a".repeat(59)}, ${"b".repeat(39)}.`;
+    saidLines(compile([{ line: 1, setting: {}, ...PAUSES, tail: 2, items }], voices, SETTINGS, "sq.yaml").scenes).map((line) => line.captions.map((c) => [c.from, c.frames, c.row]));
+  // Begun on one frame: the one written first is above, and each stays a second, 10 frames, after its own words.
+  assert.deepEqual(captions([{ line: 2, order: "together", items: [say(3, "sq", "Hi!"), say(4, "mo", "Hi!")] }], [voiced("a.wav", 8), voiced("b.wav", 6)]), [[[5, 18, 1]], [[5, 16, 2]]]);
+  // A line alone is one caption, as it was.
+  const long = "Last night I saw a badger by the pond, and it waved its paw at me.";
+  assert.deepEqual(captions([say(2, "sq", long)], [voiced("a.wav", 50)]), [[[5, 60, undefined]]]);
+  // Another begun part-way into it: it is in rows of one row each, frames 5 to 55 shared 38 to 27 by their
+  // characters, and the other under it, its words over on frame 19, until the next words begin.
   const over = [{ ...say(2, "sq", long), label: "l" }, { ...say(3, "mo", "Hm?"), anchor: { of: "l", at: { share: 0.2 }, plus: 0 } }];
-  assert.deepEqual(captions(over, [voiced("a.wav", 50), voiced("b.wav", 4)]), [[[5, 10], [35, 30]], [[15, 14]]]);
-  // Cut on frame 45: its second caption is up to there, and no longer.
+  assert.deepEqual(captions(over, [voiced("a.wav", 50), voiced("b.wav", 4)]), [[[5, 29, 1], [34, 31, 1]], [[15, 14, 2]]]);
+  assert.deepEqual(saidLines(compile([{ line: 1, setting: {}, ...PAUSES, items: over }], [voiced("a.wav", 50), voiced("b.wav", 4)], SETTINGS, "sq.yaml").scenes)[0]!.captions.map((c) => c.text), ["Last night I saw a badger by the pond,", "and it waved its paw at me."]);
+  // Cut on frame 45: its second caption is up to there, and no longer. The line after both is alone.
   const cut: CheckedScene["items"] = [{ line: 2, order: "together", items: [{ line: 3, order: "in order", pause: 0.3, under: true, items: [say(4, "sq", long)] }, say(5, "mo", "Hm?")] }, say(6, "mo", "Oh.")];
-  assert.deepEqual(captions(cut, [voiced("a.wav", 50), voiced("b.wav", 40), voiced("c.wav", 5)]), [[[35, 10]], [[5, 30]], [[48, 15]]]);
+  assert.deepEqual(captions(cut, [voiced("a.wav", 50), voiced("b.wav", 40), voiced("c.wav", 5)]), [[[5, 29, 1], [34, 11, 1]], [[5, 43, 2]], [[48, 15, undefined]]]);
+  // Three at once: the quietest has none.
+  const three: CheckedScene["items"] = [{ line: 2, order: "together", items: [say(3, "sq", "Hi!"), { ...say(4, "mo", "Hi!"), volume: -6 }, say(5, "tuk", "Hi!")] }];
+  assert.deepEqual(captions(three, [voiced("a.wav", 8), voiced("b.wav", 8), voiced("c.wav", 8)]), [[[5, 18, 1]], [], [[5, 18, 2]]]);
 });
 
 test("a voice for each said line, in order: another count is a mistake of the tool's", () => {

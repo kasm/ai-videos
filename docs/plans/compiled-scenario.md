@@ -279,7 +279,28 @@
   `scenes:`, would have it, and change no script); what is cut stops in 30 ms,
   music too, as a fade is out; for step 12, the prompt shows `library.yaml`
   with its `sounds:` while it still teaches beats, which play none.
-- **Next: step 11, caption everyone who speaks.**
+- **Step 11 done 2026-11-26**, two at once over a frame with Tuk accepted by
+  the user that day. The user's picks: two at once sit below everyone's feet,
+  44 px, from y 880 to 44 px above the frame's edge; the one begun first is
+  above; of three the quietest has none, then the one begun last. A line at
+  once with another is in its row all through, each piece a row long, and a
+  caption is up through its words, whatever else begins. Checked: `npm test`
+  and `npm run typecheck` here and in `cartoons/`; RayCraft's media typecheck
+  and `test:libs`, no file of it changed; `make --fit` of the ten gives
+  requests equal to the baseline, byte for byte; `hello-script` compiles to
+  the same bytes, and `all-at-once` too but for its captions; `hello` and
+  `hello-script`, rendered anew, have the same pixels in every frame;
+  `all-at-once` made whole passes HyperFrames' check, no layout issue and 3
+  captions too short to read where there were 7, and in its video and its
+  page each frame with two at once shows both, apart (y 880 to 954 and 962 to
+  1036); a portrait page has them apart too, in the area social apps leave
+  clear; 40,000 different random scripts, 20,151 of them with no mistake,
+  have the captions a plain re-telling of the rules says; each of 19 rules
+  broken on purpose fails a test. Not tried: the guide on a fresh `claude -p`.
+- Left by step 11: a row does not say whose it is; a third line at once has
+  no caption, even where it outlasts the other two; a player's bar, while it
+  shows, covers part of the lower row.
+- **Next: step 12, teach it to a web chat.**
 
 
 ## Goal

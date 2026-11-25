@@ -249,7 +249,8 @@ scenes:
   `middle` and `right` on the stage (x 480, 960 and 1440), and `off-left`
   and `off-right` out of sight (x -250 and 2170); `MARKS` in
   `scenario.ts`. The ground is above the caption (a one-line caption, as
-  measured in `hello`, covers about y 890 to 990). Two characters never
+  measured in `hello`, covers about y 890 to 990; two at once, a script's,
+  y 880 to 1036). Two characters never
   stand on one mark of the stage, as a scene begins or after a walk; off
   it, any number wait.
 - **A scene** has the `background` it begins with, the mark each of its
@@ -412,6 +413,9 @@ scenes:
   `tune.volume`); a character's own, and a sound's, is its `volume` in the
   library. `0dB` is the same for every voice and every sound, and the nearest
   wins (the tool's `AGENTS.md`, "How loud"). A cartoon in beats has none.
+- **Captions** are the tool's (its `AGENTS.md`, "A script"): two who talk
+  at once have one each, in a smaller row below everyone's feet, the one who
+  began first above; of three, the quietest has none.
 - **Sounds** are the tool's (its `AGENTS.md`, "A script"): `rustle play`,
   a line as a voice is, and `tune loop`, again and again to the end of its
   block, each a sound of the library. Those that go on over the scenes, from

@@ -24,12 +24,13 @@ function fill(template: string, values: Record<string, string | number>): string
 /** Seconds a caption takes to fade in, slowing at the end (GSAP's power1.out); it leaves on a cut, so the next one can replace it. */
 export const CAPTION_FADE = 0.12;
 
-/** One caption of a clip scene: its words, and when it shows, seconds from the scene's start. */
+/** One caption of a clip scene: its words, when it shows, seconds from the scene's start, and its row, of two at once (compile.ts). */
 export interface Caption {
   id: string;
   text: string;
   start: number;
   duration: number;
+  row?: 1 | 2;
 }
 
 /**
@@ -57,11 +58,15 @@ export const frameTime = (frame: number, fps: number) => Math.max(0, Math.ceil((
 export function compiledCaptions(name: string, { scenes, fps }: Compiled): Caption[] {
   return saidLines(scenes)
     .flatMap((line) => line.captions)
-    .map(({ text, from, frames }, k) => {
+    .map(({ text, from, frames, row }, k) => {
       const start = frameTime(from, fps);
-      return { id: `${name}-cap-${k + 1}`, text, start, duration: Math.round((frameTime(from + frames, fps) - start) * 1000) / 1000 };
+      const duration = Math.round((frameTime(from + frames, fps) - start) * 1000) / 1000;
+      return { id: `${name}-cap-${k + 1}`, text, start, duration, ...(row === undefined ? {} : { row }) };
     });
 }
+
+/** A caption's classes, in the clip scene's style. */
+export const captionClass = ({ row }: Caption) => (row === undefined ? "cl-cap" : `cl-cap cl-row cl-row-${row}`);
 
 /** The clip scene's style, filled for a `width` by `height` stage: its captions' look, which the web page takes as it is. */
 export async function clipStyle(root: string, width: number, height: number): Promise<string> {
@@ -122,7 +127,8 @@ async function clipScene(project: string, scene: BuildScene, fps: number) {
     clipSrc: `assets/clips/${name}`,
     clipDuration: clip.duration,
     hold,
-    captions: captions.map((c) => `    <div id="${c.id}" class="clip cl-cap" data-start="${c.start}" data-duration="${c.duration}" data-track-index="2"><p>${esc(c.text)}</p></div>`).join("\n"),
+    // One caption is up at a time on a track: the lower row has one of its own.
+    captions: captions.map((c) => `    <div id="${c.id}" class="clip ${captionClass(c)}" data-start="${c.start}" data-duration="${c.duration}" data-track-index="${c.row === 2 ? 3 : 2}"><p>${esc(c.text)}</p></div>`).join("\n"),
     captionsJson: JSON.stringify(captions.map(({ id, start }) => ({ id, start }))),
     fade: CAPTION_FADE,
   };

@@ -486,6 +486,56 @@ for (const text of FILES) {
 const compiledOf = ({ scenes, over, fps, voices, sounds }: Taken, lengths = voices): Compiled =>
   compile(scenes, lengths.map((frames, k) => ({ file: `${k}.wav`, duration: frames / fps, mouth: Array.from({ length: frames }, () => 0.5) })), { fps, loudness: -14, moves: MOVES }, "x.yaml", Object.fromEntries(Object.entries(sounds).map(([file, frames]) => [file, frames / fps])), over);
 
+/**
+ * A scene's captions, as a plain re-telling of the rules has them: two at most up at once, each in a row of
+ * its own, and one alone by itself; a line's in one row, or alone, a caption after another from its first
+ * frame to its last at least, each row's of a row's length, its words in order; in a row when another
+ * captioned line sounds with it, the upper when nothing in that sounds as it begins; and none only for a line
+ * that two before it sound with on one frame: louder ones, or as loud and begun earlier, or written earlier.
+ */
+function captionsKept(lines: CompiledLine[]): Set<string> {
+  const seen = new Set<string>();
+  const said = lines.filter((line) => "text" in line);
+  const captioned = said.filter((line) => line.captions.length > 0);
+  const sounds = (line: (typeof said)[number], frame: number) => line.from <= frame && frame < line.from + line.frames;
+  const all = said.flatMap((line) => line.captions);
+  for (const { from } of all) {
+    const up = all.filter((c) => c.from <= from && from < c.from + c.frames);
+    assert.ok(up.length === 1 || (up.length === 2 && up[0]!.row !== undefined && up[1]!.row !== undefined && up[0]!.row !== up[1]!.row), `up on frame ${from}: ${JSON.stringify(up)}`);
+  }
+  for (const line of said) {
+    const { captions } = line;
+    const others = captioned.filter((one) => one !== line);
+    if (captions.length === 0) {
+      const before = (one: (typeof said)[number]) => one.volume > line.volume || (one.volume === line.volume && (one.from < line.from || (one.from === line.from && said.indexOf(one) < said.indexOf(line))));
+      const frames = [line.from, ...others.map(({ from }) => from)].filter((frame) => sounds(line, frame));
+      assert.ok(frames.some((frame) => others.filter((one) => sounds(one, frame) && before(one)).length >= 2), `line ${line.line} has no caption`);
+      seen.add("none");
+      continue;
+    }
+    seen.add(captions[0]!.row === undefined ? "alone" : `row ${captions[0]!.row}`);
+    if (captions[0]!.row !== undefined && captions.length > 1) seen.add("rows of one line");
+    if (captions[0]!.row !== undefined && said.some((one) => one !== line && one.from === line.from && one.captions.length > 0)) seen.add("begun at once");
+    const { row } = captions[0]!;
+    assert.ok(captions.every((one) => one.row === row), `line ${line.line} changes its row`);
+    const atOnce = others.filter((one) => one.from < line.from + line.frames && line.from < one.from + one.frames);
+    assert.equal(row !== undefined, atOnce.length > 0, `line ${line.line} is in row ${row}, ${atOnce.length} at once with it`);
+    if (row !== undefined) assert.equal(row === 1, !atOnce.some((one) => one.captions[0]!.row === 1 && sounds(one, line.from)), `line ${line.line} is in row ${row}`);
+    assert.equal(captions[0]!.from, line.from, `line ${line.line}'s caption is late`);
+    for (const [k, one] of captions.entries()) if (k > 0) assert.equal(one.from, captions[k - 1]!.from + captions[k - 1]!.frames, `line ${line.line}'s captions are apart`);
+    assert.ok(captions.at(-1)!.from + captions.at(-1)!.frames >= line.from + line.frames, `line ${line.line}'s captions end before it`);
+    if (row !== undefined) for (const { text } of captions) assert.ok(text.length <= 56, `line ${line.line} has a row of ${text.length} characters`);
+    // A piece shorter than half a frame is none.
+    const words = line.text.replace(/\s+/g, " ");
+    captions.reduce((at, { text }) => {
+      const found = words.indexOf(text, at);
+      assert.ok(found >= at, `line ${line.line}'s captions are not its words`);
+      return found + text.length;
+    }, 0);
+  }
+  return seen;
+}
+
 /** Tries every script with no mistake, says how many different ones they are, and shows the one that fails. */
 function tried(t: TestContext, check: (taken: Taken) => void): void {
   t.diagnostic(`${TAKEN.length} different scripts with no mistake, of ${FILES.length} different scripts`);
@@ -743,7 +793,9 @@ test("random scripts: there are many with no mistake, and everything a script ca
 });
 
 test("random scripts: each compiles to a whole scenario, of plain values, with something to show on every frame", (t) => {
+  const captioned: Record<string, number> = { alone: 0, "row 1": 0, "row 2": 0, none: 0, "rows of one line": 0, "begun at once": 0 };
   tried(t, (taken) => {
+    const seen = new Set<string>();
     const compiled = compiledOf(taken);
     assert.deepEqual(compiledOf(taken), compiled, "compiled again, it is another");
     assert.deepEqual(JSON.parse(compiledText(compiled)), compiled, "it is not plain");
@@ -766,7 +818,6 @@ test("random scripts: each compiles to a whole scenario, of plain values, with s
       assert.equal(scene.from, end, `scene ${n + 1} does not follow the one before`);
       assert.ok(Number.isSafeInteger(scene.frames) && scene.frames > 0, `scene ${n + 1} lasts ${scene.frames}`);
       end += scene.frames;
-      let caption = 0;
       const lines = linesIn(taken.scenes[n]!.items).map(({ line }) => line);
       assert.deepEqual(scene.lines.map(({ line }) => line), lines.filter((line) => scene.lines.some((one) => one.line === line)), "the lines are not in the order written");
       for (const line of scene.lines) {
@@ -776,14 +827,11 @@ test("random scripts: each compiles to a whole scenario, of plain values, with s
         assert.equal(line.mouth.length, line.frames, `line ${line.line} has ${line.mouth.length} frames of its mouth`);
         for (const { from, frames, text } of line.captions) {
           assert.ok(Number.isSafeInteger(from) && frames > 0 && from >= line.from && from + frames <= end && text !== "", `a caption of line ${line.line} is from ${from} for ${frames}`);
-          caption++;
         }
       }
-      // One caption shows at a time.
-      const captions = scene.lines.flatMap((line) => ("captions" in line ? line.captions : [])).toSorted((a, b) => a.from - b.from);
-      assert.equal(captions.length, caption);
-      for (const [k, { from }] of captions.entries()) if (k > 0) assert.ok(captions[k - 1]!.from + captions[k - 1]!.frames <= from, `two captions show on frame ${from}`);
+      for (const one of captionsKept(scene.lines)) seen.add(one);
     }
+    for (const one of seen) captioned[one]!++;
     assert.equal(compiled.frames, end, "its scenes do not add up");
     const picture = pictureOf(compiled);
     const frames = picture.scenes.flatMap(({ from, frames, actions, mouths }) => [from, from + frames - 1, ...actions.flatMap((one) => [one.from, one.from + one.frames]), ...mouths.map((one) => one.from)]);
@@ -791,6 +839,9 @@ test("random scripts: each compiles to a whole scenario, of plain values, with s
       for (const { progress, into } of shownAt(picture, frame).actions) assert.ok(progress >= 0 && progress <= 1 && into >= 0, `frame ${frame} shows an action ${progress} through`);
     }
   });
+  // Scripts with each kind of caption.
+  t.diagnostic(JSON.stringify(captioned));
+  for (const [what, n] of Object.entries(captioned)) assert.ok(n >= FILES.length / 100, `${what}: ${n} in ${JSON.stringify(captioned)}`);
 });
 
 test("random scripts: what is said or played is as loud as the nearest level has it, worked out by what its names are there", (t) => {

@@ -40,6 +40,8 @@ For what does not happen in order there are four blocks. A block is a header on 
 - \`in order:\` each row begins when all above it in the block has ended, as in the script itself. It is for several lines in a row inside a \`together:\`, or for what an \`under:\` is under.
 - \`under:\` its rows, in order, go on under the rest of the block it is in, and are cut off where that ends. Nothing waits for them.
 
+Two who talk at once each have a caption, in a smaller row of its own, the one who began first above. Of three at once, the quietest has none, so keep what is heard at once to two, or the third quieter.
+
 Voices at once, and the next line after both:
 
 \`\`\`script

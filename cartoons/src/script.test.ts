@@ -155,7 +155,8 @@ test("a compiled scenario holds nothing but numbers, texts and file names, and t
       if (typeof value === "number") assert.ok(Number.isFinite(value), where);
       else if (typeof value !== "string") assert.fail(`${where} is ${value}`);
       else if (where === "format" || where === "made.by") assert.match(value, /^ai-videos[ -]compiled?$/);
-      else if (at.at(-1) === "text") assert.ok(texts.has(value), `${where}: ${value}`);
+      // A caption's is a line's, or a piece of one.
+      else if (at.at(-1) === "text") assert.ok([...texts].some((text) => text?.includes(value)), `${where}: ${value}`);
       else if (at.at(-1) === "file" || where === "made.from") assert.ok(files.has(value), `${where}: ${value}`);
       else if (at.at(-1) === "sound") assert.ok(Object.values(sounds).includes(value), `${where}: ${value}`);
       else assert.ok(names.has(value), `${where} is a name: ${value}`);

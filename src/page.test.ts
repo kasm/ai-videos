@@ -240,6 +240,29 @@ test("a script's clip and its page are drawn from the compiled scenario and the 
   }
 });
 
+test("two said at once: the page has each caption in its row, as the video does", async () => {
+  const root = path.join(scratch, "rows");
+  await mkdir(root, { recursive: true });
+  const together = { line: 4, order: "together" as const, items: [{ line: 5, who: "sq", action: "say", text: "Here I am.", volume: 0 }, { line: 6, who: "mo", action: "say", text: "Me too.", volume: 0 }] };
+  const scenes: CheckedScene[] = [{ line: 3, setting: {}, lead: 0.6, pause: 0.4, tail: 1, items: [together, { line: 7, who: "sq", action: "say", text: "Good.", volume: 0 }] }];
+  const voices = [{ file: "a.wav", duration: 1.2, mouth: [] }, { file: "b.wav", duration: 0.8, mouth: [] }, { file: "c.wav", duration: 0.5, mouth: [] }];
+  const compiled = compile(scenes, voices, { fps: 30, loudness: -14, moves: { slowest: 0.5, fastest: 2 } }, "../../videos/two.yaml");
+  const [clip, sound] = [path.join(root, "two-landscape.mp4"), path.join(root, "sound.m4a")];
+  await writeFile(clip, "");
+  await writeFile(sound, "");
+  const video = compiledPage({ dir: root, name: "two", compiled, library: undefined, size: { width: 1920, height: 1080 }, format: "landscape" });
+  const out = path.join(root, "two.html");
+  await writePage(ROOT, { title: "two", source: "videos/two.yaml", picture: { clip }, video, sound, out });
+  const html = await readFile(out, "utf8");
+  assert.deepEqual([...html.matchAll(/<div id="(two-cap-\d)" class="([^"]*)" style="display: none"><p>(.*?)<\/p>/g)].map((m) => m.slice(1)), [
+    ["two-cap-1", "cl-cap cl-row cl-row-1", "Here I am."],
+    ["two-cap-2", "cl-cap cl-row cl-row-2", "Me too."],
+    ["two-cap-3", "cl-cap", "Good."],
+  ]);
+  // In the clip scene's style.
+  assert.match(html, /\.cl-row p \{\s*max-width: none;\s*font-size: var\(--cl-row-font\);/);
+});
+
 test("a plugin that does not bundle for a page says so", async () => {
   const root = path.join(scratch, "unbundled");
   await mkdir(root, { recursive: true });
