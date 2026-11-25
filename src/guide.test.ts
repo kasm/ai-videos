@@ -163,10 +163,15 @@ test("the tool's part says what a script has: a line's form, say, blocks, joinin
   }
 });
 
-test("a plugin's guide: the tool's part, the plugin's, each action described once with its example, and its names for numbers", () => {
-  const square = { guide: "\nA square slides to a side.\n", actions: { slide: { description: "The square slides to a side.", example: "sq slide to=right" } } };
+test("a plugin's guide: the tool's part, the plugin's, each action and construction described once with its example, and its names for numbers", () => {
+  const square = { guide: "\nA square slides to a side.\n", actions: { slide: { description: "The square slides to a side.", example: "sq slide to=right" } }, constructions: {} };
   const guide = guideOf({ ...square, names: {} });
-  assert.match(guideOf({ ...square, names: { slow: 0.6, fast: 1.6 } }), /sq slide to=right`\n\nThese names stand for numbers in any value: `slow` is 0\.6 and `fast` is 1\.6\.\n$/);
+  const names = { slow: 0.6, fast: 1.6 };
+  assert.match(guideOf({ ...square, names }), /sq slide to=right`\n\nThese names stand for numbers in any value: `slow` is 0\.6 and `fast` is 1\.6\.\n$/);
+  // A plugin with constructions has how they are written too.
+  assert.ok(!guide.includes("construction"));
+  const constructed = guideOf({ ...square, names, constructions: { beside: { description: "Beside a place.", example: "beside(mo, 2)" } } });
+  assert.match(constructed, /sq slide to=right`\n\n## The constructions\n\nA value may be worked out from others by a construction: its name, and in parentheses .*\n\n- \*\*beside\*\*: Beside a place\. For example: `beside\(mo, 2\)`\n\nThese names stand/);
   assert.match(guide, /^## A script\n\nA scene's `script` says what happens in it/);
   assert.match(guide, /\n## The format\n\nA square slides to a side\.\n\n## The actions\n\n/);
   assert.match(guide, /\n- \*\*say\*\*: The character says the words after the colon.* For example: `narrator say: Once upon a time\.`\n/);

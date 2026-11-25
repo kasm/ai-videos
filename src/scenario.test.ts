@@ -97,6 +97,8 @@ test("a wrong value is refused with its line, the schema's reason, and the actio
   assert.deepEqual(await issuesOf("sq slide"), [{ line: 5, message: "slide, to: it is left or right", hint: "as in: sq slide to=right" }]);
   assert.deepEqual(await issuesOf("sq slide to=left fast=1"), [{ line: 5, message: "slide: slide takes no fast", hint: "as in: sq slide to=right" }]);
   assert.deepEqual(await issuesOf("sq slide to=left: Whee!"), [{ line: 5, message: "slide takes no words after a colon: only say does", hint: "as in: sq slide to=right" }]);
+  const beside: ScriptPlugin = { ...scripted(), constructions: { beside: { description: "Beside a place.", example: "beside(mo, 2)" } } };
+  assert.deepEqual(await issuesOf("sq slide to=beside(mo, 1 + 1)", beside), [{ line: 5, message: "slide, to=beside(mo, 2): it is left or right", hint: "as in: sq slide to=right" }]);
 });
 
 test("say is the tool's: its speaker has a voice or is the narrator, it has words, and takes no values", async () => {

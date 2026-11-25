@@ -362,6 +362,8 @@ export default {
   script: {
     actions: { slide: { description: "The square slides to a side.", example: "sq slide to=right", values: side } },
     names: { slow: 0.5 },
+    constructions: { between: { description: "Between two.", example: "between(left, right)" } },
+    tables: ["spots"],
     guide: "A square slides to a side, and speaks.",
     check(scenes, library) {
       const colour = (scene) => library?.raw?.colours?.[scene.setting.colour];
@@ -389,7 +391,12 @@ test("a plugin with a script: its guide and actions come with it, and a script's
   const host = await startPlugin((await pluginOf(video))!, (m) => said.push(m));
   try {
     assert.match(said[0]!, /^Plugin: square, .*plugin\.mjs \(its commands: colour; a script's actions: slide\)$/);
-    assert.deepEqual(host.script, { guide: "A square slides to a side, and speaks.", actions: { slide: { description: "The square slides to a side.", example: "sq slide to=right" } }, names: { slow: 0.5 } });
+    assert.deepEqual(host.script, {
+      guide: "A square slides to a side, and speaks.",
+      actions: { slide: { description: "The square slides to a side.", example: "sq slide to=right" } },
+      names: { slow: 0.5 },
+      constructions: { between: { description: "Between two.", example: "between(left, right)" } },
+    });
     const timing = { lead: 0.6, gap: 0.4, tail: 1 };
     const library = { file: path.join(root, "library.yaml"), raw: { colours: { red: "#d04040" } } };
     const lines: ScriptLine[] = [
@@ -420,6 +427,13 @@ test("a plugin with a script: its guide and actions come with it, and a script's
     // A mistake of the tool's finding (the action's values) and one of the plugin's (a name), each with its line.
     const wrong = { scenes: [{ line: 3, setting: { colour: "red" }, items: [{ ...lines[0]!, values: { to: "up" } }] }], issues: [] };
     assert.deepEqual(await host.checkScript(video, wrong, library, ["sq"], timing), { issues: [{ line: 5, message: "slide, to=up: it is left or right", hint: "as in: sq slide to=right" }] });
+    // Its constructions and its tables are the tool's to read: one it has not, and a formula that does not read.
+    const made = { scenes: [{ line: 3, setting: { colour: "red", spots: { sq: "between(left" } }, items: [{ ...lines[0]!, values: { to: "beside(left, right)" } }] }], issues: [] };
+    const found = await host.checkScript(video, made, library, ["sq"], timing);
+    assert.deepEqual("issues" in found && found.issues.map(({ line, message }) => [line, message]), [
+      [3, 'spots.sq=between(left: between( has no ")" after it'],
+      [5, 'to=beside(left, right): no construction is named "beside"'],
+    ]);
     const blue = { scenes: [{ line: 3, setting: { colour: "blue" }, items: lines }], issues: [] };
     assert.deepEqual(await host.checkScript(video, blue, library, ["sq"], timing), { issues: [{ line: 3, message: "no colour is named blue", hint: "name a colour of the library" }] });
     // Nothing is written by it.
@@ -507,6 +521,16 @@ test("a plugin with no script takes none; an action's example is a line that nam
   await assert.rejects(broken("named-to", naming("to", "to: {}")), /"to" is a value of slide's, and no name for a number/);
   await assert.rejects(broken("takes-speed", naming("quick", "to: {}, speed: {}")), /the action "slide" takes a value called speed, which is the tool's own for every action/);
   await assert.rejects(broken("named-text", (t) => t.replace("names: { slow: 0.5 }", 'names: { slow: "half" }')), /is not a plugin[\s\S]*script\.names\.slow/);
+  // An example may name the plugin's numbers.
+  const half = (t: string) => t.replace('v.to === "left" ||', 'v.to === 0.5 ||').replaceAll("sq slide to=right", "sq slide to=slow");
+  assert.equal((await broken("example-name", half)).script!.actions.slide!.example, "sq slide to=slow");
+  // A construction's example is one of it, and a table's name is a key's.
+  const constructing = (example: string) => (t: string) => t.replace('example: "between(left, right)"', `example: ${example}`);
+  await assert.rejects(broken("constructed-other", constructing('"beside(left, right)"')), /the construction "between" fails its own example, beside\(left, right\):\n {2}it is between\( \) with what it is worked out from, by itself/);
+  await assert.rejects(broken("constructed-sum", constructing('"between(left, right) + 1"')), /the construction "between" fails its own example/);
+  await assert.rejects(broken("constructed-open", constructing('"between(left"')), /fails its own example, between\(left:\n {2}between\( has no "\)" after it/);
+  await assert.rejects(broken("constructed-none", constructing("3")), /is not a plugin[\s\S]*script\.constructions\.between\.example/);
+  await assert.rejects(broken("tables", (t) => t.replace('tables: ["spots"]', "tables: [3]")), /is not a plugin[\s\S]*script\.tables/);
   await assert.rejects(broken("example-action", (t) => t.replace("sq slide to=right", "sq say: Hello!")), /the action "slide" fails its own example, sq say: Hello!:\n {2}it is one line of a script that names slide/);
   await assert.rejects(broken("example-line", (t) => t.replace("sq slide to=right", "sq slide right")), /fails its own example, sq slide right:\n {2}"right" is not a value/);
   await assert.rejects(broken("say", (t) => t.replace("actions: { slide:", "actions: { say:")), /plugin\.mjs: "say" is the tool's own action: give the plugin's another name/);

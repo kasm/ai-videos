@@ -11,6 +11,7 @@ import { parse } from "yaml";
 import { scriptStaging } from "./picture.ts";
 import plugin from "./plugin.ts";
 import { MARKS, PACE, readLibrary } from "./scenario.ts";
+import type { Setting, Walk } from "./script.ts";
 
 const root = path.join(import.meta.dirname, "..");
 /** The project's library as the tool gives it to the plugin, without each character's voice; and who has one. */
@@ -145,6 +146,12 @@ test("a compiled scenario holds nothing but numbers, texts and file names, and t
       // A mark is written in a script, and compiled to its point.
       assert.ok(!(String(value) in MARKS), `${where} is the mark ${value}`);
     }
+    // So is any place: each character begins at a point, and each walk goes from one to one, in whole px.
+    const point = ([x, y, ...more]: number[]) => Number.isInteger(x) && y === 880 && more.length === 0;
+    for (const { setting, lines } of compiled.scenes) {
+      for (const { at } of Object.values((setting as unknown as Setting).characters)) assert.ok(point(at), JSON.stringify(setting));
+      for (const line of lines) if (line.action === "walk") assert.deepEqual(Object.entries((line as unknown as { values: Walk }).values).map(([key, at]) => [key, point(at)]), [["from", true], ["to", true]]);
+    }
     // Every line of the script is there, in the order written, on frames of its scene.
     assert.deepEqual(
       compiled.scenes.map((scene) => scene.lines.map((line) => [line.line, line.who, line.action])),
@@ -236,12 +243,18 @@ test("all-at-once: a walk under words, a chorus, an interruption at a word, a ra
   assert.ok(seen.from > news.end && alone.from > seen.end, "the radio's lines are in order");
   assert.ok(of("That was me").from > seen.from && of("That was me").end > seen.end && of("They know").from > of("That was me").end, "the talk has an order of its own");
   assert.equal(of("Poor badger").from, Math.max(alone.end, of("They know").end) + 12, "what comes after waits for both");
-  // Tuk walks in at its own pace, 1210 px at 320 a second, and the words begin late enough to end as it arrives.
-  const arrives = lines.filter((line) => line.action === "walk").at(-1)!;
+  // Tuk walks in at its own pace, 1260 px at 320 a second, and the words begin late enough to end as it arrives.
+  const [, arrives, nearer] = lines.filter((line) => line.action === "walk");
   const evening = of("In the evening");
-  assert.deepEqual([arrives.from, arrives.frames], [compiled.scenes[1]!.from + 18, 113]);
-  assert.equal(evening.end, arrives.from + arrives.frames);
-  assert.ok(evening.from > arrives.from + 30);
+  assert.deepEqual([arrives!.from, arrives!.frames], [compiled.scenes[1]!.from + 18, 118]);
+  assert.equal(evening.end, arrives!.from + arrives!.frames);
+  assert.ok(evening.from > arrives!.from + 30);
+  // Mo is beside the reeds, at 1500: half of its 200 px and 0.3 of them to their left. Tuk stops between Pip, at 480, and
+  // Mo, then 0.3 of its own 178 px from Pip, whose half is 116.
+  const { characters } = compiled.scenes[1]!.setting as unknown as Setting;
+  assert.deepEqual([characters.pip!.at, characters.mo!.at, characters.tuk!.at], [[480, 880], [1340, 880], [2170, 880]]);
+  assert.deepEqual([arrives, nearer].map((line) => (line as unknown as { values: Walk }).values), [{ from: [2170, 880], to: [910, 880] }, { from: [910, 880], to: [738, 880] }]);
+  assert.equal(nearer!.from, of("That, only").from, "Tuk comes up to Pip as the last words begin");
   assert.equal(evening.line.frames, Math.ceil(AT_ONCE_VOICES[12]!.duration * 30));
   const [one, five, why, which] = [of("One reed"), of("Five reeds"), of("Why is"), of("And which")];
   assert.equal(one.from, evening.end + 12);
@@ -267,7 +280,7 @@ test("all-at-once, with one value changed, has another timing and nothing else o
   assert.ok(after!.frames > before!.frames + 100, `${before!.frames} frames, and ${after!.frames}`);
   const lines = (compiled: Compiled) => compiled.scenes.flatMap((scene) => scene.lines);
   const moved = lines(after!).filter((line, k) => line.from - lines(before!)[k]!.from > 0);
-  // All but the walk and the words joined to it, which the first scene begins with.
+  // All but the walk and the words joined to it, that the first scene begins with.
   assert.equal(moved.length, lines(before!).length - 2);
   const without = (compiled: Compiled) => lines(compiled).map(({ line, who, action, ...rest }) => [line, who, action, "text" in rest ? [rest.text, rest.file] : rest.values]);
   assert.deepEqual(without(after!), without(before!));
@@ -297,7 +310,7 @@ test("a walk at a speed of its own is as long as that says, whatever is said bes
   assert.equal(await walk("pip walk to=there", "values: { there: middle, walk.speed: 1 }"), 113);
   assert.equal(await walk("pip walk", "values: { pip.to: middle, walk.speed: 1 }"), 113);
   const wrong = await issuesOf(["pip walk to=there"], ["values: { there: centre }", ...SCENE]);
-  assert.deepEqual(wrong.map((i) => [i.line, i.message]), [[7, "walk, to=centre: it is one of the marks: off-left, left, middle, right, off-right"]]);
+  assert.deepEqual(wrong.map((i) => [i.line, i.message]), [[7, '"pip" walks to centre: no place is called "centre"']]);
 });
 
 test("a character's line opens its mouth as the voice goes, and nobody else's; the next scene begins anew", async () => {
@@ -337,9 +350,12 @@ test("a character's line opens its mouth as the voice goes, and nobody else's; t
 test("the check refuses an unknown action, a wrong value and an unknown name, each with its line and a hint", async () => {
   assert.deepEqual(await issuesOf(["pip wlak to=middle"]), [{ line: 6, message: 'no action is named "wlak"', hint: "the actions are say and walk: did you mean walk?" }]);
   assert.deepEqual(await issuesOf(["narrator say: Here is Pip.", "pip walk to=centre"]), [
-    { line: 7, message: "walk, to=centre: it is one of the marks: off-left, left, middle, right, off-right", hint: "as in: pip walk to=middle" },
+    { line: 7, message: '"pip" walks to centre: no place is called "centre"', hint: "a place is a mark (off-left, left, middle, right and off-right), a character of the scene (pip and mo), or a point that values set (values: { centre: 300 })" },
   ]);
-  assert.deepEqual((await issuesOf(["pip walk"])).map((i) => i.message), ["walk, to: it is one of the marks: off-left, left, middle, right, off-right"]);
+  assert.match((await issuesOf(["pip walk to=midle"]))[0]!.hint, /: did you mean middle\?$/);
+  assert.deepEqual(await issuesOf(["pip walk"]), [
+    { line: 6, message: "walk, to: a place is a mark (off-left, left, middle, right, off-right), a point (its x, 0 to 1920), or one worked out: left-of(pip, near)", hint: "as in: pip walk to=middle" },
+  ]);
   assert.match((await issuesOf(["pip walk to=middle steps=3"]))[0]!.message, /^walk: Unrecognized key: "steps"$/);
   const pop = await issuesOf(["pop walk to=middle"]);
   assert.deepEqual(pop.map((i) => [i.line, i.message]), [[6, 'no character is named "pop"']]);
@@ -351,7 +367,7 @@ test("the check refuses an unknown action, a wrong value and an unknown name, ea
 
 test("the check follows who stands where: a walk by someone the scene does not place, to its own mark, or to another's", async () => {
   assert.deepEqual(await issuesOf(["tuk walk to=middle"]), [
-    { line: 6, message: '"tuk" has no place in this scene', hint: "give it the mark it begins on, in the scene's places: places: { tuk: off-left }" },
+    { line: 6, message: '"tuk" has no place in this scene', hint: "give it one, in the scene's places: places: { tuk: off-left }" },
   ]);
   assert.deepEqual((await issuesOf(["narrator walk to=middle"])).map((i) => i.message), ["the narrator is nobody on the stage: only a character walks"]);
   assert.deepEqual((await issuesOf(["pip walk to=off-left"])).map((i) => i.message), ['"pip" stands at off-left already']);
@@ -376,13 +392,14 @@ test("the check refuses a scene's setting at the scene's line: a name the librar
   assert.match(medow[0]!.hint, /^the library has the backgrounds meadow, morning, .*: did you mean meadow\?$/);
   const messages = async (...rows: string[]) => (await issuesOf(["narrator say: Hello."], scene(...rows))).map((i) => i.message);
   assert.deepEqual(await messages("  - background: meadow", "    places: { pop: left }"), ['no character is named "pop"']);
-  assert.deepEqual(await messages("  - background: meadow", "    places: { pip: left, mo: left, tuk: off-left, mole: off-left }"), ['"pip" and "mo" both begin at left']);
-  assert.deepEqual(await messages("  - background: meadow", "    places: { pip: centre }"), ["places.pip: it is one of the marks: off-left, left, middle, right, off-right"]);
+  assert.deepEqual(await messages("  - background: meadow", "    places: { pip: left, mo: left, tuk: off-left, mole: off-left }"), ['"pip" and "mo" begin on one spot']);
+  assert.deepEqual(await messages("  - background: meadow", "    places: { pip: centre }"), ['"pip" begins at centre: no place is called "centre"']);
+  assert.deepEqual(await messages("  - background: meadow", "    places: { pip: [300, 880] }"), ["places.pip: a place is a mark (off-left, left, middle, right, off-right), a point (its x, 0 to 1920), or one worked out: left-of(pip, near)"]);
   assert.deepEqual(await messages("  - background: meadow", "    faces: { mo: left }"), ['"mo" faces left, and has no place in this scene']);
   assert.deepEqual(await messages("  - background: meadow", "    faces: { pip: back }", "    places: { pip: left }"), ["faces.pip: it is left or right"]);
   const beats = await issuesOf(["narrator say: Hello."], scene("  - background: meadow", "    beats: []"));
   assert.deepEqual(beats, [
-    { line: 2, message: 'Unrecognized key: "beats"', hint: "a scene has background (one of the library's), places (the mark each of its characters begins on), faces (who begins facing left) and script" },
+    { line: 2, message: 'Unrecognized key: "beats"', hint: "a scene has background (one of the library's), places (where each of its characters begins), faces (who begins facing left) and script" },
   ]);
 });
 
@@ -390,6 +407,187 @@ test("a scene begins with each character at its mark's point, facing 1 as drawn 
   const checked = await check([...SCENE, "      mo say: Hello, Pip.", ""].join("\n"));
   assert.ok("scenes" in checked);
   assert.deepEqual(checked.scenes[0]!.setting, { background: "meadow", characters: { pip: { at: [-250, 880], facing: 1 }, mo: { at: [1440, 880], facing: -1 } } });
+});
+
+/** A file of one scene, its values, its places a row each, and its lines after the narrator's. */
+const placing = (places: string[], lines: string[] = [], values?: string) =>
+  ["scenes:", "  - background: meadow", "    places:", ...places.map((row) => `      ${row}`), ...(values === undefined ? [] : [`    values: { ${values} }`]), "    script: |", "      narrator say: Here they are.", ...lines.map((row) => `      ${row}`), ""].join("\n");
+/** Where everyone begins in such a scene, and where each of its walks goes, from and to: their xs. */
+async function xs(places: string[], lines?: string[], values?: string) {
+  const checked = await check(placing(places, lines, values));
+  assert.ok("scenes" in checked, JSON.stringify(checked));
+  const [scene] = checked.scenes;
+  const begins = Object.fromEntries(Object.entries((scene!.setting as unknown as Setting).characters).map(([who, { at }]) => [who, at[0]]));
+  return { begins, walks: linesIn(scene!.items).flatMap((line) => ("values" in line ? [(line.values as unknown as Walk)] : [])).map(({ from, to }) => [from[0], to[0]]) };
+}
+/** Why such a scene is refused. */
+async function refusedPlaces(places: string[], lines?: string[]): Promise<Issue[]> {
+  const checked = await check(placing(places, lines));
+  assert.ok("issues" in checked, "it is refused");
+  return checked.issues;
+}
+
+test("a place is a mark, a point by its x, or half-way between two places", async () => {
+  assert.deepEqual((await xs(["pip: left", "mo: 1200", "tuk: off-right"])).begins, { pip: 480, mo: 1200, tuk: 2170 });
+  // A point has a name by a value, on any level, and a formula is worked out: the tool's "Values".
+  assert.deepEqual((await xs(["pip: door", "mo: door + 600.4"], ["pip walk to=(door + 500) / 2", "pip walk to=door"], "door: 100")).walks, [[100, 300], [300, 100]]);
+  assert.deepEqual((await xs(["pip: door", "mo: door + 600.4"], [], "door: 100")).begins, { pip: 100, mo: 700 });
+  assert.deepEqual((await xs(["pip: here", "mo: here"], [], "pip.here: 300, here: 900")).begins, { pip: 300, mo: 900 }, "a value is for whose place it is");
+  assert.deepEqual((await xs(["pip: left", "mo: right", "tuk: midpoint(pip, mo)", "mole: midpoint(left, 100)"])).begins, { pip: 480, mo: 1440, tuk: 960, mole: 290 });
+  assert.deepEqual((await xs(["pip: left", "mo: 900", "tuk: midpoint(midpoint(pip, 1500), 1801)"])).begins.tuk, Math.round((990 + 1801) / 2));
+});
+
+test("beside somebody: the gap from body to body, in widths of the smaller of the two, the near one 0.3", async () => {
+  // As drawn, with the arms and the tail: Pip is 232 px wide, Mo 200, Tuk 178, the badger 252 and the squirrel 224.
+  const beside = async (one: string, other: string) => (await xs([`${one}: middle`, `${other}: right-of(${one}, near)`])).begins[other]! - 960;
+  assert.deepEqual([await beside("tuk", "pip"), await beside("pip", "mo"), await beside("badger", "squirrel"), await beside("mo", "tuk")], [258, 276, 305, 242]);
+  assert.equal(await beside("pip", "tuk"), 258, "whoever of the two it is");
+  const tuk = async (place: string, values?: string) => (await xs(["pip: middle", `tuk: ${place}`], [], values)).begins.tuk! - 960;
+  // Half of Pip, half of Tuk, and the gap: so many times Tuk's 178.
+  assert.equal(await tuk("left-of(pip, near)"), -258);
+  assert.equal(await tuk("left-of(pip, 0)"), -205);
+  assert.equal(await tuk("right-of(pip, 1)"), 383);
+  assert.equal(await tuk("right-of(pip, near * 2)"), Math.round(205 + 0.6 * 178));
+  assert.equal(await tuk("right-of(pip, 50%)"), 294);
+  assert.equal(await tuk("right-of(pip, near)", "near: 1"), 383, "near is a name that the scene may set");
+  assert.equal(await tuk("right-of(pip, near)", "tuk.near: 1"), 383);
+  // Beside a mark or a point, the gap is from that: half of Tuk, and so many times Tuk.
+  assert.equal(await tuk("left-of(right, near)"), 480 - 89 - 53);
+  assert.equal(await tuk("left-of(1700, 1)"), 740 - 89 - 178);
+  assert.equal(await tuk("right-of(left-of(pip, 1), 0)"), -205 - 178 + 89, "or from a place worked out, which is a point");
+  assert.equal(await tuk("left-of(midpoint(pip, 500), near)"), -230 - 89 - 53);
+  // Whichever way they face: a character is as wide on both sides.
+  const facing = await check(placing(["pip: middle", "tuk: left-of(pip, near)"]).replace("    script:", "    faces: { pip: left, tuk: left }\n    script:"));
+  assert.ok("scenes" in facing);
+  assert.deepEqual((facing.scenes[0]!.setting as unknown as Setting).characters.tuk, { at: [702, 880], facing: -1 });
+});
+
+test("a character's place is where the lines above leave it, in the order written", async () => {
+  const places = ["pip: left", "mo: off-right", "tuk: 1700"];
+  const rows = ["pip walk to=right", "& mo walk to=left-of(pip, near)"];
+  assert.deepEqual((await xs(places, rows)).walks, [[480, 1440], [2170, 1440 - 276]], "beside where Pip's walk ends, though both walk at once");
+  assert.deepEqual((await xs(places, ["mo walk to=left-of(pip, near)", "& pip walk to=right"])).walks, [[2170, 480 - 276], [480, 1440]], "or beside where Pip stands, when it walks below");
+  // Whichever blocks they are in, and after several.
+  assert.deepEqual((await xs(places, ["together:", "  in order:", "    pip walk to=900", "    pip walk to=100", "  mo walk to=midpoint(pip, tuk)"])).walks, [[480, 900], [900, 100], [2170, 900]]);
+  // Its own name is where it stands: a step to the side.
+  assert.deepEqual((await xs(places, ["tuk walk to=left-of(tuk, 0)", "tuk walk to=left-of(tuk, 0)"])).walks, [[1700, 1522], [1522, 1344]]);
+  // As a scene begins, the places wait for each other, whichever is written first.
+  assert.deepEqual((await xs(["tuk: midpoint(pip, mo)", "mo: right-of(pip, 2)", "pip: 300"])).begins, { tuk: 608, mo: 916, pip: 300 });
+  // A new scene begins anew.
+  const scene = (pip: string) => ["  - background: meadow", `    places: { pip: ${pip}, mo: right }`, "    script: |", "      pip walk to=left-of(mo, near)"];
+  const two = await check(["scenes:", ...scene("left"), ...scene("300"), ""].join("\n"));
+  assert.ok("scenes" in two);
+  assert.deepEqual(two.scenes.map((scene) => linesIn(scene.items).map((line) => "values" in line && (line.values as unknown as Walk).from[0])), [[480], [300]]);
+});
+
+test("the check refuses two on one spot: nearer than one covering 0.3 of the smaller, as a scene begins and after a walk", async () => {
+  // Pip is 232 px wide and Mo 200: they keep 216 - 60 px apart.
+  assert.deepEqual(await refusedPlaces(["pip: 900", "mo: 1055"]), [
+    { line: 2, message: '"pip" and "mo" begin on one spot', hint: "pip is at 900 and mo at 1055: they keep 156 px apart or more, middle to middle, so that neither covers much of the other; left-of(pip, near) is beside pip" },
+  ]);
+  assert.deepEqual((await xs(["pip: 900", "mo: 1056"])).begins, { pip: 900, mo: 1056 });
+  // That is what a gap of less than -0.3 is, whatever is rounded.
+  for (const one of ["pip", "badger", "tuk"]) for (const other of ["mo", "squirrel", "rabbit"]) for (const side of ["left-of", "right-of"]) assert.ok(await xs([`${one}: 961`, `${other}: ${side}(${one}, - 0.3)`]));
+  assert.equal((await refusedPlaces(["pip: 900", "mo: right-of(pip, - 0.31)"])).length, 1);
+  const places = ["pip: left", "mo: right", "tuk: off-left"];
+  assert.deepEqual((await refusedPlaces(places, ["pip walk to=mo"])).map((i) => [i.line, i.message, i.hint]), [
+    [9, '"pip" walks to mo, where "mo" stands', "mo is at 1440 and pip at 1440: they keep 156 px apart or more, middle to middle, so that neither covers much of the other; left-of(mo, near) is beside mo"],
+  ]);
+  assert.deepEqual((await refusedPlaces(places, ["tuk walk to=left", "pip walk to=left-of(mo, near)", "tuk walk to=midpoint(pip, 1000)"])).map((i) => [i.line, i.message]), [
+    [9, '"tuk" walks to left, where "pip" stands'],
+    [11, '"tuk" walks to midpoint(pip, 1000), where "pip" stands'],
+  ]);
+  // Who has left the spot is no longer on it, the walker itself too, and off the stage any number wait on one.
+  assert.deepEqual((await xs(places, ["pip walk to=off-left", "tuk walk to=left", "mo walk to=off-left"])).walks, [[480, -250], [-250, 480], [1440, -250]]);
+  assert.deepEqual((await xs(places, ["pip walk to=481"])).walks, [[480, 481]]);
+  // One who waits off the stage is on no spot of it, however wide.
+  const body = (width: number) => ({ parts: { body: [{ shape: "rect", at: [0, -100], size: [width, 200], fill: "#808080" }] } });
+  const wide = { file: "library.yaml", raw: { characters: { whale: body(900), fish: body(100) }, backgrounds: { sea: { fill: "#0000ff" } } } };
+  const sea = (whale: string, fish: string) => plugin.script.check([{ line: 1, setting: { background: "sea", places: { whale, fish } }, actions: [{ line: 2, who: "fish", action: "walk", values: { to: 20 } }] }], wide);
+  assert.ok("scenes" in sea("off-left", "left"));
+  assert.ok("issues" in sea("left", "right"), "it is when it stands on the stage");
+});
+
+test("the check refuses a place that cannot be worked out, each with its line and a hint", async () => {
+  const places = ["pip: left", "mo: right"];
+  /** The message and the hint of a walk of Pip's to a place, or of that and how Mo begins. */
+  const walking = async (to: string, ...more: string[]) => {
+    const issues = await refusedPlaces([...places, ...more], [`pip walk to=${to}`]);
+    assert.equal(issues.length, 1, JSON.stringify(issues));
+    assert.equal(issues[0]!.line, 8 + more.length);
+    return [issues[0]!.message, issues[0]!.hint];
+  };
+  // A name that is nothing's, a character that the scene does not place, and one that is out of sight.
+  assert.deepEqual(await walking("left-of(reeds, near)"), [
+    '"pip" walks to left-of(reeds, 0.3): no place is called "reeds"',
+    "a place is a mark (off-left, left, middle, right and off-right), a character of the scene (pip and mo), or a point that values set (values: { reeds: 300 })",
+  ]);
+  assert.match((await walking("midpoint(pop, right)"))[1]!, /: did you mean pip\?$/);
+  assert.deepEqual(await walking("midpoint(tuk, mo)"), ['"pip" walks to midpoint(tuk, mo): "tuk" has no place in this scene', "give it one, in the scene's places: places: { tuk: off-left }"]);
+  assert.match((await walking("narrator"))[0]!, /no place is called "narrator"/);
+  const off = "out of sight is off-left or off-right; how far beside is in widths of the smaller of the two, as near (0.3), and not in pixels";
+  assert.deepEqual(await walking("tuk", "tuk: off-left"), ['"pip" walks to tuk: it is -250, off the stage, which is 0 to 1920', off]);
+  // Off the stage: a point, and a gap that is taken for pixels.
+  assert.deepEqual(await walking("right-of(mo, 150)"), ['"pip" walks to right-of(mo, 150): it is 31656, off the stage, which is 0 to 1920', off]);
+  assert.match((await walking("1921"))[0]!, /it is 1921, off the stage/);
+  assert.match((await walking("- 1"))[0]!, /it is -1, off the stage/);
+  assert.deepEqual((await xs(places, ["pip walk to=1920", "pip walk to=0"])).walks, [[480, 1920], [1920, 0]]);
+  // What a construction takes.
+  assert.deepEqual(await walking("left-of(mo)"), ['"pip" walks to left-of(mo): left-of(mo) is not a place and how far from it', "write both: left-of(pip, near)"]);
+  assert.equal((await walking("left-of(mo, near, 2)"))[0], '"pip" walks to left-of(mo, 0.3, 2): left-of(mo, 0.3, 2) is not a place and how far from it');
+  assert.deepEqual(await walking("midpoint(mo)"), ['"pip" walks to midpoint(mo): midpoint(mo) is not between two places', "write both: midpoint(pip, mo)"]);
+  assert.deepEqual(await walking("midpoint(mo, pip, 300)"), ['"pip" walks to midpoint(mo, pip, 300): midpoint(mo, pip, 300) is not between two places', "write both: midpoint(pip, mo)"]);
+  assert.deepEqual(await walking("right-of(mo, naer)"), ['"pip" walks to right-of(mo, naer): how far is a number, and naer is none', "it is in widths of the smaller of the two: near (0.3), or 1 for a body between them: did you mean near?"]);
+  assert.match((await walking("right-of(0.3, mo)"))[0]!, /how far is a number, and mo is none/);
+  // What the tool refuses: a construction nobody has, a time, a line's length, and one taken for a number.
+  assert.deepEqual(await walking("next-to(mo, near)"), ['to=next-to(mo, near): no construction is named "next-to"', "the constructions are left-of, right-of and midpoint"]);
+  assert.match((await walking("lef-of(mo, near)"))[1]!, /: did you mean left-of\?$/);
+  assert.deepEqual(await walking("right-of(mo, 2s)"), ["to=right-of(mo, 2s): what right-of takes is no time, and has no unit", "write it without the s"]);
+  assert.match((await walking("right-of(mo, prev.length)"))[0]!, /^to=right-of\(mo, prev\.length\): what right-of takes is known before anything is spoken/);
+  assert.match((await walking("right-of(mo, near) + 100"))[0]!, /^to=right-of\(mo, near\) \+ 100: right-of\(mo, 0\.3\) is no number$/);
+  assert.deepEqual(await walking("pip + 100"), ["to=pip + 100: pip is a character, and no number", "a character's name stands by itself, or in a construction, as in left-of(pip, near), right-of(pip, 0.5) and midpoint(pip, mo)"]);
+  // To where it stands already.
+  assert.match((await walking("left"))[0]!, /^"pip" stands at left already$/);
+  assert.match((await walking("480"))[0]!, /^"pip" stands at 480 already$/);
+  assert.match((await walking("midpoint(pip, 480)"))[0]!, /^"pip" stands at midpoint\(pip, 480\) already$/);
+});
+
+test("the check refuses where characters begin, at the scene's line: places that go round, and one mistake is said once", async () => {
+  const beginning = async (...places: string[]) => (await refusedPlaces(places)).map((i) => [i.line, i.message]);
+  assert.deepEqual(await refusedPlaces(["pip: left-of(mo, near)", "mo: midpoint(tuk, 900)", "tuk: right-of(pip, 1)"]), [
+    { line: 2, message: '"tuk" begins at right-of(pip, 1): the places go round: pip is at left-of(mo, 0.3), mo is at midpoint(tuk, 900) and tuk is at right-of(pip, 1)', hint: "give one of them a mark or a point" },
+  ]);
+  assert.deepEqual(await beginning("pip: right-of(pip, 1)"), [[2, '"pip" begins at right-of(pip, 1): the places go round: pip is at right-of(pip, 1)']]);
+  // Tuk's place rests on two that go round, and is not one of them.
+  assert.deepEqual(await beginning("tuk: right-of(pip, 1)", "pip: left-of(mo, 1)", "mo: right-of(pip, 1)"), [[2, '"mo" begins at right-of(pip, 1): the places go round: pip is at left-of(mo, 1) and mo is at right-of(pip, 1)']]);
+  // Mo's place and the walks rest on Pip's, which is the mistake.
+  assert.deepEqual((await refusedPlaces(["pip: reeds", "mo: right-of(pip, 1)", "tuk: right"], ["tuk walk to=left-of(pip, 1)", "pip walk to=left", "mo walk to=left", "tuk walk to=tree"])).map((i) => [i.line, i.message]), [
+    [2, '"pip" begins at reeds: no place is called "reeds"'],
+    [12, '"tuk" walks to tree: no place is called "tree"'],
+  ]);
+  assert.deepEqual(await beginning("pip: 2s"), [[2, "places.pip=2s: places.pip is no time, and has no unit"]]);
+  assert.deepEqual(await beginning("pip: prev.length"), [[2, "places.pip=prev.length: no line is above the scene's own values"]]);
+  assert.deepEqual(await beginning("pip: prev.end"), [[2, "places.pip=prev.end: only arrive takes a moment of a line"]]);
+  assert.deepEqual(await beginning("pip: left-of(mo"), [[2, 'places.pip=left-of(mo: left-of( has no ")" after it']]);
+  assert.deepEqual(await beginning("pip: 300 px"), [[2, 'places.pip=300 px: "px" comes after what is a value already']]);
+});
+
+test("where a character begins, written among the values, is refused with a hint of places", async () => {
+  for (const value of ["pip: 300", "pip.pos: 300", "pip.pos.x: 300"]) {
+    const checked = await check(placing(["pip: left"], [], value));
+    assert.ok("issues" in checked && checked.issues.length === 1, value);
+    assert.match(checked.issues[0]!.hint, / \(what a scene begins with is not among its values: places: \{ pip: 300 \}\)$/, value);
+  }
+});
+
+test("each construction is described, and its example is one of it", async () => {
+  assert.deepEqual(Object.keys(plugin.script.constructions), ["left-of", "right-of", "midpoint"]);
+  for (const [name, { description, example }] of Object.entries(plugin.script.constructions)) {
+    assert.ok(description.length > 20, `${name} says what it is`);
+    // Tuk may go where the example says, with Pip and Mo on the stage.
+    const { walks } = await xs(["pip: left", "mo: right", "tuk: off-right"], [`tuk walk to=${example}`]);
+    assert.ok(example.startsWith(`${name}(`) && walks.length === 1, example);
+  }
 });
 
 test("each action is described, and its example is a line of a script that passes its schema", async () => {
@@ -403,6 +601,8 @@ test("each action is described, and its example is a line of a script that passe
     assert.equal((await values["~standard"].validate(plainValues(line!.values))).issues, undefined, `${name}'s example`);
     assert.ok(values["~standard"].jsonSchema.input({ target: "draft-2020-12" }), `${name}'s JSON Schema`);
   }
+  const { walk } = plugin.script.actions;
+  for (const to of ["midpoint(pip, 300)", "left-of(midpoint(pip, mo), near)", "left", "900"]) assert.equal((await walk.values["~standard"].validate(plainValues({ to }, plugin.script.names))).issues, undefined, to);
 });
 
 test("the check refuses a time that has none, as the tool does, with the lines it is between", async () => {
@@ -448,8 +648,11 @@ test("the guide's example is a cartoon the plugin takes as a script, against the
     item.items.forEach(values);
   };
   script.scenes.flatMap((scene) => scene.items).forEach(values);
-  assert.deepEqual([Object.keys(script.values!), script.scenes.map((scene) => Object.keys(scene.values!)), blocks], [["beat", "pause"], [[], ["beat"]], [{ pause: "beat / 2" }]]);
-  assert.deepEqual(script.scenes.flatMap((scene) => linesIn(scene.items)).filter((line) => line.action === "walk").map((line) => line.values), [{ to: "middle" }, { to: "middle" }, { to: "off-right", speed: "slow" }]);
+  assert.deepEqual([Object.keys(script.values!), script.scenes.map((scene) => Object.keys(scene.values!)), blocks], [["beat", "pause"], [[], ["beat", "pond"]], [{ pause: "beat / 2" }]]);
+  assert.deepEqual(script.scenes.flatMap((scene) => linesIn(scene.items)).filter((line) => line.action === "walk").map((line) => line.values), [{ to: "middle" }, { to: "left-of(mo, near)" }, { to: "off-right", speed: "slow" }]);
+  // In the second scene Mo is beside a point of the scene's own, and Pip comes beside Mo.
+  assert.deepEqual(checked.scenes.map((scene) => Object.values((scene.setting as unknown as Setting).characters).map(({ at }) => at[0])), [[-250, 1440], [-250, 1340]]);
+  assert.deepEqual(lines.flatMap((line) => ("values" in line ? [(line.values as unknown as Walk).to[0]] : [])), [960, 1340 - 276, 2170]);
   assert.deepEqual(checked.scenes.map((scene) => scene.pause), [0.4, 0.6]);
   const said = lines.filter((line) => "text" in line).length;
   const compiled = compile(checked.scenes, Array.from({ length: said }, (_, n) => voiced(`${n}.wav`, 2)), SETTINGS, "example.yaml");

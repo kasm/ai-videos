@@ -51,6 +51,9 @@ the tool's projects, and a session for it is opened in the repo's root.
     actions a line may name (`ACTIONS`), its names for numbers (`NAMES`),
     and the script's check, which
     works each scene and action out in plain numbers (`Setting`, `Walk`).
+  - `places.ts`: where its characters stand: what a place is worked out
+    from others by (`CONSTRUCTIONS`), a scene's stage as it begins and walk
+    by walk (`stageOf`), and how near two may stand (`COVER`).
   - `timeline.ts`: beats and lines as the clip's events and texts, at the
     scenario's own pace (the plan).
   - `picture.ts`: one moment's picture, as an SVG: who stands where, facing
@@ -282,7 +285,8 @@ A cartoon may be written as a script: each scene has a `script:`, a
 block of lines, in place of `beats:`. `videos/hello-script.yaml` is
 `hello` written so, and `videos/all-at-once.yaml` has what can happen at
 once: a chorus, an interruption, a radio, words that end with a walk, a
-murmur under a talk, its pauses all of one named value. The plan
+murmur under a talk, its pauses all of one named value, and its second
+scene's places worked out from others. The plan
 `docs/plans/compiled-scenario.md` builds this step by step, and the
 seven cartoons stay in beats until its end.
 `make` checks and compiles it (`.cache/<name>/compiled.json`; `--fit`
@@ -320,11 +324,42 @@ scenes:
   own; in an `ending together:` it keeps its own pace, and the words
   wait. A character's walks are one at a time; a walk is never under the
   rest.
-- **`walk to=<mark>`** is the plugin's only action so far (`ACTIONS`,
+- **`walk to=<place>`** is the plugin's only action so far (`ACTIONS`,
   `script.ts`): the character goes from where the lines above left it to
-  the mark, at `PACE.walk`. It is refused for a character the scene does
-  not place, to the mark it stands on, or to a mark of the stage where
-  another stands. A walk turns nobody, and nothing turns a character yet.
+  the place, at `PACE.walk`. It is refused for a character the scene does
+  not place, to where it stands, or to a spot where another stands. A walk
+  turns nobody, and nothing turns a character yet.
+- **A place** (`places.ts`), in `to` and in the scene's `places`, is one
+  of these. Everyone stands on the ground, so it is an x alone, in whole px.
+  - A mark. The two off the stage are out of sight, where any number wait;
+    every other place is on the stage, 0 to 1920.
+  - A point, its x. The points a scene comes back to have names, among its
+    `values` (`values: { door: 300 }`), and `to=door + 100` is arithmetic.
+  - A character's name: where the lines above leave it, in the order
+    written, whichever blocks they are in, and above the first line where
+    the scene begins it. So `pip walk to=right` above
+    `& mo walk to=left-of(pip, near)` has Mo arrive beside where Pip's walk
+    ends. As a scene begins, the places wait for each other, whichever is
+    written first.
+  - `left-of(pip, near)` and `right-of(pip, near)`, the viewer's left and
+    right: beside a place, the gap between the two bodies being so many
+    widths of the smaller of the two. `near` is 0.3 (`NAMES`), which a scene
+    may set otherwise. Beside a mark, a point or a place worked out, which
+    have no width, the gap is from that, in the walker's widths.
+  - `midpoint(pip, mo)`: half-way between two places.
+- **A character's width** is its drawing's, from the leftmost shape to the
+  rightmost, the arm and the tail too, half of it on each side of its
+  feet: a turn moves nobody. A drawing in the library changed moves who
+  stands beside it, in every cartoon made again.
+- **One spot:** two characters of the stage keep so far apart that one
+  covers at most 0.3 of the smaller one's width (`COVER`), as a scene
+  begins and after each walk: for two about as wide as Pip, about 150 px
+  from middle to middle.
+- **A place that cannot be worked out** is refused, with its line: a name
+  that is no mark, point or character of the scene; a place off the stage;
+  places that go round as a scene begins; a construction the plugin has not,
+  or without what it takes. A mistake in a place is not said again for what
+  rests on it.
 - **How fast:** `walk to=left speed=slow`, `takes=2s` or `arrive=a.end`,
   on the line, or on a block, a scene or the cartoon for all in it
   (`walk.speed=slow`, `pip.speed=slow`). A walk given its speed or its
@@ -332,10 +367,8 @@ scenes:
   (1.6) are the plugin's names, times a walk's own speed (`NAMES`,
   `script.ts`).
 - **The check** (`checkScript`) gives each scene as it begins, every
-  character it places at its mark's point, facing 1 (right, as drawn) or
-  -1, and each walk as its two points with its own length. It follows
-  who stands where in the order written, whichever blocks the walks are
-  in. A mistake
+  character it places at its place's point, facing 1 (right, as drawn) or
+  -1, and each walk as its two points with its own length. A mistake
   comes with its line and a hint: the library's names, and the nearest.
   Nothing is mended in a script.
 - **The picture** (`drawScript`, `picture.ts`) is drawn from what the
@@ -343,8 +376,8 @@ scenes:
   through as it is, and whose mouth is open. A walk, a blink and a mouth
   look as they do in beats; the arm hangs.
 - **The guide** to a cartoon as a script is `SCRIPT_GUIDE` in `guide.ts`,
-  the plugin's part; the tool adds how a line is written, and the
-  actions. It teaches what a script has so far. `GUIDE`, the prompt's,
+  the plugin's part; the tool adds how a line is written, the actions and
+  the constructions. It teaches what a script has so far. `GUIDE`, the prompt's,
   still teaches beats.
 
 ## The library

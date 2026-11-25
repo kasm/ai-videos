@@ -1,7 +1,8 @@
 // The guide to writing a video as a script (AGENTS.md, "A script"): the tool's part, how a script's
 // lines, blocks and values are written, with a plugin's own (host.ts, Described): what its videos can
-// show and a scene's keys, and its actions, each described once, and its names for numbers. Each step of the plan adds what it gives a
-// script to say; the prompt for a web chat (prompt.ts) will be made from it.
+// show and a scene's keys, its actions and its constructions, each described once, and its names for
+// numbers. Each step of the plan adds what it gives a script to say; the prompt for a web chat
+// (prompt.ts) will be made from it.
 import type { Described } from "./host.ts";
 import { listed } from "./names.ts";
 import { SAY } from "./read.ts";
@@ -171,10 +172,14 @@ narrator ${SAY} @ prev.end + 1s: Nobody waited.
 One character does one thing at a time: two of its lines, or two of its actions, never overlap, whatever block they are in. The second waits for the first.
 `;
 
-/** The guide for a plugin whose videos are written as scripts: the tool's part, the plugin's, the actions, and its names for numbers. */
+/** How a construction is written, for a plugin that has some. */
+const CONSTRUCTED = "A value may be worked out from others by a construction: its name, and in parentheses what it is worked out from, each a value itself, a comma between one and the next. It stands by itself, or in another's parentheses: it is no number, so nothing is added to it. Between `{` and `}` a comma ends a value, so there a construction is written in quotes, or its key on a row of its own.";
+
+/** The guide for a plugin whose videos are written as scripts: the tool's part, the plugin's, the actions, the constructions, and its names for numbers. */
 export function guideOf(script: NonNullable<Described["script"]>): string {
   const names = Object.entries(script.names).map(([name, number]) => `\`${name}\` is ${number}`);
-  const actions = Object.entries(script.actions).map(([name, { description, example }]) => `- **${name}**: ${description} For example: \`${example}\``);
+  const each = (described: Record<string, { description: string; example: string }>) => Object.entries(described).map(([name, { description, example }]) => `- **${name}**: ${description} For example: \`${example}\``);
+  const constructions = each(script.constructions);
   return [
     "## A script",
     "",
@@ -187,8 +192,9 @@ export function guideOf(script: NonNullable<Described["script"]>): string {
     "## The actions",
     "",
     `- **${SAY}**: The character says the words after the colon, in its voice; the narrator's are said in the video's. For example: \`narrator ${SAY}: Once upon a time.\``,
-    ...actions,
+    ...each(script.actions),
     "",
+    ...(constructions.length > 0 ? ["## The constructions", "", CONSTRUCTED, "", ...constructions, ""] : []),
     ...(names.length > 0 ? [`These names stand for numbers in any value: ${listed(names)}.`, ""] : []),
   ].join("\n");
 }

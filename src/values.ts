@@ -5,11 +5,11 @@
 // later: what is worked out from one stays a sum of lengths here.
 //
 // It needs none of the tool's packages, as scenario.ts: plugin.ts gives both to the plugins' tests.
-import { Wrong, calculate, exact, minus, namesIn, readFormula, spanOf, type Amount, type Formula, type Span } from "./formula.ts";
+import { Wrong, calculate, exact, minus, namesIn, readFormula, shownAs, spanOf, type Amount, type Construction, type Formula, type Span, type Worked } from "./formula.ts";
 import { momentIssue, named, nameOf, placesOf, unnamed, type Place } from "./labels.ts";
 import { listed, nearest } from "./names.ts";
 import { SAY, SET, isBlock } from "./read.ts";
-import { NARRATOR, linesIn, type Action, type Anchor, type Default, type Issue, type Placed, type ScriptItem, type ScriptLine, type Timing, type WrittenScript, type WrittenValue } from "./scenario.ts";
+import { NARRATOR, linesIn, type Action, type Anchor, type Default, type Issue, type Placed, type ScriptItem, type ScriptLine, type Timing, type WrittenScene, type WrittenScript, type WrittenValue } from "./scenario.ts";
 
 /** The tool's own values that are a block's or a scene's: seconds. */
 export const PAUSES = ["pause", "lead", "tail"] as const;
@@ -27,7 +27,7 @@ export interface WorkedLine extends Placed<Anchor> {
   action: string;
   text?: string;
   /** What its action is given, by name, and the line of the file that sets it; none when one of them has no answer. */
-  values?: Record<string, { value: number | string; line: number }>;
+  values?: Record<string, { value: Worked; line: number }>;
   /** None for what is said, and for an action that is given no length. */
   lasts?: Lasts;
 }
@@ -35,6 +35,8 @@ export interface WorkedLine extends Placed<Anchor> {
 /** A scene with its values worked out. */
 export interface WorkedScene {
   line: number;
+  /** Its own keys, the plugin's tables of formulas worked out. */
+  setting: Record<string, unknown>;
   lead: Span;
   pause: Span;
   tail: Span;
@@ -47,6 +49,10 @@ export interface Given {
   actions: Record<string, Record<string, { default?: unknown }>>;
   /** The plugin's names for numbers. */
   names: Record<string, number>;
+  /** The plugin's constructions, by name, each with its example: any is taken when they are not given. */
+  constructions?: Record<string, { example: string }>;
+  /** A scene's own keys that are the plugin's tables of formulas. */
+  tables?: string[];
   /** Who has a voice. */
   speakers: string[];
   /** The video's pauses, seconds. */
@@ -63,16 +69,16 @@ export function valuesTaken(actions: Record<string, Action>): Given["actions"] {
   );
 }
 
-/** The values a line writes, with no level around it, as an action's schema takes them: its own numbers and names. */
-export function plainValues(values: Record<string, string>): Record<string, number | string> {
-  const { scenes, issues } = workOut({ scenes: [{ line: 1, setting: {}, items: [{ line: 1, who: "a", action: "b", values }] }], issues: [] }, { actions: {}, names: {}, speakers: [], timing: { lead: 0, gap: 0, tail: 0 } });
+/** The values a line writes, with no level around it but the plugin's names, as an action's schema takes them. */
+export function plainValues(values: Record<string, string>, names: Record<string, number> = {}): Record<string, Worked> {
+  const { scenes, issues } = workOut({ scenes: [{ line: 1, setting: {}, items: [{ line: 1, who: "a", action: "b", values }] }], issues: [] }, { actions: {}, names, speakers: [], timing: { lead: 0, gap: 0, tail: 0 } });
   if (issues.length > 0) throw new Error(issues[0]!.message);
   const [line] = linesIn(scenes[0]!.items);
   return Object.fromEntries(Object.entries(line!.values ?? {}).map(([name, { value }]) => [name, value]));
 }
 
-/** What a formula comes to: an amount, a name that stands for no value (a mark), or a moment. */
-type Worth = { is: "amount"; amount: Amount } | { is: "name"; name: string; by: Found } | { is: "moment"; moment: Anchor };
+/** What a formula comes to: an amount, a name that stands for no value (a mark), a moment, or a construction of these. */
+type Worth = { is: "amount"; amount: Amount } | { is: "name"; name: string; by: Found } | { is: "moment"; moment: Anchor } | { is: "construction"; made: Construction };
 
 /** The values set on one level, and the level around it. */
 interface Level {
@@ -111,6 +117,9 @@ const valueOf = ({ key, set }: Found) => (key === AFTER ? `"${set.text}"` : `${k
 const refused = (found: Found, message: string, hint: string, also: number[] = []) => new Refused({ line: found.set.line, also, message, hint });
 const IN_SECONDS = "write it in seconds: 0.5s";
 
+/** Who a script's characters are: those with a voice, and whoever does something in it. */
+const peopleOf = (script: WrittenScript, { speakers }: Given) => [NARRATOR, ...speakers, ...script.scenes.flatMap((scene) => linesIn(scene.items)).map(({ who }) => who)];
+
 /** The plugin's and the video's: the level around the cartoon. */
 const outermost = ({ names, timing }: Given): Level => ({
   values: Object.fromEntries(
@@ -131,6 +140,14 @@ function find(name: string, { level, who, action }: Cell): (Found & { on: Level 
   }
   return undefined;
 }
+
+/** The formulas in a scene's own keys: each of the plugin's tables has one for each of those it names (`places.pip`), but where it has a number. */
+const inTables = ({ line, setting }: WrittenScene, tables: string[] = []) =>
+  tables.flatMap((table) => {
+    const written = setting[table];
+    if (typeof written !== "object" || written === null || Array.isArray(written)) return [];
+    return Object.entries(written).flatMap(([who, text]) => (typeof text === "string" ? [{ table, who, found: { key: `${table}.${who}`, set: { line, text } } }] : []));
+  });
 
 /** How an action is told to last, on the nearest level that says: the character's, the action's, then everything's. One of the three, or several, which is a mistake. */
 function lengthsOf({ level, who, action }: Cell): Found[] {
@@ -177,6 +194,7 @@ export function workOut(script: WrittenScript, given: Given): { scenes: WorkedSc
 
   const base = outermost(given);
   const cartoon: Level = { values: script.values ?? {}, around: base };
+  const people = peopleOf(script, given);
   const all = script.scenes.map((scene, n) => placesOf(scene, n));
   const cellOf = new Map<ScriptItem, Cell>();
 
@@ -236,7 +254,12 @@ export function workOut(script: WrittenScript, given: Given): { scenes: WorkedSc
     const worth = work(formula, found, cell, through);
     if (worth.is === "amount") return worth.amount;
     if (worth.is === "moment") throw refused(found, `${valueOf(found)}: a moment of a line is no number`, "how long a line lasts is a.length; only arrive takes a moment, by itself");
+    if (worth.is === "construction") throw refused(found, `${valueOf(found)}: ${shownAs(worth.made)} is no number`, "a construction stands by itself, or in another's parentheses: what is worked out goes in its own, as in left-of(pip, near * 2)");
     const { name, by } = worth;
+    if (people.includes(name)) {
+      const examples = Object.values(given.constructions ?? {}).map(({ example }) => example);
+      throw refused(by, `${valueOf(by)}: ${name} is a character, and no number`, `a character's name stands by itself${examples.length > 0 ? `, or in a construction, as in ${listed(examples)}` : ""}`, [found.set.line]);
+    }
     const near = nearest(name, namesFor(cell));
     const meant = near ? `did you mean ${near}?` : `set it on the cartoon, a scene or a block (${name}: 2), or write a number`;
     throw refused(by, `${valueOf(by)}: no value is called "${name}"`, `${name.includes("-") ? "a minus has a space on each side; " : ""}${meant}`, [found.set.line]);
@@ -250,6 +273,16 @@ export function workOut(script: WrittenScript, given: Given): { scenes: WorkedSc
       const { plus, ...moment } = formula.moment;
       return { is: "moment", moment: { ...moment, plus: plus === undefined ? 0 : afterOf(plus, found, cell, through) } };
     }
+    if (formula.is === "construction") {
+      const { name, of } = formula;
+      if (given.constructions && !Object.hasOwn(given.constructions, name)) {
+        const names = Object.keys(given.constructions);
+        const near = nearest(name, names);
+        const there = names.length > 0 ? `the constructions are ${listed(names)}${near ? `: did you mean ${near}?` : ""}` : "a value is a number, a name, or a formula of these";
+        throw refused(found, `${valueOf(found)}: no construction is named "${name}"`, there);
+      }
+      return { is: "construction", made: { construction: name, of: of.map((one) => plainOf(work(one, found, cell, through), found, `what ${name} takes`)) } };
+    }
     if (formula.is === "minus") return { is: "amount", amount: minus(amountOf(formula.of, found, cell, through)) };
     const [left, right] = [amountOf(formula.left, found, cell, through), amountOf(formula.right, found, cell, through)];
     try {
@@ -257,6 +290,17 @@ export function workOut(script: WrittenScript, given: Given): { scenes: WorkedSc
     } catch (e) {
       throw e instanceof Wrong ? refused(found, `${valueOf(found)}: ${e.message}`, e.hint) : e;
     }
+  };
+
+  /** What a value comes to for the plugin, `name` being what it is called: it is known before anything is spoken. */
+  const plainOf = (worth: Worth, found: Found, name: string): Worked => {
+    if (worth.is === "name") return worth.name;
+    if (worth.is === "construction") return worth.made;
+    if (worth.is === "moment") throw refused(found, `${valueOf(found)}: only arrive takes a moment of a line`, `${name} is a number or a name`);
+    const { unit, number, lengths } = worth.amount;
+    if (lengths.size > 0) throw refused(found, `${valueOf(found)}: ${name} is known before anything is spoken, and a line's length is not`, "only a time reads a line's length: takes, pause, or an anchor");
+    if (unit === "s") throw refused(found, `${valueOf(found)}: ${name} is no time, and has no unit`, "write it without the s");
+    return exact(number);
   };
 
   /** Seconds, and the lines' lengths they are worked out from. */
@@ -296,15 +340,7 @@ export function workOut(script: WrittenScript, given: Given): { scenes: WorkedSc
         if (takes[name]?.default !== undefined) byDefault(`${line.action} ${name}`, JSON.stringify(takes[name].default), line.line);
         continue;
       }
-      const value = attempt(line.line, () => {
-        const worth = worthOf(name, cell)!;
-        if (worth.is === "name") return worth.name;
-        if (worth.is === "moment") throw refused(found, `${valueOf(found)}: only arrive takes a moment of a line`, `${name} is a number or a name`);
-        const { unit, number, lengths } = worth.amount;
-        if (lengths.size > 0) throw refused(found, `${valueOf(found)}: ${name} is known before anything is spoken, and a line's length is not`, "only a time reads a line's length: takes, pause, or an anchor");
-        if (unit === "s") throw refused(found, `${valueOf(found)}: ${name} is no time, and has no unit`, `write it without the s`);
-        return exact(number);
-      });
+      const value = attempt(line.line, () => plainOf(worthOf(name, cell)!, found, name));
       if (value === undefined) right = false;
       else values[name] = { value, line: found.set.line };
     }
@@ -368,6 +404,23 @@ export function workOut(script: WrittenScript, given: Given): { scenes: WorkedSc
     return { ...placed, anchor: { ...moment, plus: attempt(line, () => afterOf(plus, found, anchorCell(item), [])) ?? 0 } };
   };
 
+  /** A scene's own keys, what is in the plugin's tables worked out at the scene's level: each for whose it is. */
+  const settingOf = (scene: WrittenScene, level: Level): WorkedScene["setting"] => {
+    const setting = { ...scene.setting };
+    for (const { table, who, found } of inTables(scene, given.tables)) {
+      const value = attempt(scene.line, () => {
+        const cell: Cell = { level, who, known: new Map() };
+        try {
+          return plainOf(work(readFormula(found.set.text), found, cell, [found]), found, found.key);
+        } catch (e) {
+          throw e instanceof Wrong ? refused(found, `${valueOf(found)}: ${e.message}`, e.hint) : e;
+        }
+      });
+      if (value !== undefined) setting[table] = { ...(setting[table] as object), [who]: value };
+    }
+    return setting;
+  };
+
   const scenes = script.scenes.map((scene, n): WorkedScene => {
     const placeOf = new Map(all[n]!.map((place) => [place.item, place]));
     /** Each line's and block's cell, those above first. */
@@ -398,7 +451,7 @@ export function workOut(script: WrittenScript, given: Given): { scenes: WorkedSc
       return { ...line, ...takenBy(item, cell), ...lastsOf(item, cell) };
     };
     const cell: Cell = { level: own, known: new Map() };
-    return { line: scene.line, lead: pauseOf("lead", cell, scene.line), pause: pauseOf("pause", cell, scene.line, scene.items.length > 1), tail: pauseOf("tail", cell, scene.line), items: scene.items.map(worked) };
+    return { line: scene.line, setting: settingOf(scene, own), lead: pauseOf("lead", cell, scene.line), pause: pauseOf("pause", cell, scene.line, scene.items.length > 1), tail: pauseOf("tail", cell, scene.line), items: scene.items.map(worked) };
   });
   issues.push(...setIssues(script, given, base, worthOf).filter((one) => !issues.some(({ line, message }) => line === one.line && message === one.message)));
   return { scenes, defaults: [...defaults.values()], issues };
@@ -406,13 +459,20 @@ export function workOut(script: WrittenScript, given: Given): { scenes: WorkedSc
 
 /**
  * What is wrong with the values set on the cartoon, the scenes and the blocks, whether or not a line
- * reads them: a name nothing reads, whose no character or action is, or that is another level's; and
- * values that go round.
+ * reads them: a name nothing reads, that is a character's, whose no character or action is, or that is
+ * another level's; and values that go round.
  */
 function setIssues(script: WrittenScript, given: Given, base: Level, worthOf: (name: string, cell: Cell) => Worth | undefined): Issue[] {
   const issues: Issue[] = [];
   const read = new Set<string>();
-  const reads = (text: string) => namesIn(readFormula(text)).forEach((name) => read.add(name));
+  const reads = (text: string) => {
+    try {
+      namesIn(readFormula(text)).forEach((name) => read.add(name));
+    } catch (e) {
+      // One in a plugin's table that does not read is said where it is worked out: all others have been read.
+      if (!(e instanceof Wrong)) throw e;
+    }
+  };
   const look = (item: ScriptItem) => {
     if (item.anchor?.plus !== undefined) reads(item.anchor.plus);
     for (const text of Object.values(item.values ?? {})) reads(text);
@@ -421,17 +481,24 @@ function setIssues(script: WrittenScript, given: Given, base: Level, worthOf: (n
   const scenes = script.scenes.map((scene) => ({ ...scene, values: scene.values ?? {} }));
   for (const { text } of [script, ...scenes].flatMap(({ values }) => Object.values(values ?? {}))) reads(text);
   scenes.forEach((scene) => scene.items.forEach(look));
+  for (const { found } of scenes.flatMap((scene) => inTables(scene, given.tables))) reads(found.set.text);
 
   const taken = Object.values(given.actions).flatMap((values) => Object.keys(values));
   const actions = [SAY, ...Object.keys(given.actions)];
-  const people = [NARRATOR, ...given.speakers, ...scenes.flatMap((scene) => linesIn(scene.items)).map(({ who }) => who)];
+  const people = peopleOf(script, given);
+  /** Where a scene says how a character begins, for a hint: it may be written as a value of that character's. */
+  const begins = (key: string, text: string) => {
+    const who = key.split(".")[0]!;
+    const tables = people.includes(who) && who !== NARRATOR ? (given.tables ?? []) : [];
+    return tables.length > 0 ? ` (what a scene begins with is not among its values: ${listed(tables.map((table) => `${table}: { ${who}: ${text} }`))})` : "";
+  };
 
   const set = (values: Record<string, WrittenValue>, level: "cartoon" | "scene" | "block", around: Level): Level => {
     const own: Level = { values, around };
     for (const [key, value] of Object.entries(values)) {
       const issue = (message: string, hint: string) => void issues.push({ line: value.line, message, hint });
       if (!SET.test(key)) {
-        issue(`"${key}" is not a value's name`, "a name is lowercase letters, digits and dashes, and for a character or an action its name and a dot before it: walk.speed");
+        issue(`"${key}" is not a value's name`, `a name is lowercase letters, digits and dashes, and for a character or an action its name and a dot before it: walk.speed${begins(key, value.text)}`);
         continue;
       }
       const [whose, name] = key.includes(".") ? (key.split(".") as [string, string]) : [undefined, key];
@@ -442,9 +509,10 @@ function setIssues(script: WrittenScript, given: Given, base: Level, worthOf: (n
       } else if (whose !== undefined && (PAUSES as readonly string[]).includes(name)) issue(`${name} is nobody's own: it is the same for everyone`, `write ${name}`);
       else if (whose === SAY && ours) issue(`${SAY} takes no ${name}: a voice lasts as long as its words`, `${name} is an action's: leave it out`);
       else if (level === "block" && (name === "lead" || name === "tail")) issue(`${name} is a scene's, and not a block's`, "set it on the scene or the cartoon; a block has a pause");
+      else if (people.includes(name)) issue(`${name} is a character's name, and no value's`, `call it something else: in a formula, ${name} is the character${begins(name, value.text)}`);
       else if (!ours && !taken.includes(name) && !read.has(name)) {
         const near = nearest(name, [...OWN, ...taken, ...read]);
-        issue(`nothing reads "${name}"`, `a value is one of the tool's (${OWN.join(", ")}), one an action takes${taken.length > 0 ? ` (${[...new Set(taken)].join(", ")})` : ""}, or one that a formula reads${near ? `: did you mean ${near}?` : ""}`);
+        issue(`nothing reads "${name}"`, `a value is one of the tool's (${OWN.join(", ")}), one an action takes${taken.length > 0 ? ` (${[...new Set(taken)].join(", ")})` : ""}, or one that a formula reads${near ? `: did you mean ${near}?` : ""}${begins(whose ?? "", value.text)}`);
       }
       // Values that go round are refused though nothing reads them; whatever else is wrong with one is said where it is read.
       try {

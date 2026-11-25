@@ -126,7 +126,29 @@
   20,732 of them with no mistake, neither throw nor break a compiled
   scenario; of 54 rules broken on purpose, 53 fail a test, and the other (a
   walk in the block fitted to its voices) changes no timing.
-- **Next: step 6, work out places.**
+- **Step 6 done 2026-11-25**, `all-at-once`'s scene accepted by the user
+  that day. The user's picks: the step touches the tool too, which reads
+  `name(a, b)` in a line and in `places:`, and the plugin says what it comes
+  to; a point is one number, its x on the ground, among the values, so a
+  place has no height, and `door + 100` stands for an offset; `near` is the
+  gap between two bodies, 0.3 of the smaller one's width; two are on one
+  spot when one covers more than 0.3 of the smaller; a position is no value:
+  `places:` says where a character begins, and its name in a place is where
+  it is. Reading one as a number (`pip.x + 100`) waits until a cartoon needs
+  it. Checked: `npm test` and `npm run typecheck` here and in `cartoons/`;
+  RayCraft's media typecheck and `test:libs`, no file of it changed;
+  `make --fit` of the ten gives requests equal to the baseline, byte for
+  byte; `hello-script`, and `all-at-once` as it was, compile to the same
+  bytes as before; `all-at-once` made whole has the frames compiled (988),
+  the page's own drawing gives the video's `.svgs`, and its 19 voices are in
+  its sound at their compiled times; 40,000 different random scripts, 20,326
+  of them with no mistake, neither throw nor break a compiled scenario; each
+  of 135 rules broken on purpose fails a test. Not tried: the guide on a
+  fresh `claude -p`.
+- Left by step 6: for step 7, who stands where is followed in the order
+  written, so two who walk to one spot at different times are told by that
+  order alone.
+- **Next: step 7, act on channels.**
 
 
 ## Goal
@@ -297,8 +319,8 @@ script's words for each are settled in its step.
 
 | Where | Example | |
 | --- | --- | --- |
-| A named point: the plugin's marks, a scene's own | `to=left`, `door: [300, 880]` | in |
-| Offset from a point | `offset(door, 100, 0)` | in |
+| A named point: the plugin's marks, a scene's own | `to=left`, `door: 300` | in |
+| Offset from a point | `door + 100` | in |
 | Beside a point or a character | `left-of(pip, near)` | in |
 | Between two | `midpoint(door, tree)` | in |
 | Where a character is, read from the lines above | `pip` in a formula | in |

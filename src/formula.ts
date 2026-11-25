@@ -1,6 +1,7 @@
 // A formula, as a script writes a value (AGENTS.md, "Values"): numbers with their units, names, a
-// line's length, a moment of a line, and arithmetic. Here it is read, and its numbers worked out;
-// what its names stand for is values.ts's.
+// line's length, a moment of a line, arithmetic, and a plugin's constructions. Here it is read, and
+// its numbers worked out; what its names stand for is values.ts's, and what a construction comes to
+// is the plugin's.
 //
 // It imports nothing that runs: plugin.ts gives what reads a script to the plugins' tests.
 import type { WrittenAnchor } from "./scenario.ts";
@@ -25,13 +26,16 @@ export type Formula =
   | { is: "length"; of: string }
   /** A moment of something above, by itself: what a move arrives at. */
   | { is: "moment"; moment: WrittenAnchor }
+  /** One of the plugin's constructions, by its name, and what is in its parentheses: `left-of(pip, near)`. */
+  | { is: "construction"; name: string; of: Formula[] }
   | { is: "minus"; of: Formula }
   | { is: "+" | "-" | "*" | "/"; left: Formula; right: Formula };
 
 const FORMS = "a value is a number (2, 0.5s, 50%), a name (middle), or a formula of these: near * 2 + 20, a minus with a space on each side";
+const PARENTHESES = "what it is worked out from is in its parentheses, a comma between one and the next: left-of(pip, near)";
 const MOMENTS = "a moment is a.start, a.end, a.50% or a.word(mole), and seconds after it or before it: @ a.end - 0.5s; it is the last thing before the colon";
 
-const TOKEN = /\s*(?:(\d+(?:\.\d+)?)([A-Za-z%]*)|([a-z][a-z0-9-]*)|([-+*/().]))/y;
+const TOKEN = /\s*(?:(\d+(?:\.\d+)?)([A-Za-z%]*)|([a-z][a-z0-9-]*)|([-+*/().,]))/y;
 const MOMENT = /^([a-z][a-z0-9-]*)\s*\.\s*(?:(start|end)(?![a-z0-9])|(\d+(?:\.\d+)?)%|word\(([^()]*)\))\s*(.*)$/;
 
 type Token = { text: string } & ({ number: number; unit: Unit } | { name: string } | { mark: string });
@@ -77,12 +81,22 @@ export function readFormula(text: string): Formula {
     if (!token) throw new Wrong(tokens.length > 0 ? `something is missing after "${tokens.at(-1)!.text}"` : "nothing is written", FORMS);
     if ("number" in token) return { is: "number", number: token.number, unit: token.unit };
     if ("mark" in token) throw new Wrong(`"${token.text}" has nothing before it`, FORMS);
+    if (mark("(")) return { is: "construction", name: token.name, of: within(token.name) };
     if (!mark(".")) return { is: "name", name: token.name };
     const part = tokens[k++];
     if (!part || !("name" in part) || part.name !== "length") {
       throw new Wrong(`"${token.name}.${part?.text ?? ""}" is nothing that a formula reads`, "how long a line lasts is a.length; a moment of it, a.end, stands by itself: arrive=a.end - 0.5s");
     }
     return { is: "length", of: token.name };
+  };
+  /** What is in a construction's parentheses, to the last of them. */
+  const within = (name: string): Formula[] => {
+    if (mark(")")) throw new Wrong(`${name}() has nothing in its parentheses`, PARENTHESES);
+    const of = [sum()];
+    while (mark(",")) of.push(sum());
+    if (mark(")")) return of;
+    const stray = tokens[k];
+    throw new Wrong(stray ? `"${stray.text}" comes after what is a value already` : `${name}( has no ")" after it`, PARENTHESES);
   };
   const product = (): Formula => {
     let left = factor();
@@ -122,9 +136,22 @@ export function readAnchor(written: string): WrittenAnchor {
 export function namesIn(formula: Formula): string[] {
   if (formula.is === "name") return [formula.name];
   if (formula.is === "minus") return namesIn(formula.of);
+  if (formula.is === "construction") return formula.of.flatMap(namesIn);
   if ("left" in formula) return [...namesIn(formula.left), ...namesIn(formula.right)];
   return formula.is === "moment" && formula.moment.plus !== undefined ? namesIn(readFormula(formula.moment.plus)) : [];
 }
+
+/** A construction with what is in its parentheses worked out: what it comes to is the plugin's to say. */
+export interface Construction {
+  construction: string;
+  of: Worked[];
+}
+
+/** What a value comes to for the plugin: a number with no unit, a name that stands for no value (a mark, a character), or a construction. */
+export type Worked = number | string | Construction;
+
+/** A value worked out, as a formula would have it. */
+export const shownAs = (value: Worked): string => (typeof value === "object" ? `${value.construction}(${value.of.map(shownAs).join(", ")})` : String(value));
 
 /** A number worked out, with its unit, and how many times it has each line's length, by the line: those are measured later. */
 export interface Amount {

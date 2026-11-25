@@ -7,7 +7,7 @@
 // script the pipeline reads.
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { LineCounter, isMap, isScalar, isSeq, parse, parseDocument } from "yaml";
+import { LineCounter, isMap, isScalar, isSeq, parse, parseDocument, visit, type Pair } from "yaml";
 import { z } from "zod";
 import type { ClipJson } from "./clip.ts";
 import { Wrong, readFormula } from "./formula.ts";
@@ -196,18 +196,46 @@ export async function readVideoFile(file: string, profile?: string): Promise<Vid
   return { ...videoFileOf(await readProject(plugin), file, raw, profile), text, ...(script ? { script } : {}) };
 }
 
+/**
+ * A value that a comma has cut: between `{` and `}` YAML ends a value at it, and has the rest as keys
+ * with no value. `{ meet: midpoint(pip, mo) }` is so cut: its pairs, and what is wrong.
+ */
+function cutValues(node: unknown, lineOf: (node: unknown) => number): { pairs: Pair[]; issue: Issue }[] {
+  if (!isMap(node) || !node.flow) return [];
+  const open = (text: string) => text.split("(").length - text.split(")").length;
+  const cut: { pairs: Pair[]; issue: Issue }[] = [];
+  const pairs = node.items as Pair[];
+  for (const [k, { key, value }] of pairs.entries()) {
+    if (!isScalar(value)) continue;
+    const first = String(value.value);
+    let whole = first;
+    let end = k + 1;
+    for (; open(whole) > 0 && pairs[end]?.value === null; end++) whole += `, ${pairs[end]!.key}`;
+    if (end === k + 1) continue;
+    cut.push({
+      pairs: pairs.slice(k, end),
+      issue: { line: lineOf(key), message: `between { and } a comma ends a value: ${key} is "${first}", and no more`, hint: `write it in quotes, ${key}: "${whole}", or on a row of its own` },
+    });
+  }
+  return cut;
+}
+
 /** The values of a file or a scene (`values:`), each a formula with its line in the file. */
 function writtenValues(node: unknown, lineOf: (node: unknown) => number): { values: Record<string, WrittenValue>; issues: Issue[] } {
   const values: Record<string, WrittenValue> = {};
   const issues: Issue[] = [];
   const form = "a value is written by its name: values: { pause: 0.3s, walk.speed: slow }";
   if (!isMap(node)) return { values, issues: [{ line: lineOf(node), message: "these values are not a mapping", hint: form }] };
-  for (const { key, value } of node.items) {
+  const cut = cutValues(node, lineOf);
+  issues.push(...cut.map(({ issue }) => issue));
+  for (const pair of node.items) {
+    if (cut.some(({ pairs }) => pairs.includes(pair))) continue;
+    const { key, value } = pair;
     const line = lineOf(key);
     const name = String(isScalar(key) ? key.value : key);
     const issue = (message: string, hint: string) => void issues.push({ line, message, hint });
     if (isMap(value)) issue(`${name} has values of its own`, `write each on a row: ${value.items.map((inner) => `${name}.${inner.key}: ${inner.value}`).join(", ")}`);
-    else if (!isScalar(value) || value.value === null || typeof value.value === "boolean") issue(`${name} has no value`, `${form}; one with a comma in it goes on a row of its own`);
+    else if (!isScalar(value) || value.value === null || typeof value.value === "boolean") issue(`${name} has no value`, form);
     else {
       // A number as it is written, and not as YAML has it.
       const text = typeof value.value === "number" ? (value.source ?? String(value.value)) : String(value.value);
@@ -261,6 +289,9 @@ export function writtenScript(text: string): WrittenScript | undefined {
       continue;
     }
     const { script: _script, values: _values, ...setting } = item.toJS(document) as Record<string, unknown>;
+    for (const key of Object.keys(setting)) {
+      visit(item.get(key, true) as Parameters<typeof visit>[0], { Map: (_, map) => void issues.push(...cutValues(map, lineOf).map(({ issue }) => issue)) });
+    }
     const values = valuesOf(item.get("values", true));
     const script = item.get("script", true);
     let items: WrittenScene["items"] = [];

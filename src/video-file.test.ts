@@ -312,11 +312,6 @@ test("values that do not read, and a key on top of a script that nothing reads, 
     [7, "walk has values of its own"],
   ]);
   assert.equal(writtenScript(["values:", "  walk: { speed: slow, takes: 2s }", ...scene, ""].join("\n"))!.issues[0]!.hint, "write each on a row: walk.speed: slow, walk.takes: 2s");
-  // A comma ends a value in braces: what is left of it is none.
-  assert.deepEqual(refused("values: { meet: midpoint(door, tree) }"), [
-    [1, 'meet=midpoint(door: "(" comes after what is a value already'],
-    [1, "tree) has no value"],
-  ]);
   assert.deepEqual(refused("values: 0.5s"), [[1, "these values are not a mapping"]]);
   assert.deepEqual(writtenScript(["use: cartoon", "valuse: { pause: 1s }", "outputs: { web: true }", ...scene, ""].join("\n"))!.issues, [
     {
@@ -327,6 +322,26 @@ test("values that do not read, and a key on top of a script that nothing reads, 
   ]);
   const [inScene] = writtenScript(["scenes:", "  - values: { pause: 1 s }", "    script: |", "      pip say: Hi.", ""].join("\n"))!.issues;
   assert.deepEqual([inScene!.line, inScene!.message], [2, 'pause=1 s: "s" comes after what is a value already']);
+});
+
+test("between { and } a comma ends a value, so a construction there is said to be cut, once, and how to write it", () => {
+  const say = ["    script: |", "      pip say: Hi.", ""];
+  const script = (...rows: string[]) => writtenScript([...rows, ...say].join("\n"))!;
+  assert.deepEqual(script("values: { meet: midpoint(door, tree), near: 2 }", "scenes:", "  - background: meadow").issues, [
+    { line: 1, message: 'between { and } a comma ends a value: meet is "midpoint(door", and no more', hint: 'write it in quotes, meet: "midpoint(door, tree)", or on a row of its own' },
+  ]);
+  // In a scene's values, and in any of its own keys; several in one, and one in another.
+  assert.deepEqual(script("scenes:", "  - values: { meet: midpoint(1, 2) }", "    places: { pip: left, mo: left-of(midpoint(pip, 300), near), tuk: right, mole: right-of(pip, 1) }").issues.map(({ line, message, hint }) => [line, message, hint.split(",")[0], hint.match(/"(.*)"/)![1]]), [
+    [3, 'between { and } a comma ends a value: mo is "left-of(midpoint(pip", and no more', "write it in quotes", "left-of(midpoint(pip, 300), near)"],
+    [3, 'between { and } a comma ends a value: mole is "right-of(pip", and no more', "write it in quotes", "right-of(pip, 1)"],
+    [2, 'between { and } a comma ends a value: meet is "midpoint(1", and no more', "write it in quotes", "midpoint(1, 2)"],
+  ]);
+  // In quotes, on a row of its own, and with no comma it is whole.
+  const whole = script("values:", "  meet: midpoint(door, tree)", "scenes:", '  - places: { pip: edge(left), mo: "left-of(pip, near)" }');
+  assert.deepEqual([whole.issues, whole.values, whole.scenes[0]!.setting], [[], { meet: { line: 2, text: "midpoint(door, tree)" } }, { places: { pip: "edge(left)", mo: "left-of(pip, near)" } }]);
+  // One with no end is said where it is worked out, and a key with no value is its own mistake.
+  assert.deepEqual(script("scenes:", "  - places: { pip: edge(left, mo: 3 }").issues, []);
+  assert.deepEqual(script("values: { meet: 2, near }", "scenes:", "  - background: meadow").issues.map(({ message }) => message), ["near has no value"]);
 });
 
 test("a script is a block of lines, one in every scene", () => {

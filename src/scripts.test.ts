@@ -10,7 +10,7 @@ import { test, type TestContext } from "node:test";
 import { parseDocument } from "yaml";
 import { z } from "zod";
 import { compile, compiledText, type Compiled, type CompiledLine } from "./compile.ts";
-import { secondsOf, type Span } from "./formula.ts";
+import { secondsOf, shownAs, type Span, type Worked } from "./formula.ts";
 import { different, random, type Random } from "./random.ts";
 import { isBlock } from "./read.ts";
 import { checkScenario, linesIn, type Anchor, type CheckedLine, type CheckedScene, type Default, type Issue, type ScriptBlock, type ScriptItem, type ScriptPlugin } from "./scenario.ts";
@@ -20,23 +20,45 @@ import { sharesOf } from "./words.ts";
 
 const COUNT = Number(process.env.RANDOM_SCRIPTS ?? 4000);
 
-/** `walk` goes `to` a mark, and takes longer the `far`ther it is; `hop` hops so many `times`. */
+const MARKS: Record<string, number> = { left: 0, middle: 500, right: 1000 };
+const place: z.ZodType<Worked> = z.union([z.string(), z.lazy(() => z.strictObject({ construction: z.enum(["beside", "between"]), of: z.array(z.union([place, z.number()])).length(2) }))], { error: "it is a mark, or a place worked out" });
+/** A place as an x, or why it is none. */
+const xOf = (where: Worked): number | string => {
+  if (typeof where === "number") return "a number is no place";
+  if (typeof where === "string") return Object.hasOwn(MARKS, where) ? MARKS[where]! : `no place is called "${where}"`;
+  const [one, two] = where.of;
+  const x = xOf(one!);
+  const other = where.construction === "beside" ? (typeof two === "number" ? two : "how far is a number") : xOf(two!);
+  if (typeof x === "string" || typeof other === "string") return typeof x === "string" ? x : `${shownAs(where)}: ${other}`;
+  return where.construction === "beside" ? x + other : (x + other) / 2;
+};
+/** `walk` goes `to` a place, and takes longer the `far`ther it is; `hop` hops so many `times`. A scene's `spots` are places. */
 const PLUGIN: ScriptPlugin = {
   actions: {
-    walk: { description: "It walks.", example: "pip walk to=left", values: z.strictObject({ to: z.enum(["left", "middle", "right"]), far: z.number().positive().max(5000).default(100) }) },
+    walk: { description: "It walks.", example: "pip walk to=left", values: z.strictObject({ to: place, far: z.number().positive().max(5000).default(100) }) },
     hop: { description: "It hops.", example: "pip hop", values: z.strictObject({ times: z.number().int().positive().max(20).default(1) }) },
   },
   names: { slow: 0.5, fast: 2 },
+  constructions: { beside: { description: "Beside a place.", example: "beside(left, 2)" }, between: { description: "Between two.", example: "between(left, right)" } },
+  tables: ["spots"],
   guide: "They walk and hop.",
-  check: (scenes) => ({
-    scenes: scenes.map(({ actions }) => ({
-      setting: { at: [0, 1] },
-      actions: actions.map((line) => {
-        const values = line.values as { times: number } | { to: string; far: number };
-        return { values, length: "times" in values ? values.times * 0.4 : 0.5 + values.far / 200 };
+  check(scenes) {
+    const issues: Issue[] = [];
+    const at = (line: number, where: Worked) => {
+      const x = xOf(where);
+      if (typeof x === "string") issues.push({ line, message: `${shownAs(where)} is no place: ${x}`, hint: "a place is left, middle or right, or worked out" });
+      return typeof x === "string" ? 0 : x;
+    };
+    const worked = scenes.map(({ line, setting, actions }) => ({
+      setting: { at: [0, 1], spots: Object.fromEntries(Object.entries((setting.spots ?? {}) as Record<string, Worked>).map(([who, where]) => [who, at(line, where)])) },
+      actions: actions.map(({ line, values: taken }) => {
+        const values = taken as { times: number } | { to: Worked; far: number };
+        return "times" in values ? { values, length: values.times * 0.4 } : { values: { ...values, to: at(line, values.to) }, length: 0.5 + values.far / 200 };
       }),
-    })),
-  }),
+    }));
+    const once = issues.filter((one, k) => issues.findIndex(({ line, message }) => line === one.line && message === one.message) === k);
+    return once.length > 0 ? { issues: once } : { scenes: worked };
+  },
   draw: () => () => "<svg/>",
 };
 const SPEAKERS = ["pip", "mo", "tuk", "radio", "bird", "crowd"];
@@ -54,6 +76,7 @@ const WRONG_ROWS = [
 const WRONG = [
   ...["nobody", "far-off", "home", "takes", "pause", "speed", "beat", "near", "lag", "slow", "- beat", "0", "0s", "1", "1s", "1 / 0", "(0.1 + 0.2 - 0.3)", "2px", "2 *", "(1"],
   ...["a.end", "prev.word(one)", "a.length", "prev.length", "block.length", "2s / a.length", "a.length / 2s", "(a.length / 2s) * (a.length / 1s)"],
+  ...["beside(left, 2)", "beside(left, 1) * 2", "beside(left, beside(right, 1))", "besid(left, 2)", "beside()", "beside(left)", "beside(left, 2", "beside(left 2)", "beside(left, 2s)", "between(left, a.length)", "between(a.end, left)", "between(nobody, left)", "left, right"],
 ];
 const WRONG_NAMES = ["puase", "nobody.speed", "say.speed", "pip.pause", "lead", "Near", "pip.walk.far", "say.far", "narrator.beat", "walk.say"];
 
@@ -87,6 +110,12 @@ function randomFile({ int, chance, pick }: Random): string {
     if (deep === 0 || chance(0.5)) return pick(["0.3s", "1s", "0.125s", ...names]);
     const inner = () => time(names, deep - 1);
     return pick([() => `(${inner()})`, () => `${inner()} + ${inner()}`, () => `(${inner()}) * ${pick(["2", "0.5", "near / 10"])}`, () => `${pick(["2", "much / near"])} * (${inner()})`, () => `(${inner()}) / ${pick(["2", "3", "1.5"])}`, ...(wild ? [() => `${inner()} - ${inner()}`] : [])])();
+  };
+  /** A place: a mark, a name for one, or one worked out from others. */
+  const somewhere = (deep = 2): string => {
+    if (wrong(0.03)) return pick(WRONG);
+    if (deep === 0 || chance(0.7)) return pick(["left", "middle", "right", "home", "there"]);
+    return chance(0.5) ? `beside(${somewhere(deep - 1)}, ${number(["near", "much"], 1)})` : `between(${somewhere(deep - 1)}, ${somewhere(deep - 1)})`;
   };
   /** What has a label above in the scene. */
   let above: Above[] = [];
@@ -130,7 +159,7 @@ function randomFile({ int, chance, pick }: Random): string {
         : name === "near" ? pick(["5", "10", "20", "7.5"])
         : name === "much" ? number(["near"])
         : name === "far" ? number(["near", "much"])
-        : name === "to" ? pick(["left", "middle", "right", "home"])
+        : name === "to" ? somewhere()
         : name === "times" ? pick(["1", "2", "two", "two * 2"])
         : name === "speed" ? number(["slow", "fast", "near / 10"], 1)
         : name === "arrive" ? moments
@@ -149,7 +178,7 @@ function randomFile({ int, chance, pick }: Random): string {
   const saying = (): string[] => WORDS.slice(int(WORDS.length)).slice(0, 1 + int(chance(0.2) ? 20 : 5));
   const spoken = (words: string[]) => `${words.map((word, i) => `${word}${i < words.length - 1 && chance(0.2) ? pick([",", ".", ":", "!"]) : ""}`).join(" ")}.`;
   /** What a walk or a hop takes besides its time. */
-  const takenBy = (action: string) => (action === "hop" ? pick(["", " times=2", " times=two + 1"]) : `${chance(0.5) ? "" : ` to=${pick(["left", "middle", "right", "home"])}`}${chance(0.6) ? "" : ` far=${number(["near", "much"])}`}`);
+  const takenBy = (action: string) => (action === "hop" ? pick(["", " times=2", " times=two + 1"]) : `${chance(0.5) ? "" : ` to=${somewhere()}`}${chance(0.6) ? "" : ` far=${number(["near", "much"])}`}`);
   /** The rows of a block that ends its lines together: lines alone, one that is said and one that is done by each, with no time of their own. */
   const writeEnding = (margin: string, under?: string) => {
     const done = new Set<string>();
@@ -225,7 +254,10 @@ function randomFile({ int, chance, pick }: Random): string {
     labels = 0;
     write("      ", 3);
     const set = chance(0.5) ? [] : [...settings(1 + int(3), "scene")];
-    const values = set.length === 0 ? [] : chance(0.5) ? [`    values: { ${set.map(([name, text]) => `${name}: ${text}`).join(", ")} }`] : ["    values:", ...set.map(([name, text]) => `      ${name}: ${text}`)];
+    // Between braces a comma ends a value: one with a comma is in quotes there, if it is not a mistake.
+    const braced = (name: string, text: string) => `${name}: ${text.includes(",") && !wrong(0.2) ? `"${text}"` : text}`;
+    const table = (key: string, rows: [string, string][]) => (rows.length === 0 ? [] : chance(0.5) ? [`    ${key}: { ${rows.map(([name, text]) => braced(name, text)).join(", ")} }`] : [`    ${key}:`, ...rows.map(([name, text]) => `      ${name}: ${text}`)]);
+    const values = [...table("values", set), ...table("spots", chance(0.6) ? [] : SPEAKERS.slice(0, 1 + int(3)).map((who): [string, string] => [who, somewhere()]))];
     if (n > 0 && wrong(0.05)) return pick([["  - place: pond"], ["  - place: pond", "    values: 3", "    script: |", ...rows], ["  - 3"], ["  - place: pond", '    script: "pip say: Hi."']]);
     return ["  - place: pond", ...values, "    script: |", ...rows];
   });
@@ -237,7 +269,8 @@ function randomFile({ int, chance, pick }: Random): string {
     ["much", chance(0.5) ? "near * 2" : number(["near"])],
     ["two", "2"],
     ["home", pick(["left", "right"])],
-    ["to", "home"],
+    ["there", pick(["home", "between(home, right)", "beside(home, near * 2)"])],
+    ["to", "there"],
     ["times", "two"],
     ["lead", "(lag + beat) * much / near / 2"],
     ...settings(chance(0.5) ? 0 : 1 + int(3), "cartoon"),
@@ -422,9 +455,11 @@ test("random scripts: none throws, and a mistake is told once, at lines of its f
 });
 
 test("random scripts: there are many with no mistake, and everything a script can have is in them", (t) => {
-  const count = { scenes: 0, lines: 0, joined: 0, under: 0, anchored: 0, byWord: 0, byPrev: 0, byBlock: 0, takes: 0, arrives: 0, hurried: 0, slowed: 0, fastest: 0, slowest: 0, lengthsRead: 0, pauseOfLengths: 0, cutShort: 0, notThere: 0, waitedForItsChannel: 0, endingTogether: 0, begunLater: 0, endingLater: 0, setOnScene: 0, setOnBlock: 0, setOnLine: 0, forOne: 0, forAnAction: 0, defaults: 0 };
+  const count = { placedInLine: 0, placedInSpots: 0, scenes: 0, lines: 0, joined: 0, under: 0, anchored: 0, byWord: 0, byPrev: 0, byBlock: 0, takes: 0, arrives: 0, hurried: 0, slowed: 0, fastest: 0, slowest: 0, lengthsRead: 0, pauseOfLengths: 0, cutShort: 0, notThere: 0, waitedForItsChannel: 0, endingTogether: 0, begunLater: 0, endingLater: 0, setOnScene: 0, setOnBlock: 0, setOnLine: 0, forOne: 0, forAnAction: 0, defaults: 0 };
   tried(t, (taken) => {
     const compiled = compiledOf(taken);
+    count.placedInLine += /walk.* to=(beside|between)\(/.test(taken.text) ? 1 : 0;
+    count.placedInSpots += / {4}spots:/.test(taken.text) ? 1 : 0;
     count.setOnScene += / {4}values:/.test(taken.text) ? 1 : 0;
     count.setOnBlock += /(in order|together|under) [a-z.]+=/.test(taken.text) ? 1 : 0;
     count.setOnLine += /(walk|hop) [a-z]+=/.test(taken.text) ? 1 : 0;
@@ -478,6 +513,10 @@ test("random scripts: each compiles to a whole scenario, of plain values, with s
     const compiled = compiledOf(taken);
     assert.deepEqual(compiledOf(taken), compiled, "compiled again, it is another");
     assert.deepEqual(JSON.parse(compiledText(compiled)), compiled, "it is not plain");
+    for (const { setting, lines } of compiled.scenes) {
+      for (const x of Object.values((setting as { spots: Record<string, unknown> }).spots)) assert.ok(Number.isFinite(x), `a spot is ${x}`);
+      for (const line of lines) if (line.action === "walk" && "values" in line) assert.ok(Number.isFinite((line.values as { to: unknown }).to), `line ${line.line} goes to no x`);
+    }
     let end = 0;
     for (const [n, scene] of compiled.scenes.entries()) {
       assert.equal(scene.from, end, `scene ${n + 1} does not follow the one before`);

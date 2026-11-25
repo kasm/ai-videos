@@ -1,8 +1,10 @@
 # What a script can have at once, one after another: a walk while the narrator talks, a chorus, an
 # interruption at a word, a talk over a radio that is waited for, words that end as a walk does, and a
 # murmur of two lines under three others, cut where they end. All its pauses are one beat, and the
-# radio's two: beat changed times all of it anew. The format is in CLAUDE.md ("The script"); the
-# characters and the backgrounds are drawn in library.yaml, and the radio is only heard.
+# radio's two: beat changed times all of it anew. In the second scene Mo stands beside the reeds, a
+# point of the scene's own, and Tuk comes between Pip and Mo, then up to Pip. The format is in CLAUDE.md
+# ("The script"); the characters and the backgrounds are drawn in library.yaml, and the radio is only
+# heard.
 use: cartoon
 outputs: { web: true } # its page too, beside the video
 cast: { radio: am_michael }
@@ -31,11 +33,15 @@ scenes:
           mo say: They know, Pip.
       tuk say: Poor badger.
   - background: sundown
-    places: { pip: left, tuk: off-right, mo: right }
+    values: { reeds: 1500 }
+    places:
+      pip: left
+      mo: left-of(reeds, near)
+      tuk: off-right
     faces: { tuk: left, mo: left }
     script: |
       ending together:
-        tuk walk to=middle
+        tuk walk to=midpoint(pip, mo)
         narrator say: In the evening, Mo counts the reeds.
       in order:
         under:
@@ -44,4 +50,5 @@ scenes:
         pip say: Why is Mo counting?
         tuk say: The badger is behind one.
         pip say: And which one?
-      narrator say: That, only the badger knows.
+      tuk walk to=right-of(pip, near)
+      & narrator say: That, only the badger knows.

@@ -2,7 +2,7 @@
 // seconds and in numbers with no unit, with lines' lengths in it.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { Wrong, calculate, minus, namesIn, readFormula, secondsOf, spanOf, type Amount, type Formula } from "./formula.ts";
+import { Wrong, calculate, minus, namesIn, readFormula, secondsOf, shownAs, spanOf, type Amount, type Formula } from "./formula.ts";
 
 const number = (n: number, unit: "" | "s" = ""): Formula => ({ is: "number", number: n, unit });
 const name = (one: string): Formula => ({ is: "name", name: one });
@@ -49,6 +49,35 @@ test("a line's length is read in a formula, and a moment of a line stands by its
   assert.equal(wrong("a.")[0], '"a." is nothing that a formula reads');
 });
 
+test("a construction is a name, and in parentheses what it is worked out from, each a formula, others in it too", () => {
+  const made = (one: string, ...of: Formula[]): Formula => ({ is: "construction", name: one, of });
+  assert.deepEqual(readFormula("left-of(pip, near)"), made("left-of", name("pip"), name("near")));
+  assert.deepEqual(readFormula(" midpoint( door ,tree) "), made("midpoint", name("door"), name("tree")));
+  assert.deepEqual(readFormula("edge(left)"), made("edge", name("left")));
+  assert.deepEqual(readFormula("left-of(midpoint(pip, 300), near * 2 + 1)"), made("left-of", made("midpoint", name("pip"), number(300)), { is: "+", left: { is: "*", left: name("near"), right: number(2) }, right: number(1) }));
+  assert.deepEqual(readFormula("right-of(pip, -(1 + 2))"), made("right-of", name("pip"), { is: "minus", of: { is: "+", left: number(1), right: number(2) } }));
+  // A name with a "(" after it, and not a multiplication; a moment of a line is none of it.
+  assert.deepEqual(readFormula("2 * half(near)"), { is: "*", left: number(2), right: made("half", name("near")) });
+  assert.deepEqual(readFormula("word(mole)"), made("word", name("mole")));
+  assert.deepEqual(readFormula("a.word(mole)"), { is: "moment", moment: { of: "a", at: { word: "mole" } } });
+
+  const within = "what it is worked out from is in its parentheses, a comma between one and the next: left-of(pip, near)";
+  assert.deepEqual(wrong("left-of()"), ["left-of() has nothing in its parentheses", within]);
+  assert.deepEqual(wrong("left-of(pip, near"), ['left-of( has no ")" after it', within]);
+  assert.deepEqual(wrong("left-of(pip near)"), ['"near" comes after what is a value already', within]);
+  assert.equal(wrong("left-of(pip,)")[0], '")" has nothing before it');
+  assert.equal(wrong("left-of(pip,")[0], 'something is missing after ","');
+  assert.equal(wrong("left-of(, near)")[0], '"," has nothing before it');
+  assert.equal(wrong("left-of(pip, near) near")[0], '"near" comes after what is a value already');
+  assert.equal(wrong("pip, near")[0], '"," comes after what is a value already');
+  assert.equal(wrong("2(near)")[0], '"(" comes after what is a value already');
+  assert.equal(wrong("left-of(a.end, near)")[0], '"a.end" is nothing that a formula reads');
+
+  // Worked out, it is shown as a formula would have it.
+  assert.equal(shownAs({ construction: "left-of", of: [{ construction: "midpoint", of: ["pip", 300] }, 0.3] }), "left-of(midpoint(pip, 300), 0.3)");
+  assert.deepEqual([shownAs("middle"), shownAs(-2.5)], ["middle", "-2.5"]);
+});
+
 test("what does not read is told why, with a hint", () => {
   assert.equal(wrong("")[0], "nothing is written");
   assert.equal(wrong("near *")[0], 'something is missing after "*"');
@@ -56,8 +85,6 @@ test("what does not read is told why, with a hint", () => {
   assert.equal(wrong("near + 2)")[0], '")" comes after what is a value already');
   assert.equal(wrong("near far")[0], '"far" comes after what is a value already');
   assert.equal(wrong("* 2")[0], '"*" has nothing before it');
-  assert.equal(wrong("midpoint(door, tree)")[0], '", tree)" is not read');
-  assert.equal(wrong("sin(2)")[0], '"(" comes after what is a value already');
   assert.equal(wrong("Near")[0], '"Near" is not read');
   assert.equal(wrong('"middle"')[0], '""middle"" is not read');
   assert.equal(wrong("1.5.2")[0], '"." comes after what is a value already');
@@ -68,6 +95,7 @@ test("what does not read is told why, with a hint", () => {
 test("the names a formula reads, those after a moment too", () => {
   assert.deepEqual(namesIn(readFormula("(near + 2) * far - a.length")), ["near", "far"]);
   assert.deepEqual(namesIn(readFormula("- beat")), ["beat"]);
+  assert.deepEqual(namesIn(readFormula("left-of(midpoint(pip, door + 20), near)")), ["pip", "door", "near"]);
   assert.deepEqual(namesIn(readFormula("a.end - beat * two")), ["beat", "two"]);
   assert.deepEqual(namesIn(readFormula("a.end")), []);
   assert.deepEqual(namesIn(readFormula("2s")), []);

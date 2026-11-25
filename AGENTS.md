@@ -117,10 +117,17 @@ A project's plugin draws its videos: a module the tool runs in a child process o
       level (see Values); one with a name of the tool's own is refused.
     - `names`, optional: its names for numbers (`slow: 0.6`), which any value may use. One that is a
       value's name is refused.
+    - `constructions`, optional: the values it works out from others (`left-of(pip, near)`), by name,
+      each described once: a `description` and an `example`, refused when it is none of it. The tool
+      reads one and works out what is in its parentheses (see Values); what it comes to, or that it
+      has no answer, is the check's to say.
+    - `tables`, optional: the scene's own keys that are tables of formulas, each by whose it is
+      (`places: { mo: left }`).
     - `guide`: its part of the guide to writing a script, in Markdown: what its videos can show, a
       scene's own keys, and a whole video file as an example.
     - `check(scenes, library)`: the script checked against the library, and worked out. It gets
-      each scene's line in the file, its own keys as written, and its lines that name one of the
+      each scene's line in the file, its own keys (what is in its `tables` worked out, the rest as
+      written), and its lines that name one of the
       plugin's actions, in order, each with its line and its values, worked out, as the action's
       schema gave them. It gives each scene's `setting` (how it begins) and each action's `values` and own
       `length`, seconds, all in plain numbers: numbers and names, in lists and tables. Or it gives
@@ -236,7 +243,8 @@ scenes:
   `narrator` is the speaker nobody draws, and its lines are said in the video's `voice`. Every
   other action is the plugin's (see Plugins, `script`).
 - **The check** (`checkScenario`) is the pass before the voices, and the only one that refuses:
-  1. a row that does not read, an action nobody names, values the action's schema refuses, a `say`
+  1. a row that does not read, a value that a comma cuts (see Values), an action nobody names, values
+     the action's schema refuses, a `say`
      with no words or by someone with no voice; and, when every row reads, a value with no answer (see
      Values), and what has no time (`timeIssues`, `src/plan.ts`): an anchor to something below it, in another scene or not there, or
      to a word that is not one place of its line; what the laws refuse (What happens at once); and an
@@ -270,8 +278,8 @@ scenes:
   its `captions`. One caption shows at a time, for now: the one begun last, and of two that begin on
   one frame the one written later. It stays up until the next one, a second after its words (a cut
   line's, to the cut), or the scene's end. `loudness` is the video's (see How loud).
-- **It holds plain values,** no name of a value and no formula: numbers, the lines' texts, file names (a voice's, in the tool's voice
-  cache), and the names of the library and of actions. A mark is compiled to its point.
+- **It holds plain values,** no name of a value, no formula and no construction: numbers, the lines' texts, file names (a voice's, in the tool's voice
+  cache), and the names of the library and of actions. A place is compiled to its point.
 
 ```json
 {
@@ -305,8 +313,8 @@ scenes:
 - **The build** (see make) has the clip and the captions, each on its own frames, and no voices: the
   video's sound is the tool's one track (see How loud), silent when nobody speaks.
 - **The guide** to writing a script (`guideOf`, `src/guide.ts`) is the tool's part (a line's form,
-  `say`, blocks, joining, anchors, values, what is refused), the plugin's `script.guide`, the actions,
-  each with its description and example, and the plugin's names for numbers. Each part's examples are compiled by a test. The prompt for
+  `say`, blocks, joining, anchors, values, what is refused), the plugin's `script.guide`, the actions
+  and the constructions, each with its description and example, and the plugin's names for numbers. Each part's examples are compiled by a test. The prompt for
   a web chat does not teach scripts yet.
 
 `src/read.test.ts`, `src/formula.test.ts`, `src/values.test.ts`, `src/scenario.test.ts`,
@@ -337,7 +345,8 @@ The laws:
 1. **A value** is a number (`150`, `0.5s`, `50%`), a name, or a formula of these, with `+ - * /` and
    parentheses (`src/formula.ts`). A name has dashes of its own, so a minus has a space on each side.
    A time is in seconds: times add up, and are multiplied and divided by numbers. What it comes to is in
-   whole millionths, so `0.1 + 0.2 - 0.3` is 0. A name that nothing sets is itself (`middle`, a mark).
+   whole millionths, so `0.1 + 0.2 - 0.3` is 0. A name that nothing sets is itself (`middle`, a mark); a
+   character's is the character, and no value has it.
 2. **Levels.** A line's own values, its block's, the block's around that, its scene's, the cartoon's;
    above them the plugin's `names` and the video's `timing` (its `gap` is the `pause`). The nearest wins.
 3. **For whom.** `speed` is for everything, `walk.speed` for an action, `pip.speed` for a character. Of
@@ -345,10 +354,17 @@ The laws:
    over all three. A line's own has no dot.
 4. **A formula is inherited as it is written,** and worked out for each line that reads it, by what its
    names are there. So above, the pauses of the scene are 0.8 s, as its `beat` is.
-5. **One formula.** How long an action lasts is given once: by the nearest of `takes`, `speed` and
+5. **A construction** is one of the plugin's (see Plugins), its name and in parentheses what it is worked
+   out from, each a value: `left-of(midpoint(pip, door), near * 2)`. It is a value by itself, or in
+   another's parentheses, and no number: nothing is added to it. In it is no time, no moment and no
+   line's length. The plugin gets its name, the numbers worked out and the names that nothing sets.
+   A value of an action's may be one, and what is in a plugin's `tables`, worked out at the scene's level,
+   each for whose it is. Between `{` and `}` YAML ends a value at a comma: there it is in quotes, or the
+   mapping has a row for each.
+6. **One formula.** How long an action lasts is given once: by the nearest of `takes`, `speed` and
    `arrive`, whichever it is. Two equally near are refused. So are values that go round, with their
    chain.
-6. **The tool's own** values:
+7. **The tool's own** values:
 
    | Name | Set on | What it is |
    | --- | --- | --- |
@@ -361,13 +377,14 @@ The laws:
    Given `takes` or `speed`, wherever they are set, an action keeps it and is fitted to nothing. A voice
    takes none of them, and an action in an `ending together:` no `arrive`. Beside these, what an action
    takes (`to`) may be set on any level, and any name of the writer's that a formula reads.
-7. **`a.length`** is how long a line above lasts: one that is said, or an action given `takes` or
+8. **`a.length`** is how long a line above lasts: one that is said, or an action given `takes` or
    `speed`. How long a fitted action lasts, or a block, is known only once everything has its place, and
    is not read. A length is read by a time alone (`takes`, `pause`, an anchor's), and what that comes to
    is kept in bounds: `5s - a.length` is a frame at least for an action, and none at least for a pause.
-8. **Said:** the defaults taken, with their lines, by `check` and `make`. **Refused,** each at the line
-   that sets it, with those that read it: a value of the wrong kind, a name nothing reads, whose nobody
-   is, or that is another level's.
+9. **Said:** the defaults taken, with their lines, by `check` and `make`. **Refused,** each at the line
+   that sets it, with those that read it: a value of the wrong kind, a name nothing reads, that is a
+   character's, whose nobody is, or that is another level's. What is wrong in a plugin's table is said at
+   the scene's line.
 
 ### What happens at once
 

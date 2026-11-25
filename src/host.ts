@@ -13,6 +13,7 @@ import { z } from "zod";
 import type { requestDocument } from "./fit.ts";
 import { encoder, moments, writeClipData, type ClipText } from "./frames.ts";
 import type { Compiled } from "./compile.ts";
+import { readFormula } from "./formula.ts";
 import type { Call } from "./make.ts";
 import type { DrawingPlugin, EventLimits as Limits, Library, Plan, Plugin, RecordingPlugin, Schema } from "./plugin.ts";
 import { SAY, isBlock, readScript } from "./read.ts";
@@ -60,8 +61,8 @@ export interface Described {
   guide: string;
   /** Each command's description and example (its schema stays in the plugin's process). */
   commands: Record<string, { description: string; example: unknown }>;
-  /** Its part of a script, when its videos may be written as one: its guide, each action's description and example, and its names for numbers. */
-  script?: { guide: string; actions: Record<string, { description: string; example: string }>; names: Record<string, number> };
+  /** Its part of a script, when its videos may be written as one: its guide, each action's and construction's description and example, and its names for numbers. */
+  script?: { guide: string; actions: Record<string, { description: string; example: string }>; names: Record<string, number>; constructions: Record<string, { description: string; example: string }> };
 }
 
 /** What a job did: the drawing's frames, what was mended, and for the plan its limits and the files it is made from. */
@@ -123,6 +124,8 @@ const PluginShape = z
           }),
         ),
         names: z.record(slug, z.number()).optional(),
+        constructions: z.record(slug, z.object({ description: z.string().min(1), example: z.string().min(1) })).optional(),
+        tables: z.array(z.string().min(1)).optional(),
         guide: z.string().trim().min(1, "give the plugin's part of the guide to a script (plugin.ts, script)"),
         check: fn,
         draw: fn,
@@ -198,8 +201,19 @@ export async function loadPlugin(file: string): Promise<Plugin> {
     let why = read.issues[0] && `  ${read.issues[0].message}`;
     const own = line && !isBlock(line) && read.items.length === 1 && line.action === name && !line.text && !line.label && !line.anchor ? line : undefined;
     if (!why && !own) why = `  it is one line of a script that names ${name}, with no words after a colon`;
-    why ??= issuesText((await values["~standard"].validate(plainValues(own!.values))).issues ?? []);
+    why ??= issuesText((await values["~standard"].validate(plainValues(own!.values, plugin.script?.names))).issues ?? []);
     if (why) throw new Error(`${file}: the action "${name}" fails its own example, ${example}:\n${why}`);
+  }
+  // A construction's is one of it, and nothing more.
+  for (const [name, { example }] of Object.entries(plugin.script?.constructions ?? {})) {
+    let why: string | undefined;
+    try {
+      const formula = readFormula(example);
+      if (formula.is !== "construction" || formula.name !== name) why = `it is ${name}( ) with what it is worked out from, by itself`;
+    } catch (e) {
+      why = message(e);
+    }
+    if (why) throw new Error(`${file}: the construction "${name}" fails its own example, ${example}:\n  ${why}`);
   }
   // The tool's own values mean what they mean for every action, and a name for a number is no action's value.
   const taken = Object.entries(valuesTaken(plugin.script?.actions ?? {})).flatMap(([name, values]) => Object.keys(values).map((value) => [name, value] as const));
@@ -413,6 +427,7 @@ if (import.meta.main) {
       guide: plugin.script.guide,
       actions: Object.fromEntries(Object.entries(plugin.script.actions).map(([name, { description, example }]) => [name, { description, example }])),
       names: plugin.script.names ?? {},
+      constructions: Object.fromEntries(Object.entries(plugin.script.constructions ?? {}).map(([name, { description, example }]) => [name, { description, example }])),
     };
     await send({ ready: { scene: plugin.scene, stage: plugin.stage, picture: plugin.camera ? "recorded" : "drawn", guide: plugin.guide, commands, ...(script ? { script } : {}) } });
   } catch (e) {

@@ -4,7 +4,7 @@
 // action is the plugin's, named in its `script` with what it takes.
 //
 // It needs none of the tool's packages: plugin.ts gives it to the plugins' tests.
-import type { Span } from "./formula.ts";
+import { shownAs, type Span } from "./formula.ts";
 import { listed, nearest } from "./names.ts";
 import { timeIssues } from "./plan.ts";
 import type { Library, Schema } from "./plugin.ts";
@@ -102,10 +102,19 @@ export interface Action {
   /** One line that uses it, as a script writes it (`pip walk to=middle`): its values pass `values`. */
   example: string;
   /**
-   * What values a line gives it, by name, each a number or a name. One that its JSON Schema names may
-   * be set on any level (AGENTS.md, "Values"). The tool's own (`takes`, `speed`, `arrive`) are not among them.
+   * What values a line gives it, by name, each a number, a name or a construction (formula.ts, Worked).
+   * One that its JSON Schema names may be set on any level (AGENTS.md, "Values"). The tool's own
+   * (`takes`, `speed`, `arrive`) are not among them.
    */
   values: Schema;
+}
+
+/** One of a plugin's constructions, described once: a value worked out from others, `left-of(pip, near)`. */
+export interface ConstructionOf {
+  /** What it is, and what its parentheses take, for a person or a model writing a script. */
+  description: string;
+  /** One, as a formula writes it. */
+  example: string;
 }
 
 /** A line with one of the plugin's actions, as the plugin's check gets it: its values as the action's schema gives them. */
@@ -116,7 +125,7 @@ export interface ActionLine {
   values: unknown;
 }
 
-/** A scene as the plugin's check gets it: its own keys as written, and its lines with one of the plugin's actions, in order. */
+/** A scene as the plugin's check gets it: its own keys as written, what is in the plugin's tables worked out, and its lines with one of the plugin's actions, in order. */
 export interface SceneActions {
   line: number;
   setting: Record<string, unknown>;
@@ -142,9 +151,19 @@ export interface ScriptPlugin {
   /** Its names for numbers, which any value may use (`slow: 0.6`), unless the file sets them otherwise. */
   names?: Record<string, number>;
   /**
+   * Its constructions, by name: the tool reads one and works out what is in its parentheses, and the
+   * plugin's check says what it comes to, or that it has no answer.
+   */
+  constructions?: Record<string, ConstructionOf>;
+  /**
+   * The scene's own keys that are tables of formulas, each by whose it is (`places: { mo: left }`): the
+   * check gets each worked out at the scene's level, as a value of an action is.
+   */
+  tables?: string[];
+  /**
    * Its part of the guide to writing a script (guide.ts), in Markdown: what its videos can show, a
    * scene's own keys, and a whole video file as an example. The tool adds how a script's lines are
-   * written, and the actions.
+   * written, the actions and the constructions.
    */
   guide: string;
   /**
@@ -232,10 +251,11 @@ const pathOf = (path: ReadonlyArray<PropertyKey | { readonly key: PropertyKey }>
 export async function checkScenario(plugin: ScriptPlugin, script: WrittenScript, library: Library | undefined, speakers: string[], timing: Timing): Promise<Checked> {
   const issues = [...script.issues];
   const actions = [SAY, ...Object.keys(plugin.actions)];
-  const worked = workOut(script, { actions: valuesTaken(plugin.actions), names: plugin.names ?? {}, speakers, timing });
+  const { names = {}, constructions = {}, tables = [] } = plugin;
+  const worked = workOut(script, { actions: valuesTaken(plugin.actions), names, constructions, tables, speakers, timing });
   const workedLines = new Map(worked.scenes.flatMap((scene) => linesIn(scene.items)).map((line) => [line.line, line]));
   const acted: SceneActions[] = [];
-  for (const scene of script.scenes) {
+  for (const [n, scene] of script.scenes.entries()) {
     const own: ActionLine[] = [];
     for (const { line, who, action, values, text } of linesIn(scene.items)) {
       const issue = (message: string, hint: string, also: number[] = []) => void issues.push({ line, ...(also.length > 0 ? { also } : {}), message, hint });
@@ -266,13 +286,13 @@ export async function checkScenario(plugin: ScriptPlugin, script: WrittenScript,
         for (const found of checked.issues) {
           const name = pathOf(found.path);
           const value = Object.hasOwn(taken, name) ? taken[name] : undefined;
-          issue(`${action}${name ? `, ${name}${value ? `=${value.value}` : ""}` : ""}: ${found.message}`, hint, value && value.line !== line ? [value.line] : []);
+          issue(`${action}${name ? `, ${name}${value ? `=${shownAs(value.value)}` : ""}` : ""}: ${found.message}`, hint, value && value.line !== line ? [value.line] : []);
         }
         continue;
       }
       own.push({ line, who, action, values: checked.value });
     }
-    acted.push({ line: scene.line, setting: scene.setting, actions: own });
+    acted.push({ line: scene.line, setting: worked.scenes[n]!.setting, actions: own });
   }
   // A row that does not read may be the one a label or a value is on.
   if (script.issues.length === 0) issues.push(...worked.issues, ...timeIssues(worked.scenes));

@@ -5,9 +5,10 @@
 import type { Plugin } from "ai-videos/plugin";
 import { GUIDE, SCRIPT_GUIDE } from "./guide.ts";
 import { drawScript, frameSvg } from "./picture.ts";
+import { CONSTRUCTIONS } from "./places.ts";
 import { repairScenario } from "./repair.ts";
 import { COMMANDS, NARRATOR, STAGE, checkScenario, type Scenario } from "./scenario.ts";
-import { ACTIONS, NAMES, checkScript } from "./script.ts";
+import { ACTIONS, NAMES, TABLES, checkScript } from "./script.ts";
 import { timeline } from "./timeline.ts";
 
 export default {
@@ -28,5 +29,5 @@ export default {
   frame: (scenario, { span, ...moment }, size) => frameSvg(scenario, { beat: span, ...moment }, size),
   // A cartoon written as a script: the tool reads its lines, compiles what the check works out, and
   // has each frame of that drawn.
-  script: { actions: ACTIONS, names: NAMES, guide: SCRIPT_GUIDE, check: checkScript, draw: drawScript },
+  script: { actions: ACTIONS, names: NAMES, constructions: CONSTRUCTIONS, tables: TABLES, guide: SCRIPT_GUIDE, check: checkScript, draw: drawScript },
 } satisfies Plugin<Scenario>;

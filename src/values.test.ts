@@ -1,14 +1,14 @@
 // What a script's values come to (values.ts), read, checked and compiled as the tool does it: which
 // level and which of a level's a line takes, formulas worked out where they are read, how long an
-// action lasts, lines' lengths, the defaults; and every mistake, with its line and a hint. The plugin
-// here is a small one written for the test.
+// action lasts, lines' lengths, constructions, the defaults; and every mistake, with its line and a
+// hint. The plugin here is a small one written for the test.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { compile } from "./compile.ts";
 import { secondsOf, type Span } from "./formula.ts";
 import type { Schema } from "./plugin.ts";
 import { readScript } from "./read.ts";
-import { checkScenario, linesIn, type Anchor, type CheckedLine, type Issue, type ScriptPlugin, type WrittenScript, type WrittenValue } from "./scenario.ts";
+import { checkScenario, linesIn, type Anchor, type CheckedLine, type Issue, type SceneActions, type ScriptPlugin, type WrittenScript, type WrittenValue } from "./scenario.ts";
 import { plainValues, valuesTaken } from "./values.ts";
 
 /** A schema that passes any values of these names, each with its default when it has one. */
@@ -387,7 +387,121 @@ test("the values an action takes are those its JSON Schema names, and an example
   const bare = { description: "It goes.", example: "sq go", values: { "~standard": { ...taking({})["~standard"], jsonSchema: { input: () => ({}), output: () => ({}) } } } };
   assert.deepEqual(valuesTaken({ go: bare }), { go: {} });
   assert.deepEqual(plainValues({ to: "left", far: "2 * 3" }), { to: "left", far: 6 });
+  assert.deepEqual(plainValues({ to: "beside(mo, near * 2)" }, { near: 3 }), { to: { construction: "beside", of: ["mo", 6] } });
   assert.throws(() => plainValues({ far: "2s" }), /far=2s: far is no time, and has no unit/);
+});
+
+/** The plugin with constructions and a table of formulas (\`spots\`), and what its check is given: the scene's own keys and each action's values. */
+async function given(rows: string[], { spots, names = PLUGIN.names!, ...levels }: { spots?: unknown; names?: Record<string, number> } & Levels = {}) {
+  let seen: SceneActions[] = [];
+  const plugin: ScriptPlugin = {
+    ...PLUGIN,
+    names,
+    constructions: { beside: { description: "Beside a place.", example: "beside(mo, 2)" }, between: { description: "Between two.", example: "between(sq, mo)" } },
+    tables: ["spots"],
+    check: (scenes) => ((seen = scenes), { scenes: scenes.map(({ actions }) => ({ setting: {}, actions: actions.map(() => ({ values: {}, length: 1 })) })) }),
+  };
+  const script = scenario(rows, levels);
+  if (spots !== undefined) script.scenes[0]!.setting = { colour: "red", spots };
+  const result = await checkScenario(plugin, script, undefined, SPEAKERS, TIMING);
+  if ("issues" in result) return { issues: result.issues, why: result.issues.map(({ line, also = [], message }) => [line, also, message]) };
+  return { setting: seen[0]!.setting, to: seen[0]!.actions.map(({ values }) => (values as { to?: unknown }).to) };
+}
+
+test("a construction is the plugin's to work out: it gets its name, the numbers worked out, and the names that nothing sets", async () => {
+  const made = (construction: string, ...of: unknown[]) => ({ construction, of });
+  assert.deepEqual((await given(["sq slide to=beside(mo, 2 * 3)"])).to, [made("beside", "mo", 6)]);
+  assert.deepEqual((await given(["sq slide to=beside(between(mo, home), slow)"])).to, [made("beside", made("between", "mo", "home"), 0.5)]);
+  // A name in it stands for what the nearest level sets: a number, another name, or a construction.
+  assert.deepEqual((await given(["sq slide to=beside(home, near)", "in order near=5:", "  sq slide to=beside(home, near)", "mo slide to=beside(home, near)"], { cartoon: { near: "1", "mo.near": "2", home: "house" } })).to, [
+    made("beside", "house", 1),
+    made("beside", "house", 5),
+    made("beside", "house", 2),
+  ]);
+  // It may be set on a level itself, and by a name: worked out where it is read.
+  assert.deepEqual((await given(["sq slide", "mo slide", "in order near=5:", "  sq slide"], { cartoon: { to: "there", there: "beside(home, near)", near: "1", "mo.near": "2" } })).to, [made("beside", "home", 1), made("beside", "home", 2), made("beside", "home", 5)]);
+  assert.deepEqual((await given(["sq slide to=beside(+there, 1)"], { cartoon: { there: "between(a-hill, 100%)" } })).to, [made("beside", made("between", "a-hill", 1), 1)]);
+  // What is only in a construction is read.
+  assert.equal("issues" in (await given(["sq slide to=beside(home, near)"], { cartoon: { near: "1" } })), false);
+});
+
+test("a construction the plugin has not, or of what it does not take, is refused, with the line that sets it", async () => {
+  const refusal = async (to: string, levels?: Levels) => {
+    const { issues: [issue], issues } = await given([`sq slide to=${to}`, "sq say: Hi."], levels) as { issues: Issue[] };
+    assert.equal(issues.length, 1, JSON.stringify(issues));
+    return [issue!.message, issue!.hint];
+  };
+  assert.deepEqual(await refusal("near-to(mo, 2)"), ['to=near-to(mo, 2): no construction is named "near-to"', "the constructions are beside and between"]);
+  assert.deepEqual(await refusal("beside(besid(mo, 2), 2)"), ['to=beside(besid(mo, 2), 2): no construction is named "besid"', "the constructions are beside and between: did you mean beside?"]);
+  assert.deepEqual(await why(["sq slide to=beside(mo, 2)"]), [[1, [], 'to=beside(mo, 2): no construction is named "beside"']]);
+  assert.equal(await hint(["sq slide to=beside(mo, 2)"]), "a value is a number, a name, or a formula of these");
+  assert.deepEqual(await refusal("beside(mo, 2s)"), ["to=beside(mo, 2s): what beside takes is no time, and has no unit", "write it without the s"]);
+  assert.equal((await refusal("beside(mo, pause)"))[0], "to=beside(mo, pause): what beside takes is no time, and has no unit");
+  // It is a value by itself, and no number.
+  const stands = "a construction stands by itself, or in another's parentheses: what is worked out goes in its own, as in left-of(pip, near * 2)";
+  assert.deepEqual(await refusal("beside(mo, 2) + 1"), ["to=beside(mo, 2) + 1: beside(mo, 2) is no number", stands]);
+  assert.deepEqual(await refusal("beside(mo, there * 2)", { cartoon: { there: "between(sq, 1)" } }), ["to=beside(mo, there * 2): between(sq, 1) is no number", stands]);
+  assert.equal((await refusal("- beside(mo, 2)"))[0], "to=- beside(mo, 2): beside(mo, 2) is no number");
+  for (const time of ["takes", "speed"]) assert.equal((await refusal(`home ${time}=beside(mo, 2)`))[0], `${time}=beside(mo, 2): beside(mo, 2) is no number`);
+  assert.equal((await refusal("home arrive=beside(mo, 2)"))[0], "arrive=beside(mo, 2): it is no moment of something above");
+  assert.equal((await refusal("home", { cartoon: { pause: "beside(mo, 2)" } }))[0], "pause=beside(mo, 2): beside(mo, 2) is no number");
+  // A name in arithmetic is a number's, in a construction as anywhere: a character is none.
+  assert.deepEqual(await refusal("beside(tower + 1, 2)"), ['to=beside(tower + 1, 2): no value is called "tower"', "set it on the cartoon, a scene or a block (tower: 2), or write a number"]);
+  assert.deepEqual(await refusal("beside(mo + 1, 2)"), ["to=beside(mo + 1, 2): mo is a character, and no number", "a character's name stands by itself, or in a construction, as in beside(mo, 2) and between(sq, mo)"]);
+  assert.deepEqual(await refusal("home takes=there", { cartoon: { there: "mo * 2" } }), ["there=mo * 2: mo is a character, and no number", "a character's name stands by itself, or in a construction, as in beside(mo, 2) and between(sq, mo)"]);
+  assert.equal(await hint(["sq slide far=mo + 1"]), "a character's name stands by itself");
+  // At the line that sets it, with the one that reads it; a moment or a length is known only with the voices.
+  assert.deepEqual((await given(["[a] sq say: Hi.", "sq slide to=there"], { cartoon: { there: "beside(mo, a.length)" } })).why, [[100, [2], "there=beside(mo, a.length): what beside takes is known before anything is spoken, and a line's length is not"]]);
+  assert.deepEqual((await given(["[a] sq say: Hi.", "sq slide to=beside(when, 1)"], { cartoon: { when: "a.end" } })).why, [[2, [], "to=beside(when, 1): only arrive takes a moment of a line"]]);
+  // Values that go round, through constructions.
+  assert.deepEqual((await given(["sq slide to=here"], { cartoon: { here: "beside(there, 1)", there: "between(here, mo)" } })).why, [[101, [1, 100], "the values go round: here is beside(there, 1) and there is between(here, mo)"]]);
+});
+
+test("a scene's table of formulas is worked out at the scene's level, each for whose it is, for the plugin's check", async () => {
+  const levels = { cartoon: { near: "1", home: "house" }, scene: { near: "2", "mo.near": "3" } };
+  assert.deepEqual((await given(["sq say: Hi."], { ...levels, spots: { sq: "beside(mo, near)", mo: "near * 10", tri: "home", sun: 300, moon: "left" } })).setting, {
+    colour: "red",
+    spots: { sq: { construction: "beside", of: ["mo", 2] }, mo: 30, tri: "house", sun: 300, moon: "left" },
+  });
+  // What is no formula, and what is no table, the plugin's check gets as it is written; a block's values are not the scene's.
+  assert.deepEqual((await given(["in order near=5:", "  sq slide far=near"], { ...levels, spots: { sq: [1, 2], mo: null, tri: "near", far: "home", on: true } })).setting!.spots, { sq: [1, 2], mo: null, tri: 2, far: "house", on: true });
+  for (const spots of ["near", 3, ["near"], null]) assert.deepEqual((await given(["sq slide to=beside(home, near)"], { ...levels, spots })).setting!.spots, spots);
+  assert.deepEqual((await given(["sq say: Hi."])).setting, {});
+  // What a table reads is read, and what is wrong in one is said at the scene's line.
+  assert.equal("issues" in (await given(["sq say: Hi."], { cartoon: { near: "1" }, spots: { sq: "near" } })), false);
+  assert.deepEqual((await given(["sq say: Hi."], { cartoon: { near: "1" }, spots: { sq: 1 } })).why, [[100, [], 'nothing reads "near"']]);
+  const wrong = async (text: string, cartoon: Record<string, string> = {}) => (await given(["[a] sq say: Hi."], { cartoon, spots: { sq: text } })).why;
+  assert.deepEqual(await wrong("beside(mo"), [[200, [], 'spots.sq=beside(mo: beside( has no ")" after it']]);
+  assert.deepEqual(await wrong("2 *"), [[200, [], 'spots.sq=2 *: something is missing after "*"']]);
+  assert.deepEqual(await wrong("2s"), [[200, [], "spots.sq=2s: spots.sq is no time, and has no unit"]]);
+  assert.deepEqual(await wrong("a.length"), [[200, [], "spots.sq=a.length: no line is above the scene's own values"]]);
+  assert.deepEqual(await wrong("a.end"), [[200, [], "spots.sq=a.end: only arrive takes a moment of a line"]]);
+  assert.deepEqual(await wrong("nob + 1"), [[200, [], 'spots.sq=nob + 1: no value is called "nob"']]);
+  assert.deepEqual(await wrong("far-off(mo)"), [[200, [], 'spots.sq=far-off(mo): no construction is named "far-off"']]);
+  assert.deepEqual(await wrong("here", { here: "there", there: "here" }), [[101, [100, 200], "the values go round: here is there and there is here"]]);
+});
+
+test("a value has no character's name: in a formula, that is the character", async () => {
+  assert.deepEqual(await issues(["sq slide to=mo"], { cartoon: { mo: "3" } }), [{ line: 100, message: "mo is a character's name, and no value's", hint: "call it something else: in a formula, mo is the character" }]);
+  assert.deepEqual(await why(["sq slide to=tri", "tri slide to=left"], { scene: { "sq.tri": "3" } }), [[201, [], "tri is a character's name, and no value's"]]);
+  assert.deepEqual(await why(["in order narrator=3:", "  sq slide far=narrator"]), [[1, [], "narrator is a character's name, and no value's"]]);
+});
+
+test("what is written as a character's value, and no value is, has a hint of the tables that say how a scene begins", async () => {
+  const hintOf = async (key: string, text = "300") => {
+    const { issues: [issue] } = (await given(["sq slide to=home"], { scene: { [key]: text } })) as { issues: Issue[] };
+    return [issue!.message, issue!.hint.match(/( \(what a scene begins with.*)?$/)![0]];
+  };
+  const begins = " (what a scene begins with is not among its values: spots: { mo: 300 })";
+  assert.deepEqual(await hintOf("mo"), ["mo is a character's name, and no value's", begins]);
+  assert.deepEqual(await hintOf("mo.pos"), ['nothing reads "pos"', begins]);
+  assert.deepEqual(await hintOf("mo.pos.x"), ['"mo.pos.x" is not a value\'s name', begins]);
+  assert.deepEqual(await hintOf("mo.pos", "left"), ['nothing reads "pos"', begins.replace("300", "left")]);
+  // Not for what is no character's, and not when the plugin has no tables.
+  assert.deepEqual(await hintOf("pos"), ['nothing reads "pos"', ""]);
+  assert.deepEqual(await hintOf("slide.pos"), ['nothing reads "pos"', ""]);
+  assert.deepEqual(await hintOf("narrator"), ["narrator is a character's name, and no value's", ""]);
+  assert.doesNotMatch(await hint(["sq slide"], { scene: { "mo.pos": "300" } }), /begins with/);
 });
 
 test("seconds with lengths in them are worked out by the lines' frames", () => {
