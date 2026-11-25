@@ -109,7 +109,24 @@
   purpose fails a test, the four too; of 67 breaks in what lays a script or
   draws a random one, the random tests and the generator's own find 59 (the
   other eight are among the 110).
-- **Next: step 5b, end together.**
+- **Step 5b done 2026-11-25**, its law accepted by the user that day, as
+  proposed. The user's picks: the word is `ending together:`, as
+  `end together:` can be read as the close of a block; a line whose channel
+  is busy ends the whole block later; any anchor in it is refused, also to
+  something outside it, and so is `arrive`. In `all-at-once` Tuk walks in,
+  the words ending as it arrives: the first pick, a walk off the stage, was
+  out of sight 0.9 s before it ended. Checked: `npm test` and
+  `npm run typecheck` here and in `cartoons/`; RayCraft's media typecheck
+  and `test:libs`, no file of it changed; `make --fit` of the ten gives
+  requests equal to the baseline, byte for byte; `hello-script` compiles to
+  the same bytes as before; `all-at-once` made whole has the frames compiled
+  (983), the page's own drawing gives the video's `.svgs`, and its 19 voices
+  are in its sound at their compiled times; 7,757 random plans keep every
+  property, with the plain solver's times; 40,000 different random scripts,
+  20,732 of them with no mistake, neither throw nor break a compiled
+  scenario; of 54 rules broken on purpose, 53 fail a test, and the other (a
+  walk in the block fitted to its voices) changes no timing.
+- **Next: step 6, work out places.**
 
 
 ## Goal
@@ -166,10 +183,11 @@ The structure, from the outside in:
 - **Line:** one thing one character does or says: who, the action, its
   values, and after the colon its text (`pip say: Hello!`).
 - **Block:** lines grouped under a header that says how they relate:
-  *in order* (each after the one before) or *together* (all begin at
-  once). A block is used as a line is: it has a start and an end, and
-  may hold blocks. A scene's script is a block in order; a line joined
-  to the one before (`&`) is together with it.
+  *in order* (each after the one before), *together* (all begin at
+  once) or *ending together* (all end at once: lines alone). A block is
+  used as a line is: it has a start and an end, and may hold blocks. A
+  scene's script is a block in order; a line joined to the one before
+  (`&`) is together with it.
 - **Level:** the cartoon, a scene, a block, a line. A value set on one
   holds for the levels inside it.
 
@@ -259,7 +277,7 @@ script's words for each are settled in its step.
 | At a share of a line above | `@ a.50%` | in |
 | At a word of a line above | `@ a.word(mole)` | in, estimated |
 | At a moment of a line below | | out: a loop could be written |
-| So that it ends with the longest of its block | a voice with a longer walk | step 5b |
+| So that it ends with the longest of its block | `ending together:` | in |
 | By a share of its block's spare time | `justify=center` | out |
 | On a grid of beats | `every=beat` | out |
 
@@ -275,7 +293,7 @@ script's words for each are settled in its step.
 | Open: to the end of its block | `look-at`, a loop | in |
 | Cut: to the end of its block, if not ended before | a radio under the talk | in |
 | Repeated | `jump times=3`, `loop` | in |
-| A voice placed so that it ends at a moment | `say ends=a.end` | out, but in step 5b's block |
+| A voice placed so that it ends at a moment | `say ends=a.end` | out, but in an `ending together:` |
 
 | Where | Example | |
 | --- | --- | --- |

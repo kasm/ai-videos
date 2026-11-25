@@ -49,10 +49,10 @@ async function compiled(example: string): Promise<(CompiledLine & { end: number 
 const example = (said: string) => EXAMPLES.find((text) => text.includes(said))!;
 
 test("the tool's part shows scripts the tool takes, with no action but its own and one made up for values, and they compile", async () => {
-  assert.equal(EXAMPLES.length, 7);
+  assert.equal(EXAMPLES.length, 8);
   for (const text of EXAMPLES) {
     assert.ok((await compiled(text)).length > 0);
-    assert.deepEqual(new Set(linesIn(readScript(text).items).map(({ action }) => action)), new Set(text.includes("takes=") ? ["say", "go"] : ["say"]));
+    assert.deepEqual(new Set(linesIn(readScript(text).items).map(({ action }) => action)), new Set(text.includes(" go to=") ? ["say", "go"] : ["say"]));
   }
   assert.equal(FILES.length, 1);
   // They show every kind of block, and what joins, labels and anchors.
@@ -65,7 +65,7 @@ test("the tool's part shows scripts the tool takes, with no action but its own a
     item.items.forEach(look);
   };
   for (const text of EXAMPLES) readScript(text).items.forEach(look);
-  assert.deepEqual([...seen].sort(), ["&", "end", "in order", "label", "together", "under", "word"]);
+  assert.deepEqual([...seen].sort(), ["&", "end", "ending together", "in order", "label", "together", "under", "word"]);
 });
 
 test("in order: a line begins when the one above has ended, after the pause", async () => {
@@ -92,6 +92,14 @@ test("at once: voices together and joined, talk over a radio that is waited for,
   assert.equal(talk[0]!.from, first!.from, "they begin when it does");
   assert.ok(second!.frames < 50, "its second line is cut");
   assert.equal(second!.end, talk[2]!.end, "where the talk ends");
+});
+
+test("ending together: the words end as somebody arrives, at their own pace, and what follows waits for both", async () => {
+  const [cat, narrator, ann] = await compiled(example("ending together:"));
+  assert.deepEqual([cat!.from, cat!.frames], [18, 60], "2 seconds, its own");
+  assert.equal(narrator!.end, cat!.end);
+  assert.ok(narrator!.from > cat!.from + 20, "the words wait");
+  assert.equal(ann!.from, cat!.end + 12);
 });
 
 test("an anchor: one breaks in at a word, and one a little before the end", async () => {
@@ -132,6 +140,13 @@ test("what the tool's part says is refused, is refused", async () => {
   assert.equal(await refused("in order:", "  under:", "    [a] ann say: One.", "  ben say @ a.end: Two."), 1);
   assert.equal(await refused("in order:", "  under:", "    ann say: One.", "  ben say: Two.", "  ann say: Three."), 1);
   assert.equal(await refused("ann say: One.", "under:", "  ben say: Two."), 1);
+  assert.equal(await refused("[a] ben say: One.", "ending together:", "  ann say @ a.50%: One."), 1);
+  assert.equal(await refused("[a] ben say: One.", "ending together:", "  ann go to=pond arrive=a.end"), 1);
+  assert.equal(await refused("ending together:", "  ann say: One.", "  in order:", "    ben say: Two."), 1);
+  assert.equal(await refused("ending together:", "  ann say: One.", "  & ben say: Two."), 1);
+  assert.equal(await refused("ending together:", "  ann say: One.", "  ann say: Two."), 1);
+  assert.equal(await refused("ending together:", "  ann go to=pond", "  ann go to=hill"), 1);
+  assert.equal(await refused("[a] ben say: One.", "ending together @ a.50%:", "  ann go to=pond", "  ann say: Two."), 0);
   assert.equal(await refused("in order beat=2s:", "  ann say: One."), 1, "a value that nothing reads");
   assert.equal(await refused("in order one=two two=one:", "  ann go to=pond takes=one"), 1);
   assert.equal(await refused("ann go to=pond takes=2s speed=2"), 1);
@@ -143,7 +158,7 @@ test("what the tool's part says is refused, is refused", async () => {
 });
 
 test("the tool's part says what a script has: a line's form, say, blocks, joining, labels and anchors", () => {
-  for (const said of ["`script: |`", "`narrator`", "`say`", "`name=value`", "a colon and the words", "in order", "`#`", "`together:`", "`in order:`", "`under:`", "`&`", "`@`", "`prev`", "`block`", "`a.word(mole)`", "`- 0.5s`", "`values:`", "`50%`", "`pause`", "`lead`", "`tail`", "`takes=2s`", "`speed=0.5`", "`arrive=a.end - 0.5s`", "`a.length`", "`ann.speed`", "`go.speed`"]) {
+  for (const said of ["`script: |`", "`narrator`", "`say`", "`name=value`", "a colon and the words", "in order", "`#`", "`together:`", "`ending together:`", "`in order:`", "`under:`", "`&`", "`@`", "`prev`", "`block`", "`a.word(mole)`", "`- 0.5s`", "`values:`", "`50%`", "`pause`", "`lead`", "`tail`", "`takes=2s`", "`speed=0.5`", "`arrive=a.end - 0.5s`", "`a.length`", "`ann.speed`", "`go.speed`"]) {
     assert.ok(SCRIPT.includes(said), said);
   }
 });

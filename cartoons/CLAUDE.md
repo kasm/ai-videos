@@ -281,8 +281,8 @@ scenes:
 A cartoon may be written as a script: each scene has a `script:`, a
 block of lines, in place of `beats:`. `videos/hello-script.yaml` is
 `hello` written so, and `videos/all-at-once.yaml` has what can happen at
-once: a chorus, an interruption, a murmur under a talk, a radio, its
-pauses all of one named value. The plan
+once: a chorus, an interruption, a radio, words that end with a walk, a
+murmur under a talk, its pauses all of one named value. The plan
 `docs/plans/compiled-scenario.md` builds this step by step, and the
 seven cartoons stay in beats until its end.
 `make` checks and compiles it (`.cache/<name>/compiled.json`; `--fit`
@@ -311,13 +311,15 @@ scenes:
   the stage, and a name the file's `cast:` gives a voice (a radio) is
   only heard. The lines happen in the order written: a walk above a line
   is over before the line is said.
-- **Blocks** are the tool's too: `in order:`, `together:` and `under:`
-  (cut where its block ends), `&` before a row joined to the one above,
-  and an anchor, `@ a.word(mole)`, for one that begins within another. A
-  walk joined to words lasts as long as they do, at most twice as fast
-  as its own pace and at least half (`timing.moves`), if it is given no
-  length of its own. A character's walks are one at a time; a walk is
-  never under the rest.
+- **Blocks** are the tool's too: `in order:`, `together:`,
+  `ending together:` (its lines end at once) and `under:` (cut where its
+  block ends), `&` before a row joined to the one above, and an anchor,
+  `@ a.word(mole)`, for one that begins within another. A walk joined to
+  words lasts as long as they do, at most twice as fast as its own pace
+  and at least half (`timing.moves`), if it is given no length of its
+  own; in an `ending together:` it keeps its own pace, and the words
+  wait. A character's walks are one at a time; a walk is never under the
+  rest.
 - **`walk to=<mark>`** is the plugin's only action so far (`ACTIONS`,
   `script.ts`): the character goes from where the lines above left it to
   the mark, at `PACE.walk`. It is refused for a character the scene does

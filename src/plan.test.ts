@@ -133,6 +133,25 @@ test("under the rest: cut where the block it is in ends, and it moves nothing", 
   assert.deepEqual(when(["together:", `  [a] sq say: ${TWENTY}`, "  under @ a.50%:", `    radio say: ${TWENTY}`]), { 2: [5, 25], 4: [15, 25] });
 });
 
+test("ending together: a voice ends with a longer walk, two voices at once, and one that waits for its channel ends them all later", () => {
+  assert.deepEqual(when(["ending together:", "  sq slide to=left", `  narrator say: ${TEN}`, `sq say: ${TEN}`]), { 2: [5, 25], 3: [15, 25], 4: [28, 38] });
+  assert.deepEqual(when(["ending together:", `  mo say: ${TEN}`, `  tri say: ${TWENTY}`, `sq say: ${TEN}`]), { 2: [15, 25], 3: [5, 25], 4: [28, 38] });
+  assert.deepEqual(when(["together:", `  radio say: ${TWENTY}`, "  ending together:", "    mo slide to=left", `    radio say: ${TEN}`, `sq say: ${TEN}`]), { 2: [5, 25], 4: [15, 35], 5: [25, 35], 6: [38, 48] });
+  // An action is not fitted there: it goes at its own speed, or takes what it is given.
+  assert.deepEqual(when(["ending together:", `  narrator say: ${TWENTY}${TEN}`, "  sq slide to=left", "  mo slide to=left takes=1s"]), { 2: [5, 35], 3: [15, 35], 4: [25, 35] });
+  // A character may act and speak in it: those are two channels.
+  assert.deepEqual(when(["ending together:", "  sq slide to=left", `  sq say: ${TEN}`]), { 2: [5, 25], 3: [15, 25] });
+});
+
+test("a block that ends its lines together is anchored, joined, named, and under the rest, as any", () => {
+  assert.deepEqual(when([`[a] sq say: ${TWENTY}`, "ending together @ a.50%:", `  mo say: ${TEN}`, "  tri slide to=left", `sq say @ prev.start: ${TEN}`]), { 1: [5, 25], 3: [25, 35], 4: [15, 35], 5: [25, 35] });
+  assert.deepEqual(when([`sq say: ${TEN}`, "& ending together:", `    [m] mo say: ${TEN}`, "    tri slide to=left", `narrator say @ m.start: ${TEN}`]), { 1: [5, 15], 3: [15, 25], 4: [5, 25], 5: [15, 25] });
+  // An action joined to it is fitted to its voices.
+  assert.deepEqual(when(["ending together:", `  mo say: ${TEN}`, `  tri say: ${TWENTY}${TEN}`, "& sq slide to=left"]), { 2: [25, 35], 3: [5, 35], 4: [5, 35] });
+  // Under the rest, and cut: one that would have begun later is not there.
+  assert.deepEqual(when(["in order:", "  under:", "    ending together:", `      radio say: ${TWENTY}`, "      mo say: 01234", `  sq say: ${TEN}`, `tri say: ${TEN}`]), { 4: [5, 15], 5: [20, 20], 6: [5, 15], 7: [18, 28] });
+});
+
 test("a word of a line that is cut is where it would be said, cut or not", () => {
   // The interrupted goes on under the line that interrupts it, and stops with it.
   assert.deepEqual(when(["in order:", "  under:", "    [a] sq say: abcd efgh ijkl mnopq", "  mo say @ a.word(efgh): 012345", "sq say: 01"]), { 3: [5, 16], 4: [10, 16], 5: [19, 21] });
@@ -201,6 +220,63 @@ test("refused: a voice that follows a cut one in its block, and an action that w
   assert.deepEqual(why(["in order:", "  under:", "    radio say: News.", "    radio say: More.", "  sq say: One.", "radio say: The end."]), []);
   assert.deepEqual(refused(["in order:", "  under:", "    sq say: One.", "    in order:", "      sq slide to=left", "  mo say: Two."]), [
     { line: 5, also: [2], message: "an action is never under the rest: cut, it would leave sq where only the voices know", hint: "write it beside the under: block, not in it" },
+  ]);
+});
+
+test("refused in a block that ends its lines together: one who speaks or acts twice, a line with a start of its own, and a block", () => {
+  assert.deepEqual(refused(["ending together:", "  sq say: One.", "  mo say: Two.", "  sq say: Three."]), [
+    {
+      line: 4,
+      also: [1, 2],
+      message: "sq is busy with line 2, which ends when this does: the block of line 1 ends its lines together",
+      hint: "write one of the two before that block or after it, or give it to another",
+    },
+  ]);
+  assert.deepEqual(why(["ending together:", "  sq slide to=left", "  sq say: One.", "  sq slide to=right"]), [[4, [1, 2], "sq is busy with line 2, which ends when this does: the block of line 1 ends its lines together"]]);
+
+  const anchored = (anchor: string) => refused(["[a] sq say: One.", "ending together:", "  [b] mo say: Two.", `  tri say @ ${anchor}: Three.`]);
+  for (const anchor of ["b.50%", "b.end - 0.5s", "prev.start", "a.start", "block.start + 1s", "block.end"]) {
+    assert.deepEqual(anchored(anchor), [
+      {
+        line: 4,
+        also: [2],
+        message: "the block of line 2 ends its lines together, so a line in it has no start of its own",
+        hint: "leave its anchor out, or begin the whole block by it: ending together @ a.50%:",
+      },
+    ]);
+  }
+
+  const block = (...rows: string[]) => refused(["ending together:", "  sq say: One.", ...rows]);
+  for (const header of ["in order:", "together:", "ending together:", "under:"]) {
+    assert.deepEqual(block(`  ${header}`, "    mo say: Two.", "    tri say: Three."), [
+      {
+        line: 3,
+        also: [1],
+        message: "the block of line 1 ends its lines together, and holds no block",
+        hint: "write its lines as lines of that block, or all of it beside that block, in a together: around both",
+      },
+    ]);
+  }
+  assert.deepEqual(block("  & mo say: Two.", "  tri say: Three."), [
+    {
+      line: 2,
+      also: [1],
+      message: "the block of line 1 ends its lines together, and holds no block: lines joined by & are one",
+      hint: "leave the & out: all rows of that block end at once as they are",
+    },
+  ]);
+  // Every mistake of one is found in one pass.
+  assert.deepEqual(why(["ending together:", "  sq say: One.", "  sq say @ prev.50%: Two.", "  in order:", "    mo say: Three."]).map(([line]) => line).toSorted(), [3, 3, 4]);
+});
+
+test("refused: a loop through a block that ends its lines together, in words that say so", () => {
+  // The first slide is fitted to the words, they end with the second, and that waits for the first.
+  const loop = (walk = "") => why(["together:", `  sq slide to=left${walk}`, "  ending together:", "    sq slide to=right", "    mo say: There."]);
+  assert.deepEqual(loop(), [[2, [3, 5], "it goes round: line 2 waits for line 5, line 5 ends with the block of line 3 and the block of line 3 waits for line 2"]]);
+  assert.deepEqual(loop(" takes=2s"), []);
+  // One that is not in it waits for it.
+  assert.deepEqual(why(["together:", "  sq slide to=left", "  [b] ending together:", "    sq slide to=right", "  tri say @ b.end: Three."]), [
+    [5, [2, 3], "it goes round: line 2 waits for line 5, line 5 waits for the block of line 3 and the block of line 3 waits for line 2"],
   ]);
 });
 

@@ -15,9 +15,10 @@ export const SET =/^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)?$/;
 const BLOCKS: Record<string, Pick<ScriptBlock, "order" | "under">> = {
   "in order": { order: "in order" },
   together: { order: "together" },
+  "ending together": { order: "ending together" },
   under: { order: "in order", under: true },
 };
-const HEADERS = "the blocks are in order:, together: and under:, each on a row of its own, its lines under it and indented";
+const HEADERS = "the blocks are in order:, together:, ending together: and under:, each on a row of its own, its lines under it and indented";
 
 /** The tool's own action: a character says the line's text, in its voice. */
 export const SAY = "say";

@@ -48,10 +48,10 @@ export interface Line extends Placeable {
   length: number | Fitted | "open";
 }
 
-/** Lines and blocks, each after those above it (in order) or all begun at once (together). */
+/** Lines and blocks, each after those above it (in order) or all begun at once (together); or lines alone, all ended at once (ending together). */
 export interface Block extends Placeable {
   kind: "block";
-  order: "in order" | "together";
+  order: "in order" | "together" | "ending together";
   items: Item[];
   /** In order: frames from the end of all above to the next. None when left out, as the two below. */
   pause?: number;
@@ -79,6 +79,10 @@ export type Refusal =
   | { why: "held"; item: Line; by: Line; channel: string }
   /** A move that would be cut: it would leave its character where only the voices know. */
   | { why: "cut"; item: Line }
+  /** `item` and `by`, above it, do two things on one channel in a block whose lines end at once. */
+  | { why: "twice"; item: Line; by: Line; channel: string }
+  /** `item` has its times in itself and not by its `block`, whose lines end at once: a block, a line that is anchored, or a move that is told when to arrive. */
+  | { why: "own"; item: Item; block: Block }
   /** Each of `items` waits for the next one, and the last for the first. */
   | { why: "loop"; items: Item[] };
 
@@ -96,6 +100,7 @@ interface Cell extends Term {
 
 /** A cell's value, and `frames` after it. */
 const after = (read: Cell, frames = 0): Term => ({ reads: [read], work: () => read.value + frames });
+const later = ({ reads, work }: Term, frames: number): Term => ({ reads, work: () => work() + frames });
 const readsOf = (terms: Term[]) => terms.flatMap(({ reads }) => reads);
 const latest = (terms: Term[]): Term => ({ reads: readsOf(terms), work: () => Math.max(...terms.map(({ work }) => work())) });
 const earliest = (terms: Term[]): Term => ({ reads: readsOf(terms), work: () => Math.min(...terms.map(({ work }) => work())) });
@@ -104,6 +109,18 @@ const isBlock = (item: Item): item is Block => item.kind === "block";
 
 /** What a block does not wait for: the cut and the open. */
 const isLeft = (item: Item) => item.cut === true || (!isBlock(item) && item.length === "open");
+
+/** Whether a block's lines end at once, each begun by its end. */
+const endsTogether = (block: Block | undefined) => block?.order === "ending together";
+
+/** What has its times in itself, so that it may not be in a block whose lines end at once: a block, and a line with a moment of its own. */
+const hasOwn = (item: Item) => isBlock(item) || item.at !== undefined || (typeof item.length === "object" && item.length.arrive !== undefined);
+
+/** How long a line lasts in a block whose lines end at once: what it is given, or a move's own length. None for what that block does not wait for. */
+function lengthIn(item: Item): number | undefined {
+  if (isBlock(item) || isLeft(item) || item.length === "open") return undefined;
+  return typeof item.length === "number" ? item.length : item.length.own;
+}
 
 /** The voices a block waits for, however deep in it. */
 const voicesOf = (block: Block): Line[] => block.items.filter((item) => !isLeft(item)).flatMap((item) => (isBlock(item) ? voicesOf(item) : item.kind === "voice" ? [item] : []));
@@ -152,32 +169,53 @@ function graphOf(plan: Block) {
     };
   };
 
-  /** A start: the latest of its block's start, its own anchor or its block's rule, and its channels. */
-  const startOf = (x: Item, block: Block): Term => {
-    const terms = [after(start(block))];
-    const above = block.items.slice(0, block.items.indexOf(x)).filter((item) => !isLeft(item));
-    const anchor = x.at && moment(x.at, x);
-    if (anchor) terms.push(anchor);
-    else if (block.order === "in order" && above.length > 0) terms.push(...above.map((item) => after(end(item), block.pause ?? 0)));
-    else if (block.order === "in order") terms.push(after(start(block), block.lead ?? 0));
-    if (isBlock(x)) return latest(terms);
+  /** When a line's channels are free: the ends of those above it on them, and of the blocks that cut those. */
+  const freeOf = (x: Line): Term[] => {
+    const terms: Term[] = [];
     let held: Refusal | undefined;
+    let twice: Refusal | undefined;
     for (const y of order.slice(0, order.indexOf(x))) {
       const channel = isBlock(y) ? undefined : y.on.find((one) => x.on.includes(one));
       if (isBlock(y) || channel === undefined) continue;
       // What is cut holds its channel until its block ends, however long it lasts itself.
       const until = cutBy(y, x).at(-1);
-      if (until && withBlocks(x).includes(until)) held = { why: "held", item: x, by: y, channel };
+      const block = around.get(x)![0];
+      if (endsTogether(block) && around.get(y)![0] === block) twice = { why: "twice", item: x, by: y, channel };
+      else if (until && withBlocks(x).includes(until)) held = { why: "held", item: x, by: y, channel };
       else terms.push(after(end(until ?? y)));
     }
     if (held) refused.push(held);
+    if (twice) refused.push(twice);
+    return terms;
+  };
+  const free = new Map(order.map((x): [Item, Term[]] => [x, isBlock(x) ? [] : freeOf(x)]));
+
+  /** A start: the latest of its block's start, its own anchor or its block's rule, and its channels. */
+  const startOf = (x: Item, block: Block): Term => {
+    const terms = [after(start(block)), ...free.get(x)!];
+    const above = block.items.slice(0, block.items.indexOf(x)).filter((item) => !isLeft(item));
+    const anchor = x.at && moment(x.at, x);
+    const length = lengthIn(x);
+    if (anchor) terms.push(anchor);
+    else if (endsTogether(block) && length !== undefined) terms.push(after(end(block), -(block.tail ?? 0) - length));
+    else if (block.order === "in order" && above.length > 0) terms.push(...above.map((item) => after(end(item), block.pause ?? 0)));
+    else if (block.order === "in order") terms.push(after(start(block), block.lead ?? 0));
     return latest(terms);
   };
 
-  /** A block's end: after the last it waits for, and its tail. */
+  /**
+   * A block's end: after the last it waits for, and its tail. One whose lines end at once ends when the
+   * last of them would, if each began as soon as the block has and its channels are free. It reads none
+   * of their cells, as they begin by it.
+   */
   const endOfBlock = (x: Block): Term => {
-    const last = latest([after(start(x)), ...x.items.filter((item) => !isLeft(item)).map((item) => after(end(item)))]);
-    return { reads: last.reads, work: () => last.work() + (x.tail ?? 0) };
+    const ends = x.items.flatMap((item): Term[] => {
+      if (isLeft(item)) return [];
+      if (!endsTogether(x)) return [after(end(item))];
+      const length = lengthIn(item);
+      return length === undefined ? [] : [later(latest([after(start(x)), ...free.get(item)!]), length)];
+    });
+    return later(latest([after(start(x)), ...ends]), x.tail ?? 0);
   };
 
   /** A line's end: its length after its start, or where what it is fitted to ends, within its limits, or its block's end. */
@@ -193,6 +231,7 @@ function graphOf(plan: Block) {
 
   for (const x of order) {
     const block = around.get(x)![0];
+    if (block && endsTogether(block) && hasOwn(x)) refused.push({ why: "own", item: x, block });
     if (block) Object.assign(start(x), startOf(x, block));
     if (isBlock(x)) Object.assign(end(x), endOfBlock(x));
     else if (block) Object.assign(end(x), endOfLine(x, block));

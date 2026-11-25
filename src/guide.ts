@@ -31,9 +31,10 @@ narrator ${SAY}: Then somebody calls: hello, is anyone there?
 
 ### At once
 
-For what does not happen in order there are three blocks. A block is a header on a row of its own, ending with a colon, and its rows under it, indented by two spaces. A block is used as a line is: the row after it waits for the whole of it, and a block may be in a block.
+For what does not happen in order there are four blocks. A block is a header on a row of its own, ending with a colon, and its rows under it, indented by two spaces. A block is used as a line is: the row after it waits for the whole of it, and a block may be in a block.
 
 - \`together:\` all its rows begin at once. It lasts until the last of them has ended, so what comes after waits for the longest.
+- \`ending together:\` all its rows end at once, where the longest of them does: the shorter ones begin later. Its rows are lines alone: one that is said and one action, at most, by each character. An action in it is not hurried or slowed: it goes at its own speed, or the one it is given.
 - \`in order:\` each row begins when all above it in the block has ended, as in the script itself. It is for several lines in a row inside a \`together:\`, or for what an \`under:\` is under.
 - \`under:\` its rows, in order, go on under the rest of the block it is in, and are cut off where that ends. Nothing waits for them.
 
@@ -44,6 +45,15 @@ together:
   ann ${SAY}: Good morning!
   ben ${SAY}: Good morning!
 narrator ${SAY}: And nobody answered.
+\`\`\`
+
+Somebody goes somewhere at their own pace, and the words about it end as they arrive:
+
+\`\`\`script
+ending together:
+  cat go to=pond
+  narrator ${SAY}: And the cat went home.
+ann ${SAY}: Good night, cat.
 \`\`\`
 
 Talk over something long that is waited for: the last line comes after the radio has ended:
@@ -154,6 +164,7 @@ narrator ${SAY} @ prev.end + 1s: Nobody waited.
 - An action in an \`under:\`. Only what is said may be cut.
 - A line by somebody who is \`under:\` in the same block: they are busy until it ends. Give it to another, or write it after the block.
 - An \`under:\` with nothing to be under: last in a block in order, or alone in its block.
+- In an \`ending together:\`, a row that has a time of its own, by an \`@\` or by \`arrive\`; a block, or a row joined by \`&\`; and two rows of one character's words, or of its actions. Anchor the whole block, and write a block beside it, in a \`together:\` around both.
 - A value that nothing reads, values that read each other in a circle, and two of \`takes\`, \`speed\` and \`arrive\` set for one action on one level.
 - The length of a block, or of an action that is fitted to words: those are known only once everything has its place.
 

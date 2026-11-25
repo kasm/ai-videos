@@ -1,8 +1,8 @@
 # What a script can have at once, one after another: a walk while the narrator talks, a chorus, an
-# interruption at a word, a talk over a radio that is waited for, and a murmur of two lines under
-# three others, cut where they end. All its pauses are one beat, and the radio's two: beat changed
-# times all of it anew. The format is in CLAUDE.md ("The script"); the characters and the backgrounds
-# are drawn in library.yaml, and the radio is only heard.
+# interruption at a word, a talk over a radio that is waited for, words that end as a walk does, and a
+# murmur of two lines under three others, cut where they end. All its pauses are one beat, and the
+# radio's two: beat changed times all of it anew. The format is in CLAUDE.md ("The script"); the
+# characters and the backgrounds are drawn in library.yaml, and the radio is only heard.
 use: cartoon
 outputs: { web: true } # its page too, beside the video
 cast: { radio: am_michael }
@@ -31,10 +31,12 @@ scenes:
           mo say: They know, Pip.
       tuk say: Poor badger.
   - background: sundown
-    places: { pip: left, tuk: middle, mo: right }
+    places: { pip: left, tuk: off-right, mo: right }
     faces: { tuk: left, mo: left }
     script: |
-      narrator say: In the evening, Mo counts the reeds.
+      ending together:
+        tuk walk to=middle
+        narrator say: In the evening, Mo counts the reeds.
       in order:
         under:
           mo say: One reed, two reeds, three reeds, four reeds.

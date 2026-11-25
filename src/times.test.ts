@@ -15,6 +15,7 @@ const fitted = (own: number): Fitted => ({ own, least: Math.ceil(own / 2), most:
 const look = (name: string, who: string, more: More<Line> = {}): Line => ({ kind: "move", name, on: [`${who} eyes`], length: "open", ...more });
 const inOrder = (name: string, items: Item[], more: More<Block> = {}): Block => ({ kind: "block", name, order: "in order", pause: 12, items, ...more });
 const together = (name: string, items: Item[], more: More<Block> = {}): Block => ({ kind: "block", name, order: "together", items, ...more });
+const ending = (name: string, items: Item[], more: More<Block> = {}): Block => ({ kind: "block", name, order: "ending together", items, ...more });
 /** A scene at 30 frames a second with the tool's pauses: 0.6 s before its first line, 0.4 s between lines, 1 s after its last. */
 const scene = (...items: Item[]): Block => inOrder("scene", items, { lead: 18, tail: 30 });
 const at = (of: string, where: Moment["at"], plus = 0): Moment => ({ of, at: where, plus });
@@ -28,6 +29,8 @@ const why = (plan: Block) =>
   refusals(plan).map((one) => {
     if (one.why === "loop") return `loop: ${one.items.map(({ name }) => name).join(", ")}`;
     if (one.why === "held") return `held: ${one.item.name} by ${one.by.name} (${one.channel})`;
+    if (one.why === "twice") return `twice: ${one.item.name} and ${one.by.name} (${one.channel})`;
+    if (one.why === "own") return `own: ${one.item.name} in ${one.block.name}`;
     return one.why === "below" ? `below: ${one.item.name} names ${one.name}` : `cut: ${one.item.name}`;
   });
 
@@ -189,6 +192,82 @@ test("a cut block in a cut block stops where the first of their blocks ends", ()
   assert.deepEqual(nested(40), [[18, 58], [18, 58], [90, 90]]);
 });
 
+test("ending together: a voice ends with a longer walk, which keeps its own pace, and what follows waits for both", () => {
+  const plan = scene(ending("both", [move("walk", "pip", 113), voice("first", "narrator", 67)]), voice("second", "narrator", 37));
+  assert.deepEqual(when(plan), { scene: [0, 210], both: [18, 131], walk: [18, 131], first: [64, 131], second: [143, 180] });
+  // The walk begins later than longer words, and takes the length it is given.
+  assert.deepEqual(only(scene(ending("both", [voice("first", "narrator", 150), move("walk", "pip", 113)])), "both", "first", "walk"), [[18, 168], [18, 168], [55, 168]]);
+  assert.deepEqual(only(scene(ending("both", [move("walk", "pip", 113, { length: 30 }), voice("first", "narrator", 67)])), "walk", "first"), [[55, 85], [18, 85]]);
+});
+
+test("ending together: two voices end at once, whichever is written first, and so do three", () => {
+  const both = (...items: Item[]) => only(scene(ending("both", items), voice("tuk", "tuk", 30)), "both", "pip", "mo", "tuk");
+  const [pip, mo] = [() => voice("pip", "pip", 45), () => voice("mo", "mo", 60)];
+  assert.deepEqual(both(pip(), mo()), [[18, 78], [33, 78], [18, 78], [90, 120]]);
+  assert.deepEqual(both(mo(), pip()), [[18, 78], [33, 78], [18, 78], [90, 120]]);
+  assert.deepEqual(both(pip(), mo(), sound("bell", 10)), [[18, 78], [33, 78], [18, 78], [90, 120]]);
+  assert.deepEqual(only(scene(ending("one", [pip()])), "one", "pip"), [[18, 63], [18, 63]]);
+});
+
+test("ending together: one that waits for its channel ends the block later, and the rest with it", () => {
+  const waiting = (more: number, walk: number) =>
+    only(scene(together("both", [voice("news", "radio", 100), ending("end", [move("walk", "mo", walk), voice("more", "radio", more)])])), "end", "walk", "more", "both");
+  assert.deepEqual(waiting(40, 30), [[18, 158], [128, 158], [118, 158], [18, 158]]);
+  // The longest of them is as long as that wait, or longer: it begins with the block.
+  assert.deepEqual(waiting(40, 140), [[18, 158], [18, 158], [118, 158], [18, 158]]);
+  assert.deepEqual(waiting(40, 170), [[18, 188], [18, 188], [148, 188], [18, 188]]);
+  // What is cut holds its channel until its block ends.
+  const cut = [together("both", [voice("news", "radio", 100, { cut: true }), voice("one", "pip", 20)]), ending("end", [voice("two", "mo", 10), voice("more", "radio", 40)])];
+  assert.deepEqual(only(scene(together("outer", cut)), "both", "end", "two", "more"), [[18, 38], [18, 78], [68, 78], [38, 78]]);
+});
+
+test("ending together: what it does not wait for begins with it, and ends it no later", () => {
+  const plan = (radio: number) => only(scene(ending("both", [voice("one", "pip", 60), voice("radio", "radio", radio, { cut: true }), look("looks", "mo"), voice("two", "tuk", 20)])), "both", "one", "radio", "looks", "two");
+  assert.deepEqual(plan(20), [[18, 78], [18, 78], [18, 38], [18, 78], [58, 78]]);
+  assert.deepEqual(plan(400), [[18, 78], [18, 78], [18, 78], [18, 78], [58, 78]]);
+});
+
+test("ending together: the block is used as any, anchored and named, and what is in it is named too", () => {
+  const anchored = scene(voice("a", "pip", 60), ending("both", [voice("b", "mo", 50), voice("c", "tuk", 20)], { at: at("a", 0.5) }), voice("d", "pip", 10));
+  assert.deepEqual(only(anchored, "both", "b", "c", "d"), [[48, 98], [48, 98], [78, 98], [110, 120]]);
+  // Something beside it begins by a line of it, or by its end; a walk beside it is fitted to its voices.
+  const named = [voice("c", "tuk", 10, { at: at("b", "start", 5) }), voice("d", "radio", 10, { at: at("both", "end", -4) }), move("walk", "pip", 100)];
+  assert.deepEqual(only(scene(together("all", [ending("both", [voice("a", "pip", 70), voice("b", "mo", 20)]), ...named])), "a", "b", "c", "d", "walk"), [[18, 88], [68, 88], [73, 83], [84, 94], [18, 94]]);
+  // Its tail is after they have all ended.
+  assert.deepEqual(only(scene(ending("both", [voice("a", "pip", 70), voice("b", "mo", 20)], { tail: 9 }), voice("c", "pip", 10)), "both", "a", "b", "c"), [[18, 97], [18, 88], [68, 88], [109, 119]]);
+});
+
+test("ending together: inside what is cut, as if nothing cut it", () => {
+  const cut = (words: number) => only(scene(together("both", [ending("hum", [voice("a", "mo", 100), voice("b", "tuk", 30)], { cut: true }), voice("one", "pip", words)])), "both", "hum", "a", "b");
+  assert.deepEqual(cut(200), [[18, 218], [18, 118], [18, 118], [88, 118]]);
+  assert.deepEqual(cut(80), [[18, 98], [18, 98], [18, 98], [88, 98]]);
+  assert.deepEqual(cut(60), [[18, 78], [18, 78], [18, 78], [88, 88]], "one that would begin later is not there");
+});
+
+test("ending together: refused, two on one channel, and what has its times in itself", () => {
+  assert.deepEqual(why(scene(ending("both", [voice("one", "pip", 40), voice("two", "mo", 30), voice("three", "pip", 20)]))), ["twice: three and one (pip voice)"]);
+  assert.deepEqual(why(scene(ending("both", [voice("one", "pip", 40), voice("two", "pip", 30), voice("three", "pip", 20)]))), ["twice: two and one (pip voice)", "twice: three and two (pip voice)"]);
+  // The cut and the open are no exception.
+  assert.deepEqual(why(scene(ending("both", [voice("one", "pip", 40, { cut: true }), voice("two", "pip", 30)]))), ["twice: two and one (pip voice)"]);
+  assert.deepEqual(why(scene(ending("both", [look("looks", "mo"), voice("one", "pip", 30), look("away", "mo")]))), ["twice: away and looks (mo eyes)"]);
+  // Outside it, one follows the other.
+  assert.deepEqual(why(scene(ending("both", [voice("one", "pip", 40), voice("two", "mo", 30)]), voice("three", "pip", 20))), []);
+
+  // Anchored to a line of it, or to anything: it would begin by that, and by the block's end too.
+  const anchored = (where: Moment) => why(scene(voice("a", "pip", 40), ending("both", [voice("b", "mo", 40), voice("c", "tuk", 30, { at: where })])));
+  for (const where of [at("a", 0.5), at("b", "start"), at("b", "end", -5), at("block", "start"), at("both", "end")]) assert.deepEqual(anchored(where), ["own: c in both"]);
+  assert.deepEqual(why(scene(voice("a", "pip", 40), ending("both", [voice("b", "mo", 40), look("looks", "tuk", { at: at("a", 0.5) })]))), ["own: looks in both"]);
+  assert.deepEqual(why(scene(voice("a", "pip", 40), ending("both", [voice("b", "mo", 40), move("walk", "tuk", 30, { length: { ...fitted(30), arrive: at("a", "end") } })]))), ["own: walk in both"]);
+  for (const block of [inOrder, together, ending]) assert.deepEqual(why(scene(ending("both", [voice("a", "pip", 40), block("inner", [voice("b", "mo", 30), voice("c", "tuk", 20)])]))), ["own: inner in both"]);
+  assert.deepEqual(why(scene(ending("both", [voice("a", "pip", 40), inOrder("murmur", [voice("b", "mo", 30)], { cut: true })]))), ["own: murmur in both"]);
+  assert.deepEqual(why(scene(ending("both", [voice("a", "pip", 40), move("walk", "mo", 30)], { cut: true }), voice("b", "tuk", 30))), ["cut: walk"]);
+
+  // A loop through it: the first walk is fitted to its words, which end with the second, and that waits for the first.
+  const loop = (walk: More<Line>) => why(scene(together("all", [move("walk", "pip", 40, walk), ending("both", [move("back", "pip", 40), voice("words", "mo", 30)])])));
+  assert.deepEqual(loop({}), ["loop: walk, words, both"]);
+  assert.deepEqual(loop({ length: 40 }), []);
+});
+
 test("what is refused, with who is in it, for any lengths", () => {
   const below = scene(voice("one", "pip", 40, { at: at("two", "start") }), voice("two", "mo", 30, { at: at("nobody", "end") }), voice("three", "mo", 30, { at: at("three", "end") }));
   assert.deepEqual(why(below), ["below: one names two", "below: two names nobody", "below: three names three"]);
@@ -245,8 +324,24 @@ function randomPlan({ int, chance, pick }: Random): Block {
   const blockOf = (deep: number, inCut: boolean): Block => {
     const own = placed();
     const cut = chance(0.12) ? { cut: true } : {};
+    const tail = chance(0.1) ? { tail: 7 } : {};
+    if (chance(0.25)) return { kind: "block", ...own, ...cut, ...tail, order: "ending together", items: endingOf(inCut || "cut" in cut) };
     const items = Array.from({ length: between(1, 3) }, () => itemOf(deep, inCut || "cut" in cut));
-    return { kind: "block", ...own, ...cut, order: chance(0.5) ? "in order" : "together", pause: 12, items };
+    return { kind: "block", ...own, ...cut, ...tail, order: chance(0.5) ? "in order" : "together", pause: 12, items };
+  };
+  /** What is in a block whose lines end together: lines alone, one on a channel and with no moment of their own, but where chance has it otherwise. */
+  const endingOf = (inCut: boolean): Item[] => {
+    const items: Item[] = [];
+    for (let k = between(1, 4); k > 0; k--) {
+      if (chance(0.02)) items.push(itemOf(1, inCut));
+      const line = lineOf(inCut);
+      if (!chance(0.02)) {
+        delete line.at;
+        if (typeof line.length === "object") delete line.length.arrive;
+      }
+      if (items.length === 0 || chance(0.02) || !items.some((item) => item.kind !== "block" && item.on.some((one) => line.on.includes(one)))) items.push(line);
+    }
+    return items;
   };
   const itemOf = (deep: number, inCut: boolean): Item => (deep > 0 && chance(0.4) ? blockOf(deep - 1, inCut) : lineOf(inCut));
   names.push("scene");
@@ -287,10 +382,20 @@ const tried = (t: TestContext, plans = PLANS) => {
 };
 
 test("random plans: there are many, and everything the laws speak of is in them", (t) => {
-  const count = { plans: PLANS.length, lines: 0, anchored: 0, cutShort: 0, notThere: 0, hurried: 0, slowed: 0, arriving: 0, waitedForItsChannel: 0 };
+  const count = { plans: PLANS.length, lines: 0, anchored: 0, cutShort: 0, notThere: 0, hurried: 0, slowed: 0, arriving: 0, waitedForItsChannel: 0, ending: 0, endingLater: 0, endingWithATail: 0, begunLater: 0, leftInEnding: 0 };
   for (const plan of tried(t)) {
-    const { lines, parent } = written(plan);
+    const { order, lines, parent } = written(plan);
     const worked = times(plan);
+    for (const block of order) {
+      if (block.kind !== "block" || block.order !== "ending together") continue;
+      const { start } = worked.get(block)!;
+      const waited = block.items.filter((item) => !left(item)).map((item) => worked.get(item)!);
+      if (waited.length > 1) count.ending++;
+      if (waited.length > 0 && waited.every((line) => line.start > start)) count.endingLater++;
+      if (block.tail) count.endingWithATail++;
+      count.begunLater += waited.filter((line) => line.start > start && there(line)).length;
+      count.leftInEnding += block.items.length - waited.length;
+    }
     for (const line of lines) {
       const { start, end, uncut } = worked.get(line)!;
       count.lines++;
@@ -302,7 +407,7 @@ test("random plans: there are many, and everything the laws speak of is in them"
         if (uncut - start < line.length.own) count.hurried++;
         if (uncut - start > line.length.own) count.slowed++;
       }
-      // Together with its block, so only its channel can have made it wait.
+      // Together with the rest of its block, so only its channel can have made it wait.
       if (!line.at && parent.get(line)!.order === "together" && start > worked.get(parent.get(line)!)!.start) count.waitedForItsChannel++;
     }
   }
@@ -322,7 +427,7 @@ test("random plans: nothing begins before what it comes after", (t) => {
         const named = of === "block" ? block : order.find(({ name }) => name === of)!;
         assert.ok(start >= worked.get(named)!.start, `${x.name} before ${of}, which it names; ${shown(plan)}`);
       }
-      if (x.at || block.order === "together") continue;
+      if (x.at || block.order !== "in order") continue;
       for (const y of block.items.slice(0, block.items.indexOf(x))) if (!left(y)) assert.ok(start >= worked.get(y)!.uncut + 12, `${x.name} before the pause after ${y.name}; ${shown(plan)}`);
     }
   }
@@ -339,6 +444,31 @@ test("random plans: a block ends after all it waits for", (t) => {
       if (there(worked.get(x)!)) assert.ok(worked.get(block)!.end >= worked.get(x)!.end, `${block.name} stops before ${x.name}; ${shown(plan)}`);
     }
   }
+});
+
+test("random plans: the lines of a block that ends them together do, and one of them begins as soon as it can", (t) => {
+  let blocks = 0;
+  for (const plan of tried(t)) {
+    const { order, lines } = written(plan);
+    const worked = times(plan);
+    const ends = new Set(order.map((item) => worked.get(item)!.uncut));
+    for (const block of order) {
+      if (block.kind !== "block" || block.order !== "ending together") continue;
+      const { start, uncut } = worked.get(block)!;
+      const waited = lines.filter((line) => block.items.includes(line) && !left(line));
+      for (const line of waited) assert.equal(worked.get(line)!.uncut, uncut - (block.tail ?? 0), `${line.name} does not end with ${block.name}; ${shown(plan)}`);
+      if (waited.length === 0) continue;
+      // The block has just begun, or something above it on its channel has ended, or what cuts that.
+      const asSoon = (line: Line) => {
+        const { start: begins } = worked.get(line)!;
+        const shares = lines.slice(0, lines.indexOf(line)).some((one) => one.on.some((channel) => line.on.includes(channel)));
+        return begins === start || (shares && ends.has(begins));
+      };
+      assert.ok(waited.some(asSoon), `${block.name} ends later than it can; ${shown(plan)}`);
+      blocks++;
+    }
+  }
+  assert.ok(blocks > 500, `${blocks}`);
 });
 
 test("random plans: what is cut ends with its block", (t) => {
@@ -444,6 +574,14 @@ function plainTimes(plan: Block): Map<Item, Interval> {
     for (let z = x; parent.has(z); z = parent.get(z)!) if (left(z) && !isIn(y, z)) end = of(parent.get(z)!).uncut;
     return end;
   };
+  /** When the channels of `x` let it begin. */
+  const freed = (x: Line) => {
+    let from = 0;
+    for (const y of order.slice(0, order.indexOf(x))) if (y.kind !== "block" && x.on.some((one) => y.on.includes(one))) from = Math.max(from, free(y, x));
+    return from;
+  };
+  /** How long a line takes by itself. */
+  const alone = ({ length }: Line) => (typeof length === "object" ? length.own : (length as number));
   const momentOf = ({ of: name, at: where, plus }: Moment, y: Item) => {
     const x = name === "block" ? parent.get(y)! : order.find((item) => item.name === name)!;
     const { start, uncut } = of(x);
@@ -458,7 +596,7 @@ function plainTimes(plan: Block): Map<Item, Interval> {
       of(item)[key] = value;
       changed = true;
     };
-    order.forEach((x, k) => {
+    for (const x of order) {
       const block = parent.get(x);
       if (block) {
         let start = of(block).start;
@@ -467,16 +605,17 @@ function plainTimes(plan: Block): Map<Item, Interval> {
           const above = block.items.slice(0, block.items.indexOf(x)).filter((item) => !left(item));
           if (above.length === 0) start += block.lead ?? 0;
           for (const item of above) start = Math.max(start, of(item).uncut + block.pause!);
-        }
-        for (const y of order.slice(0, k)) {
-          if (x.kind !== "block" && y.kind !== "block" && x.on.some((one) => y.on.includes(one))) start = Math.max(start, free(y, x));
-        }
+        } else if (block.order === "ending together" && x.kind !== "block" && !left(x)) start = Math.max(start, of(block).uncut - (block.tail ?? 0) - alone(x));
+        if (x.kind !== "block") start = Math.max(start, freed(x));
         set(x, "start", start);
       }
       const { start } = of(x);
       if (x.kind === "block") {
         let end = start;
-        for (const item of x.items) if (!left(item)) end = Math.max(end, of(item).uncut);
+        for (const item of x.items) {
+          if (left(item)) continue;
+          end = Math.max(end, x.order === "ending together" && item.kind !== "block" ? Math.max(start, freed(item)) + alone(item) : of(item).uncut);
+        }
         set(x, "uncut", end + (x.tail ?? 0));
       } else if (x.length === "open") set(x, "uncut", Math.max(start, of(block!).uncut));
       else if (typeof x.length === "number") set(x, "uncut", start + x.length);
@@ -494,7 +633,7 @@ function plainTimes(plan: Block): Map<Item, Interval> {
         const takes = until === undefined ? own : until - start < least ? least : until - start > most ? most : until - start;
         set(x, "uncut", start + takes);
       }
-    });
+    }
   }
   return new Map(order.map((item) => [item, { start: of(item).start, end: Math.max(of(item).start, stops(item)), uncut: of(item).uncut }]));
 }

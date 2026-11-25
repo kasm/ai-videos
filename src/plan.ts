@@ -142,9 +142,29 @@ function refusalIssues(scenes: WorkedScene[]): Issue[] {
       while (!under.cut) under = around.get(under)!;
       return { line: own.line, also: [told(under).line], message: `an action is never under the rest: cut, it would leave ${own.who} where only the voices know`, hint: "write it beside the under: block, not in it" };
     }
+    if (refusal.why === "twice") {
+      const [own, by, block] = [written.get(refusal.item) as WorkedLine, told(refusal.by), told(around.get(refusal.item)!)];
+      return {
+        line: own.line,
+        also: [block.line, by.line],
+        message: `${own.who} is busy with ${by.name}, which ends when this does: ${block.name} ends its lines together`,
+        hint: "write one of the two before that block or after it, or give it to another",
+      };
+    }
+    if (refusal.why === "own") {
+      const [own, block] = [written.get(refusal.item)!, told(refusal.block)];
+      const issue = (message: string, hint: string) => ({ line: own.line, also: [block.line], message: `${block.name} ends its lines together, ${message}`, hint });
+      if (!isBlock(own)) return issue("so a line in it has no start of its own", "leave its anchor out, or begin the whole block by it: ending together @ a.50%:");
+      if (own.joined) return issue("and holds no block: lines joined by & are one", "leave the & out: all rows of that block end at once as they are");
+      return issue("and holds no block", "write its lines as lines of that block, or all of it beside that block, in a together: around both");
+    }
     if (refusal.why === "below") throw new Error(`line ${told(refusal.item).line} begins by "${refusal.name}", and nothing above is called so`);
     const chain = refusal.items.map(told);
-    const round = chain.map(({ name, waits }, i) => `${name} ${waits} for ${chain[(i + 1) % chain.length]!.name}`);
+    const round = refusal.items.map((item, i, all) => {
+      const next = all[(i + 1) % all.length]!;
+      const ends = around.get(item) === next && next.order === "ending together";
+      return `${told(item).name} ${ends ? "ends with" : `${told(item).waits} for`} ${told(next).name}`;
+    });
     // The one to mend is the one with a moment of its own, the last written of them.
     const { line } = chain.filter(({ anchored }) => anchored).toSorted((a, b) => a.line - b.line).at(-1) ?? chain[0]!;
     const also = [...new Set(chain.map((one) => one.line))].filter((one) => one !== line).sort((a, b) => a - b);

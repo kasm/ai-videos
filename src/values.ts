@@ -316,7 +316,7 @@ export function workOut(script: WrittenScript, given: Given): { scenes: WorkedSc
     const told = lengthsOf(cell);
     const [found, another] = told;
     if (!found) {
-      byDefault("speed", "1, or what the words beside it take", line.line);
+      byDefault("speed", endingOf(cell) ? "1" : "1, or what the words beside it take", line.line);
       return {};
     }
     const lasts = attempt(line.line, (): Lasts => {
@@ -328,6 +328,8 @@ export function workOut(script: WrittenScript, given: Given): { scenes: WorkedSc
       if (name === "arrive") {
         const worth = worthOf(name, cell)!;
         if (worth.is !== "moment") throw refused(found, `${valueOf(found)}: it is no moment of something above`, "an action arrives at a moment: arrive=a.end, arrive=a.word(mole) - 0.5s");
+        const ending = endingOf(cell);
+        if (ending) throw refused(found, `${valueOf(found)}: ${nameOf(ending)} ends its lines together, so an action in it has no end of its own`, "leave it out, or give the action its speed there: speed=1", [ending.line]);
         const issue = momentIssue(worth.moment, cell.place!, all, nOf(cell), "arrives");
         if (issue) throw new Refused(found.set.line === issue.line ? issue : { ...issue, line: found.set.line, also: [issue.line, ...(issue.also ?? [])] });
         return { arrive: worth.moment };
@@ -348,6 +350,11 @@ export function workOut(script: WrittenScript, given: Given): { scenes: WorkedSc
     return { lasts: lasts ?? { speed: 1 } };
   };
   const nOf = ({ place }: Cell) => all.findIndex((places) => places.includes(place!));
+  /** The block a line is in, when its lines end together. */
+  const endingOf = ({ place }: Cell) => {
+    const block = place?.block?.item;
+    return block && isBlock(block) && block.order === "ending together" ? block : undefined;
+  };
 
   /** Where an anchor's seconds are worked out: joined lines have their first one's. */
   const anchorCell = (item: ScriptItem): Cell => (isBlock(item) && item.joined ? anchorCell(item.items[0]!) : cellOf.get(item)!);

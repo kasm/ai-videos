@@ -9,7 +9,8 @@ scripts, compiled.
 A **thing** is a line or a block of the plan. `B(x)` is the block that `x` is in; *around* `x` are
 `x` itself and every block it is in, up to the whole plan. *Above* is earlier in the written order,
 so a block is above all that is in it. A thing is **left** when it is cut or open: its block does
-not wait for it.
+not wait for it. A **closing** block is one whose lines end together, and `L(x)` is how long a line
+directly in one lasts by itself: its length, or a move's own.
 
 Two lists say who is cut where:
 
@@ -21,15 +22,16 @@ Each thing has two cells, its start `s` and its uncut end `e`:
 | | Formula |
 | --- | --- |
 | S | `s(plan) = 0`; else `s(x)` is the latest of `s(B(x))`, its moment or rule, and its channels |
-| S, rule | in order: `e(i) + pause` for each `i` above `x` in `B(x)` that is not left, or `s(B(x)) + lead` when there is none; together: nothing more |
-| S, channels | for each line `y` above `x` on a channel of `x`: `e(y)`, or when `cuts(y, x)` is not empty, `e(C)` for its outermost `C` |
+| S, rule | in order: `e(i) + pause` for each `i` above `x` in `B(x)` that is not left, or `s(B(x)) + lead` when there is none; together: nothing more; closing: `e(B(x)) - tail - L(x)`, and nothing more when `x` is left |
+| S, channels | for each line `y` above `x` on a channel of `x`: `e(y)`, or when `cuts(y, x)` is not empty, `e(C)` for its outermost `C`; `free(x)` is the latest of these |
 | M, start | `s(w) + max(0, plus)` |
 | M, a share `p` | `max(s(w), s(w) + round(p (e(w) - s(w))) + plus)` |
 | M, end | `max(s(w), min(e(w), e(C) for each C in cuts(w, x)) + plus)` |
 | E, block | the latest of `s(x)` and `e(i)` for each `i` in it that is not left, `+ tail` |
+| E, closing | the latest of `s(x)` and `max(s(x), free(i)) + L(i)` for each `i` in it that is not left, `+ tail` |
 | E, fixed | `s(x) + length` |
 | E, open | `max(s(x), e(B(x)))` |
-| E, fitted | `min(max(t, s(x) + least), s(x) + most)`, where `t` is the moment it arrives at, or the latest `e(v)` of the voices its block waits for; `s(x) + own` when there is neither |
+| E, fitted | `min(max(t, s(x) + least), s(x) + most)`, where `t` is the moment it arrives at, or the latest `e(v)` of the voices its block waits for; `s(x) + own` when there is neither, and in a closing block |
 
 `w` is the thing an anchor of `x` names, above `x`. The voices a block waits for are those reached
 from it, however deep, through things that are not left.
@@ -39,18 +41,28 @@ cuts(x)))`. A line is **there** when `stop(x) > s(x)`.
 
 The lengths, `pause`, `lead`, `tail` and `plus` are whole frames, a length 1 or more and the pauses 0
 or more; `least <= own <= most`; `0 <= p <= 1`. One that is worked out from the lengths of lines above
-is a number by then too (`compile.ts`). A plan is **accepted** when it has none of the four refusals: a
-name that nothing above has, a channel held, a cut move, a loop.
+is a number by then too (`compile.ts`). A plan is **accepted** when it has none of the six refusals: a
+name that nothing above has, a channel held, a cut move, a loop; and in a closing block, a channel
+twice, and what has its times in itself (a block, an anchor, an arrival). So all that is directly in a
+closing block is lines, with no moment of their own, no two on one channel.
+
+**A closing block ends its lines together.** Let `i` be in the closing block `B`, not left. By its E,
+`e(B) - tail` is at least `max(s(B), free(i)) + L(i)`. So of the terms of `s(i)`, the rule's, `e(B) -
+tail - L(i)`, is at least the two others: `s(i)` is that, and `e(i) = e(B) - tail`. It ends them as soon
+as they can all end: one of them, the one whose bound `e(B) - tail` is, begins the moment it may. ∎
 
 ## 1. One timing for any lengths
 
 Which cells a formula reads depends on the blocks, the kinds of lines, the channels, the marks and
 the anchors. No length is among them. An accepted plan has no loop, so its cells can be put in an
 order where each reads only earlier ones. By induction along it, each has exactly one value: the
-formulas are `max`, `min`, `+` and a rounded share, defined for all whole numbers and giving whole
+formulas are `max`, `min`, `+`, `-` and a rounded share, defined for all whole numbers and giving whole
 numbers. The same order serves for any lengths. ∎
 
 So what is refused is refused for any lengths too, and is known before the voices.
+
+A closing block's end reads its own start and its lines' channels, and no cell of its lines: so a line
+that begins by it is no loop.
 
 ## 2. Nothing begins before what it comes after
 
@@ -64,10 +76,10 @@ So what is refused is refused for any lengths too, and is known before the voice
 
 ## 3. A block ends after all it waits for
 
-`e(B)` is the latest of `e(i)` over all `i` in `B` that are not left, plus a tail of 0 or more: so
-`e(B) >= e(i)`. And none that is there goes on after the block stops: as `i` is not left, it is cut
-by the same blocks as `B` is, `cuts(i) = cuts(B)`, so `stop(i) = min(e(i), …) <= min(e(B), …) <=
-stop(B)`. ∎
+`e(B)` is the latest of `e(i)` over all `i` in `B` that are not left, plus a tail of 0 or more; in a
+closing block each `e(i)` is `e(B) - tail`. So `e(B) >= e(i)`. And none that is there goes on after the
+block stops: as `i` is not left, it is cut by the same blocks as `B` is, `cuts(i) = cuts(B)`, so
+`stop(i) = min(e(i), …) <= min(e(B), …) <= stop(B)`. ∎
 
 ## 4. What is cut ends with its block and moves nothing else
 
@@ -77,13 +89,16 @@ when `x` is there, `stop(x) <= e(B(z))`.
 *It moves nothing else.* Let `z` be left. Which formulas of things outside `z` read a cell of `z` or
 of something in it?
 
-- `s(B(x))` and, for an open line, `e(B(x))`: no. If `B(x)` were `z` or in `z`, `x` would be in `z`.
-- The rule, and a block's end: they read things directly in one block that are not left. One of those
-  in `z` is either `z`, which is left, or has its block in `z`, and then `x` is in `z` too.
+- `s(B(x))` and, for an open line or one in a closing block, `e(B(x))`: no. If `B(x)` were `z` or in
+  `z`, `x` would be in `z`.
+- The rule, and a block's end: they read things directly in one block that are not left, or in a closing
+  block their lengths. One of those in `z` is either `z`, which is left, or has its block in `z`, and
+  then `x` is in `z` too.
 - A fit: it reads voices reached through things that are not left, so never through `z`.
-- A channel: let `y` be in `z`, and `x` outside it. Then `z` is around `y` and not around `x`, so
-  `cuts(y, x)` is not empty, and `x` reads `e(C)` for the outermost `C`. That is the block of `z` or
-  of something around `z`, so it is not in `z`.
+- A channel of `x`, read by `s(x)`, and by `e(B(x))` when that is a closing block, outside `z` too: let
+  `y` be in `z`, and `x` outside it. Then `z` is around `y` and not around `x`, so `cuts(y, x)` is not
+  empty, and `e(C)` is read for the outermost `C`. That is the block of `z` or of something around `z`,
+  so it is not in `z`.
 - A moment: when it names `z` or something in it, and only then. (An end reads `e(C)` for `C` around
   `w`, and if `C` is in `z` then so is `w`.)
 
@@ -94,10 +109,15 @@ cells: whatever it is, all the rest has the same values. ∎
 follows on the channel outside the block (inside, it is refused). Its own block and all that block
 waits for are still the same with it and without it, when the block `P` is in nothing that is left
 itself. Then `P` is the outermost block that cuts `z`, so what the hold delays reads `e(P)`. And
-`e(P)` reads, directly or through others, every cell of what `P` waits for: if one of those read what
-is delayed, that would be a loop. ∎
+`e(P)` reads, directly or through others, every cell of what `P` waits for, but the lines of closing
+blocks (`P`, or ones that it waits for). Such a line's cells read only its block's end and what that
+reads itself, and `e(P)` is or reads that end. So if a cell of what `P` waits for read what is delayed,
+`e(P)` would too, and that would be a loop. ∎
 
 ## 5. A channel never does two things
+
+Two lines directly in one closing block are never on one channel, as that is refused (twice). For all
+others the terms of S, channels, are there, and as `s(x)` is the latest of its terms:
 
 Let `y` be above `x`, on one channel, and both there. `cuts(y, x)` is one of two:
 
@@ -110,7 +130,8 @@ every `y` above, not the last alone: a last one that is not there may have an en
 older one that still sounds. ∎
 
 Why a held channel is refused: `x` is in `C`, and would begin after `C` has ended. If `C` waits for
-it, that is a loop; if not, it is never there.
+it, that is a loop; if not, it is never there. A channel twice in a closing block would be a loop too:
+the block's end reads when the channel of `x` is free, `e(y)`, and `y` begins by the block's end.
 
 ## The plain solver
 

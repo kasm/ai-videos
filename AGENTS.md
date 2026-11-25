@@ -216,9 +216,10 @@ scenes:
   row, or one that begins with `#`, is passed over. Lines happen in order, if nothing says otherwise.
 - **A block** is a header on a row of its own, and the rows indented under it, all by the same
   spaces; they may be blocks too. Values set on it go before its anchor and its colon:
-  `in order pause=0.2s @ a.50%:`. It is `in order:`, `together:`, or `under:`, which is in order and
-  cut (What happens at once): it goes on under the rest of the block it is in, and stops where that
-  ends. What is waited for needs no word: a radio in a `together:` holds up what comes after it.
+  `in order pause=0.2s @ a.50%:`. It is `in order:`, `together:`, `ending together:`, whose lines end at
+  once, the shorter ones begun later, or `under:`, which is in order and cut (What happens at once): it
+  goes on under the rest of the block it is in, and stops where that ends. What is waited for needs no
+  word: a radio in a `together:` holds up what comes after it.
 - **`&`** before a row joins it to the one above it, a line or a block: the two are a block together
   with no header, and a third one joined is in the same. It begins where its first does, so it takes
   that one's anchor.
@@ -358,8 +359,8 @@ The laws:
    | `arrive` | any level | the moment above that it ends at, as an anchor's, within `timing.moves` |
 
    Given `takes` or `speed`, wherever they are set, an action keeps it and is fitted to nothing. A voice
-   takes none of them. Beside these, what an action takes (`to`) may be set on any level, and any name
-   of the writer's that a formula reads.
+   takes none of them, and an action in an `ending together:` no `arrive`. Beside these, what an action
+   takes (`to`) may be set on any level, and any name of the writer's that a formula reads.
 7. **`a.length`** is how long a line above lasts: one that is said, or an action given `takes` or
    `speed`. How long a fitted action lasts, or a block, is known only once everything has its place, and
    is not read. A length is read by a time alone (`takes`, `pause`, an anchor's), and what that comes to
@@ -378,8 +379,8 @@ promise, below; `src/times.test.ts` tries it on random plans, and `src/scripts.t
 
 - **A line** is one thing that lasts: a voice, a sound, or a move (any of the plugin's actions). It
   keeps its **channels** busy: a character's voice, its place.
-- **A block** holds lines and blocks, **in order** or **together**, and is used as a line is. A scene
-  is a block in order, and so is the video, of its scenes.
+- **A block** holds lines and blocks, **in order** or **together**, or lines alone, **ending
+  together**; it is used as a line is. A scene is a block in order, and so is the video, of its scenes.
 
 The laws:
 
@@ -388,7 +389,8 @@ The laws:
 2. **A start** is the latest of three:
    - its block's rule, or its own anchor in place of it. In order: `pause` after everything above it
      that the block waits for has ended; the first begins with the block, a scene's `lead` later.
-     Together: with the block;
+     Together: with the block. Ending together: its own length before the block's end; what the block
+     does not wait for begins with it;
    - its channels: everything written above on them has ended;
    - its block's start.
 3. **An anchor** is the start, the end or a share of something above, or of its own block, plus or
@@ -398,11 +400,12 @@ The laws:
    - Fixed: measured, given, or worked out from such lengths above.
    - Fitted: a move given no length, directly in a block together. It ends with the last voice the
      block waits for, no faster than its `fastest` and no slower than its `slowest`. Told when to
-     arrive, it is fitted to that moment instead. In order, with a start of its own, or with no voice
-     to fit to, it takes its own length.
+     arrive, it is fitted to that moment instead. In order, ending together, with a start of its own, or
+     with no voice to fit to, it takes its own length.
    - Open (a look, a loop): until its block ends.
-5. **A block** ends with the last of what it waits for: all but the cut and the open. A scene ends
-   its `tail` after that.
+5. **A block** ends with the last of what it waits for: all but the cut and the open. One ending
+   together ends when the last of these would, if each began as soon as the block has and its own
+   channels are free: so they all end then. A scene ends its `tail` after that.
 6. **Cut and open.**
    - A cut thing stops where its block ends, if it has not ended before. At a scene's own level that
      is the scene's last frame, after its `tail`.
@@ -413,9 +416,10 @@ The laws:
    - Only voices and sounds are cut, never a move: where a move leaves its character must be known
      before the voices.
 7. **Refused**, for any lengths, and so before the voices: an anchor to something that is not above;
-   what follows a cut or open thing on its channel, in that thing's block; a cut move; and a loop,
-   whole. A voice that waits for the end of its own block's fitted move is a loop: it goes after the
-   block, or the move is given a length.
+   what follows a cut or open thing on its channel, in that thing's block; a cut move; in a block
+   ending together, two lines on one channel, and what has its times in itself (a block, an anchored
+   line, a move told when to arrive); and a loop, whole. A voice that waits for the end of its own
+   block's fitted move is a loop: it goes after the block, or the move is given a length.
 
 They promise:
 

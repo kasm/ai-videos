@@ -132,15 +132,18 @@ scenes:
           mo say: Hush, I want to hear.
       mo say: We can skate!
   - background: night                      # a new scene: everyone placed anew
-    places: { pip: middle, mo: right }
+    places: { pip: off-left, mo: right }
     faces: { mo: left }
     values: { beat: 0.6s }                 # the evening is slower: the pauses are its beat
     script: |
+      ending together:
+        pip walk to=middle
+        narrator say: By night, Pip comes back.
       in order:
         under:
           mo say: One star, two stars, three stars, four stars.
           mo say: Five stars, six stars, seven stars, eight stars.
-        narrator say: By night, Mo counts the stars.
+        narrator say: And Mo counts the stars.
         pip say: Good night, Mo.
       together:
         pip walk to=off-right speed=slow
@@ -153,7 +156,7 @@ scenes:
 - The marks are where characters stand: left, middle and right on the stage, one character each, and off-left and off-right out of sight, where any number wait. Two characters never stand on one mark of the stage, as a scene begins or after a walk.
 - Everyone faces right, as drawn, unless the scene's faces says left. A walk turns nobody: a character walks the way it faces, so who walks left begins the scene facing left. Two who talk face each other.
 - A character the scene does not place may speak too: it is a voice off stage. So may a name the file's cast gives a voice: cast: { radio: am_michael }, on top, beside use. Nobody else is drawn for it.
-- A walk is over before the next row, unless it is joined to words or together with them: then it lasts as long as they do, within reason. Join a walk to the line that tells of it.
+- A walk is over before the next row, unless it is joined to words or together with them: then it lasts as long as they do, within reason. Join a walk to the line that tells of it. To have the words end as somebody arrives, write the two in an ending together: the walk keeps its own pace, and the words wait. That is for a walk that ends on the stage: one that leaves it is out of sight before it ends.
 - Leave a walk's speed and time out, unless the story has somebody hurry or dawdle: a walk that is given one keeps it, and the next row waits. Set pip.speed on a scene for somebody who is slow all through it, or walk.speed for everybody.
 
 ### Lines

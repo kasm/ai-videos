@@ -215,7 +215,7 @@ test("a walk is drawn in a script as it is in a beat: the same way, as far throu
 /** all-at-once's lines, spoken: each as long as it is in its own voice, in hundredths of a second. */
 const AT_ONCE_VOICES = [210, 98, 124, 200, 86, 204, 197, 237, 167, 118, 108, 116, 196, 252, 294, 115, 236, 82, 148].map((hundredths, n) => voiced(`${n}.wav`, hundredths / 100));
 
-test("all-at-once: a walk under words, a chorus, an interruption at a word, a radio that is waited for, and a murmur cut where the talk over it ends", async () => {
+test("all-at-once: a walk under words, a chorus, an interruption at a word, a radio that is waited for, words that end with a walk, and a murmur cut where the talk over it ends", async () => {
   const compiled = await compiledOf(AT_ONCE, AT_ONCE_VOICES);
   const lines = compiled.scenes.flatMap((scene) => scene.lines);
   const said = lines.filter((line) => "text" in line);
@@ -236,7 +236,15 @@ test("all-at-once: a walk under words, a chorus, an interruption at a word, a ra
   assert.ok(seen.from > news.end && alone.from > seen.end, "the radio's lines are in order");
   assert.ok(of("That was me").from > seen.from && of("That was me").end > seen.end && of("They know").from > of("That was me").end, "the talk has an order of its own");
   assert.equal(of("Poor badger").from, Math.max(alone.end, of("They know").end) + 12, "what comes after waits for both");
+  // Tuk walks in at its own pace, 1210 px at 320 a second, and the words begin late enough to end as it arrives.
+  const arrives = lines.filter((line) => line.action === "walk").at(-1)!;
+  const evening = of("In the evening");
+  assert.deepEqual([arrives.from, arrives.frames], [compiled.scenes[1]!.from + 18, 113]);
+  assert.equal(evening.end, arrives.from + arrives.frames);
+  assert.ok(evening.from > arrives.from + 30);
+  assert.equal(evening.line.frames, Math.ceil(AT_ONCE_VOICES[12]!.duration * 30));
   const [one, five, why, which] = [of("One reed"), of("Five reeds"), of("Why is"), of("And which")];
+  assert.equal(one.from, evening.end + 12);
   assert.equal(one.from, why.from, "Mo murmurs as Pip begins");
   assert.equal(five.end, which.end, "and is cut where the third of them ends");
   assert.ok(five.line.frames < AT_ONCE_VOICES[14]!.mouth.length);
@@ -432,7 +440,7 @@ test("the guide's example is a cartoon the plugin takes as a script, against the
     item.items.forEach(look);
   };
   script.scenes.flatMap((scene) => scene.items).forEach(look);
-  assert.deepEqual([...kinds].sort(), ["&", "@", "in order", "together", "under"]);
+  assert.deepEqual([...kinds].sort(), ["&", "@", "ending together", "in order", "together", "under"]);
   const blocks: Record<string, string>[] = [];
   const values = (item: ScriptItem) => {
     if (!isBlock(item)) return;
@@ -441,7 +449,7 @@ test("the guide's example is a cartoon the plugin takes as a script, against the
   };
   script.scenes.flatMap((scene) => scene.items).forEach(values);
   assert.deepEqual([Object.keys(script.values!), script.scenes.map((scene) => Object.keys(scene.values!)), blocks], [["beat", "pause"], [[], ["beat"]], [{ pause: "beat / 2" }]]);
-  assert.deepEqual(script.scenes.flatMap((scene) => linesIn(scene.items)).filter((line) => line.action === "walk").map((line) => line.values), [{ to: "middle" }, { to: "off-right", speed: "slow" }]);
+  assert.deepEqual(script.scenes.flatMap((scene) => linesIn(scene.items)).filter((line) => line.action === "walk").map((line) => line.values), [{ to: "middle" }, { to: "middle" }, { to: "off-right", speed: "slow" }]);
   assert.deepEqual(checked.scenes.map((scene) => scene.pause), [0.4, 0.6]);
   const said = lines.filter((line) => "text" in line).length;
   const compiled = compile(checked.scenes, Array.from({ length: said }, (_, n) => voiced(`${n}.wav`, 2)), SETTINGS, "example.yaml");

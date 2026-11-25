@@ -199,6 +199,29 @@ test("a move given both a speed and a length is refused, where they are set on o
   assert.deepEqual(await takes(["sq slide takes=1s"], { cartoon: { speed: "slow" } }), [1]);
 });
 
+test("in a block that ends its lines together, an action goes at its own speed or takes what it is given, and arrives at no moment of its own", async () => {
+  assert.deepEqual(await frames(["ending together:", "  sq slide", `  mo say: ${TEN}`]), { 2: [5, 20], 3: [15, 10] });
+  assert.deepEqual(await frames(["ending together speed=2:", "  sq slide", "  mo slide takes=3s", `  mo say: ${TEN}`]), { 2: [25, 10], 3: [5, 30], 4: [25, 10] });
+  assert.deepEqual(await frames([`[a] sq say: ${TEN}`, "ending together:", `  mo say: ${TEN}`, "  sq slide takes=a.length * 1.5"]), { 1: [5, 10], 3: [23, 10], 4: [18, 15] });
+  // A line of it may have its length read below, in it too.
+  assert.deepEqual(await frames(["ending together:", `  [a] mo say: ${TEN}`, "  sq slide takes=a.length / 2"]), { 2: [5, 10], 3: [10, 5] });
+  assert.deepEqual((await checked(["sq slide", "ending together:", "  mo slide", "  sq say: Hi."])).defaults.filter(({ name }) => name === "speed"), [
+    { name: "speed", value: "1, or what the words beside it take", lines: [1] },
+    { name: "speed", value: "1", lines: [3] },
+  ]);
+
+  assert.deepEqual(await issues(["[a] sq say: Hi.", "ending together:", "  mo slide arrive=a.end", "  sq say: Ho."]), [
+    { line: 3, also: [2], message: "arrive=a.end: the block of line 2 ends its lines together, so an action in it has no end of its own", hint: "leave it out, or give the action its speed there: speed=1" },
+  ]);
+  // Set on a level around it, it is said where it is set, with all it reaches there; a nearer speed goes over it.
+  const around = ["sq say: Hi.", "ending together:", "  mo slide", "  sq slide", "  mo say: Ho."];
+  const levels = { scene: { "slide.arrive": "prev.end" } };
+  assert.deepEqual(await why(around, levels), [[201, [2, 3, 4], "slide.arrive=prev.end: the block of line 2 ends its lines together, so an action in it has no end of its own"]]);
+  assert.deepEqual(await takes(around.toSpliced(1, 1, "ending together speed=1:"), levels), [2, 2]);
+  // Beside the block, it arrives as ever.
+  assert.deepEqual(await frames([`[a] sq say: ${TEN}${TEN}`, "& ending together:", `    mo say: ${TEN}`, "& sq slide arrive=a.end"]), { 1: [5, 20], 3: [5, 10], 4: [5, 20] });
+});
+
 test("a wrong takes, speed or arrive counts as given: it is the one mistake, and nothing is refused for want of it", async () => {
   // Fitted to the words, the slide would wait for the line that waits for it.
   const rows = (given = "") => ["together:", `  [w] sq slide${given}`, "  narrator say: It goes.", "  mo say @ w.end: Here."];

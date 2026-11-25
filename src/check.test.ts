@@ -177,6 +177,39 @@ test("check refuses a name from below, a loop, and a voice that follows a cut on
   assert.match(good.stdout, /blocks\.yaml, a script of 1 scene and 4 lines, 3 of them said\.\n/);
 });
 
+test("check refuses, in a block that ends its lines together, a voice twice, a line anchored to another and a block, each with its lines and a hint", async () => {
+  const file = await video("ending", script(["ending together:", "  [a] sq say: One.", "  narrator say @ a.50%: Two.", "  sq say: Three.", "  in order:", "    odd say: Four.", "sq say: Five."]));
+  const { code, stdout, stderr } = await cli(["check", file]);
+  assert.equal(code, 1);
+  assert.equal(stdout, "");
+  assert.equal(
+    stderr.replaceAll(path.relative(ROOT, file), "ending.yaml").replaceAll(file, "ending.yaml"),
+    [
+      "3 mistakes in ending.yaml:",
+      "",
+      "ending.yaml:7: narrator say @ a.50%: Two.",
+      "  the block of line 5 ends its lines together, so a line in it has no start of its own",
+      "  ending.yaml:5: ending together:",
+      "  Hint: leave its anchor out, or begin the whole block by it: ending together @ a.50%:",
+      "",
+      "ending.yaml:8: sq say: Three.",
+      "  sq is busy with line 6, which ends when this does: the block of line 5 ends its lines together",
+      "  ending.yaml:5: ending together:",
+      "  ending.yaml:6: [a] sq say: One.",
+      "  Hint: write one of the two before that block or after it, or give it to another",
+      "",
+      "ending.yaml:9: in order:",
+      "  the block of line 5 ends its lines together, and holds no block",
+      "  ending.yaml:5: ending together:",
+      "  Hint: write its lines as lines of that block, or all of it beside that block, in a together: around both",
+      "",
+    ].join("\n"),
+  );
+  const good = await cli(["check", await video("ending-good", script(["ending together:", "  sq slide to=right", "  narrator say: It slides.", "  sq say: Whee!"]))]);
+  assert.equal(good.code, 0, good.stderr);
+  assert.match(good.stdout, /ending-good\.yaml, a script of 1 scene and 3 lines, 2 of them said\.\n[^]* {2}speed: 1 \(line 6\)\n$/);
+});
+
 test("check refuses a move given both a speed and a length, and values that go round with their chain, and says the defaults taken", async () => {
   const wrong = await video(
     "values-wrong",

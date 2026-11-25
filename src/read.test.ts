@@ -75,6 +75,7 @@ test("a block is a header and the rows indented under it, however far, and block
     "sq say: Six.",
   );
   assert.deepEqual(shape(script), [1, { together: [3, { "in order": [6, { under: [9] }, 10] }, 11] }, 12]);
+  assert.deepEqual(shape(items("[a] ending together slide.speed=slow @ b.50%:", "  sq say: One.", "  mo slide to=left", "& ending together:", "    tri say: Two.")), [{ "&": [{ "ending together": [2, 3] }, { "ending together": [5] }] }]);
   // A block's line is its header's. What is under the rest is in order.
   const [, together] = script as [ScriptItem, ScriptItem];
   assert.ok(isBlock(together) && together.line === 2 && together.order === "together");
@@ -145,7 +146,7 @@ function randomScript({ int, chance, pick }: Random): { rows: string[]; written:
       const anchor = chance(1 / 4) ? " @ prev.50% + 1s" : "";
       let item: Shape;
       if (deep > 0 && chance(1 / 3)) {
-        const header = pick(["in order", "together", "under"]);
+        const header = pick(["in order", "together", "ending together", "under"]);
         rows.push(`${before}${header}${chance(1 / 3) ? " pause=beat * 2 slide.speed=slow" : ""}${anchor}:`);
         item = { [header]: write(margin + 1 + int(4), deep - 1) };
       } else {
@@ -203,8 +204,14 @@ test("a block's mistakes: a header of another word, with no colon, with a line o
     [1, '"par:" is neither a line nor a block\'s header'],
     [4, '"at once:" is neither a line nor a block\'s header'],
   ]);
-  assert.match(read("par:", "  sq say: One.").issues[0]!.hint, /^the blocks are in order:, together: and under:/);
+  assert.match(read("par:", "  sq say: One.").issues[0]!.hint, /^the blocks are in order:, together:, ending together: and under:/);
   assert.deepEqual(issues("together", "  sq say: One."), [[1, "the header together has no colon"]]);
+  // A slip of its words is no header.
+  assert.deepEqual(issues("end together:", "  sq say: One.", "ending:", "  sq say: Two.", "ending together", "  sq say: Three."), [
+    [1, '"end together:" is neither a line nor a block\'s header'],
+    [3, '"ending:" is neither a line nor a block\'s header'],
+    [5, "the header ending together has no colon"],
+  ]);
   assert.deepEqual(issues("under: sq say: One."), [[1, "under: is a block's header, with nothing after its colon"]]);
   assert.deepEqual(issues("together:", "sq say: One.", "in order:", "  under:", "  sq say: Two.", "under:"), [
     [1, "this block has no line"],

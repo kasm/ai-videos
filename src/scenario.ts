@@ -47,9 +47,9 @@ export interface ScriptLine extends Placed {
   text?: string;
 }
 
-/** A block of a script: lines and blocks each after those above it, or all begun together. */
+/** A block of a script: lines and blocks each after those above it, or all begun together; or lines all ended together. */
 export interface ScriptBlock<L extends Placed<unknown> = ScriptLine> extends Placed<NonNullable<L["anchor"]>> {
-  order: "in order" | "together";
+  order: "in order" | "together" | "ending together";
   /** It goes on under the rest of the block it is in, and stops where that ends. */
   under?: true;
   /** The lines `&` joins: it has no header, and its line is its first's. */
