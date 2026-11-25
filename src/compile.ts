@@ -1,11 +1,13 @@
 // The compiled scenario (AGENTS.md, "A script"): a checked scenario with its voices measured, every
 // line on its frames, in plain numbers. The sound, the picture, the captions and the web page are
-// made from it alone. For now the lines of a scene follow each other in the order written, and the
-// scenes too; what happens at once comes with the plan's later steps.
+// made from it alone. When each line begins and ends is worked out by times.ts. For now a script has
+// no words for what happens at once, so the lines of a scene follow each other in the order written,
+// and the scenes too.
 //
 // It needs none of the tool's packages: plugin.ts gives it to the plugins' tests.
 import { LINGER, captionsOf } from "./captions.ts";
-import type { CheckedScene, Plain } from "./scenario.ts";
+import type { CheckedLine, CheckedScene, Plain } from "./scenario.ts";
+import { times, type Block, type Line } from "./times.ts";
 
 /**
  * A line's voice, spoken and measured: its file's name in the tool's voice cache, its length,
@@ -100,39 +102,49 @@ function caption(lines: CompiledLine[], end: number, linger: number): void {
 
 /**
  * Lays a checked scenario on the video's frames. `voices` are its said lines' voices, in the order
- * written. In a scene each line follows the one before: the first begins `lead` after the scene
- * does, each next one `gap` after the one before has ended, and the scene ends `tail` after its
- * last. A voice lasts the frames it sounds in, an action its own length to the nearest frame, each
- * at least one. `from` names the video file, for the compiled scenario to say what it is made from.
+ * written. A scene is a block in order, and so are the scenes: each line follows the one before, the
+ * first beginning `lead` after the scene does, each next one `gap` after the one before has ended,
+ * and the scene ends `tail` after its last. A voice lasts the frames it sounds in, an action its own
+ * length to the nearest frame, each at least one. `from` names the video file, for the compiled
+ * scenario to say what it is made from.
  */
 export function compile(scenes: CheckedScene[], voices: Voiced[], settings: CompileSettings, from: string): Compiled {
   const { fps, loudness } = settings;
   const frames = (seconds: number) => Math.round(seconds * fps);
-  const said = scenes.reduce((n, scene) => n + scene.lines.filter((line) => "text" in line).length, 0);
-  if (said !== voices.length) throw new Error(`the scenario says ${said} lines, and ${voices.length} voices were measured`);
-  let voice = 0;
-  let at = 0;
-  const compiled = scenes.map((scene): CompiledScene => {
-    const begins = at;
-    at += frames(settings.lead);
-    const lines = scene.lines.map((line, i): CompiledLine => {
-      if (i > 0) at += frames(settings.gap);
-      const { line: n, who, action } = line;
-      if ("text" in line) {
-        const { file, duration, mouth } = voices[voice++]!;
-        const placed = { line: n, who, action, from: at, frames: Math.max(1, Math.ceil(duration * fps - EPS)), text: line.text, file, mouth, captions: [] };
-        at += placed.frames;
-        return placed;
-      }
-      const placed = { line: n, who, action, from: at, frames: Math.max(1, frames(line.length)), values: line.values };
-      at += placed.frames;
-      return placed;
+  const said = scenes.flatMap((scene) => scene.lines).filter((line) => "text" in line);
+  if (said.length !== voices.length) throw new Error(`the scenario says ${said.length} lines, and ${voices.length} voices were measured`);
+  const voiceOf = new Map<CheckedLine, Voiced>(said.map((line, i) => [line, voices[i]!]));
+  const planned = new Map<CheckedLine, Line>();
+  const plan = scenes.map((scene): Block => {
+    const items = scene.lines.map((line): Line => {
+      const item: Line =
+        "text" in line
+          ? { kind: "voice", on: [`${line.who} voice`], length: Math.max(1, Math.ceil(voiceOf.get(line)!.duration * fps - EPS)) }
+          : { kind: "move", on: [], length: Math.max(1, frames(line.length)) };
+      planned.set(line, item);
+      return item;
     });
-    at += frames(settings.tail);
-    caption(lines, at, frames(LINGER));
-    return { from: begins, frames: at - begins, setting: scene.setting, lines };
+    return { kind: "block", order: "in order", items, lead: frames(settings.lead), pause: frames(settings.gap), tail: frames(settings.tail) };
   });
-  return { format: "ai-videos-compiled", version: 1, made: { by: "ai-videos compile", from }, fps, frames: at, loudness, scenes: compiled };
+  const video: Block = { kind: "block", order: "in order", items: plan };
+  const placed = times(video);
+  const spanOf = (item: Block | Line) => {
+    const { start, end } = placed.get(item)!;
+    return { from: start, frames: end - start };
+  };
+  const compiled = scenes.map((scene, i): CompiledScene => {
+    const span = spanOf(plan[i]!);
+    const lines = scene.lines.map((line): CompiledLine => {
+      const { line: n, who, action } = line;
+      const at = { line: n, who, action, ...spanOf(planned.get(line)!) };
+      if (!("text" in line)) return { ...at, values: line.values };
+      const { file, mouth } = voiceOf.get(line)!;
+      return { ...at, text: line.text, file, mouth, captions: [] };
+    });
+    caption(lines, span.from + span.frames, frames(LINGER));
+    return { ...span, setting: scene.setting, lines };
+  });
+  return { format: "ai-videos-compiled", version: 1, made: { by: "ai-videos compile", from }, fps, frames: spanOf(video).frames, loudness, scenes: compiled };
 }
 
 /** The compiled scenario's text: JSON a person can read too, a list of numbers (a point, a mouth) on one line. */

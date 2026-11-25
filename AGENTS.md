@@ -42,7 +42,7 @@ the voice model always stay in this tool.
 | Path | What it is |
 | --- | --- |
 | `scenes/clip/scene.html` | The scene template (a HyperFrames sub-composition with `{{placeholders}}`): the plugin's clip, muted, with the captions over it. |
-| `src/` | The pipeline: `video-file` (the file, its settings in layers, and the `script` the pipeline reads) → the plugin in its process (`plugin`, `make`, `host`): its plan → `tts` → `timeline` (and `fit` with `mouth`) → `sound` → the drawing (`moments`, `frames`, `clip`) → `compose` (with `bundle` and `captions`) → `render`; `page`, the web page; `stages` and `lock`, a make's cache and its lock (see The cache); `setup`, what the commands need on the disk; `prompt` and `import`, a story's prompt for a web chat and its reply taken in, and `story`, the two by the clipboard and the episodes made (see prompt, import, story); `scenario`, `compile`, `shown` and `guide`, a video written as a script: its lines read and checked, compiled, what each frame of it shows, and how it is taught (see A script). |
+| `src/` | The pipeline: `video-file` (the file, its settings in layers, and the `script` the pipeline reads) → the plugin in its process (`plugin`, `make`, `host`): its plan → `tts` → `timeline` (and `fit` with `mouth`) → `sound` → the drawing (`moments`, `frames`, `clip`) → `compose` (with `bundle` and `captions`) → `render`; `page`, the web page; `stages` and `lock`, a make's cache and its lock (see The cache); `setup`, what the commands need on the disk; `prompt` and `import`, a story's prompt for a web chat and its reply taken in, and `story`, the two by the clipboard and the episodes made (see prompt, import, story); `scenario`, `compile` with `times`, `shown` and `guide`, a video written as a script: its lines read and checked, compiled, when each begins and ends, what each frame of it shows, and how it is taught (see A script, What happens at once). |
 | `cartoons/` | A project of the tool's, in this repo: the cartoon plugin (`cartoons/src/plugin.ts`), its library, videos and stories, and its notes, `cartoons/CLAUDE.md`. Its `episode` skill is the repo's, `.claude/skills/episode/`. |
 | `out/voice-samples/` | What `voices` writes. |
 | `.cache/tts/` | Narration audio, keyed by text, voice and speed. |
@@ -230,10 +230,9 @@ scenes:
   back. The check and the compiling run every time, in a second or so, so the plugin always starts.
 - **The compiled scenario** (`compile`, `src/compile.ts`) has every line on whole frames of the
   video's `fps`: `from`, the frame of the video it begins on, and `frames`, how many it lasts.
-  For now the lines happen in the order written: a scene's first begins `timing.lead` after the
-  scene does, each next one `timing.gap` after the one before has ended, and the scene ends
-  `timing.tail` after its last; the scenes follow each other. A voice lasts the frames it sounds
-  in, and an action its own length (the plugin's), to the nearest frame.
+  They are laid by the laws of What happens at once, for now each scene in order, its `lead`,
+  `pause` and `tail` the video's `timing.lead`, `timing.gap` and `timing.tail`. A voice lasts the
+  frames it sounds in, and an action its own length (the plugin's), to the nearest frame.
 - **A said line** holds all of itself: its `text`, its voice's `file`, its `mouth` (how open, a
   number for each of its frames, as in Fitting a clip to the voice; the example shows three) and
   its `captions`. A caption stays up until the next one, a second after its words, or the scene's
@@ -280,6 +279,63 @@ scenes:
 `src/scenario.test.ts`, `src/compile.test.ts`, `src/shown.test.ts`, `src/guide.test.ts` and
 `src/check.test.ts` show each rule; `src/page.test.ts` draws the clip and the page from a compiled
 scenario and a library, with no video file, and finds their frames the same.
+
+### What happens at once
+
+When each line of a scenario begins and ends is worked out from the measured lengths by these laws
+(`src/times.ts`), from a plan of lines and blocks written as data. `compile` lays a script's lines
+with it. A script has no words yet for a block, an anchor or a cut, so its scenes are in order.
+`src/times.md` proves what the laws promise, below, and `src/times.test.ts` tries it.
+
+- **A line** is one thing that lasts: a voice, a sound, or a move (any of the plugin's actions). It
+  keeps its **channels** busy: a character's voice, its place.
+- **A block** holds lines and blocks, **in order** or **together**, and is used as a line is. A scene
+  is a block in order, and so is the video, of its scenes.
+
+The laws:
+
+1. **Frames.** Every length and pause is in whole frames before anything is placed, so no rounding
+   can break a law.
+2. **A start** is the latest of three:
+   - its block's rule, or its own anchor in place of it. In order: `pause` after everything above it
+     that the block waits for has ended; the first begins with the block, a scene's `lead` later.
+     Together: with the block;
+   - its channels: everything written above on them has ended;
+   - its block's start.
+3. **An anchor** is the start, the end or a share of something above, or of its own block, plus or
+   minus seconds. It is never before that thing begins. A cut thing's end is where it stops, and a
+   share of it is of its whole length.
+4. **An end** is the start plus the length.
+   - Fixed: measured or given.
+   - Fitted: a move given no length, directly in a block together. It ends with the last voice the
+     block waits for, no faster than its `fastest` and no slower than its `slowest`. Told when to
+     arrive, it is fitted to that moment instead. In order, with a start of its own, or with no voice
+     to fit to, it takes its own length.
+   - Open (a look, a loop): until its block ends.
+5. **A block** ends with the last of what it waits for: all but the cut and the open. A scene ends
+   its `tail` after that.
+6. **Cut and open.**
+   - A cut thing stops where its block ends, if it has not ended before. At a scene's own level that
+     is the scene's last frame, after its `tail`.
+   - Nothing waits for a cut or open thing: not its block, and not what follows it in order. But it
+     holds its channels until the block ends.
+   - A cut block cuts all that is in it. Inside it, everything is timed as if nothing cut it.
+   - What has not begun when it is cut is not there.
+   - Only voices and sounds are cut, never a move: where a move leaves its character must be known
+     before the voices.
+7. **Refused**, for any lengths, and so before the voices: an anchor to something that is not above;
+   what follows a cut or open thing on its channel, in that thing's block; a cut move; and a loop,
+   whole. A voice that waits for the end of its own block's fitted move is a loop: it goes after the
+   block, or the move is given a length.
+
+They promise:
+
+- one timing for a plan, whatever the lengths;
+- nothing begins before what it comes after;
+- a block ends after all it waits for;
+- what is cut ends with its block, and its length moves nothing but what is anchored to it;
+- a longer voice begins nothing earlier;
+- a channel never does two things, and keeps the written order.
 
 ### The cast
 

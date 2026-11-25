@@ -40,7 +40,25 @@
   `make cartoons/videos/hello-script.yaml` gives the video, 289 frames
   as compiled, and the page, whose own drawing gives the video's `.svgs`;
   so did a longer script (two scenes, four speakers, 25 fps).
-- **Next: step 3, fit what happens at once.**
+- **Step 3 done 2026-11-25**, its laws accepted by the user that day:
+  `AGENTS.md`, "What happens at once". The user's picks: in order, a line
+  comes after everything above it, the anchored too; what is cut or open
+  at a scene's own level goes on through its `tail`; a voice that waits for
+  the end of its block's fitted move is refused. Checked: `npm test` and
+  `npm run typecheck` here and in `cartoons/`; RayCraft's media typecheck
+  and `test:libs`, no file of it changed; `make --fit` of the ten gives
+  requests equal to the baseline, byte for byte (the seven made anew, in a
+  copy of `cartoons/`; RayCraft's three from the cache); 5,000 random
+  scripts compile to the same bytes as before, and `hello-script`, made
+  whole, has every stage from the cache; each of thirty laws broken on
+  purpose fails a test.
+- Left by step 3: for step 4, the speed of a walk joined to a line, to be
+  judged on `hello-script` (1.72 times its own, `hello`'s 1.17: the limit
+  is `timing.moves.fastest`); for step 5, a length worked out from a
+  measured one must grow with it (`5s - a.length` breaks the laws); for
+  step 8, a second look in one block is refused so far, as the first holds
+  its channel.
+- **Next: step 4, say it in a script.**
 
 
 ## Goal
@@ -147,8 +165,8 @@ step 4; the example shows only the kind.
 
 ## The approach
 
-Proposed in the chat of 2026-11-24. Step 3 accepts or changes the part
-on time, step 5 the part on values.
+Proposed in the chat of 2026-11-24. Step 3 has settled the part on time;
+step 5 accepts or changes the part on values.
 
 **One graph, worked out in order, as a spreadsheet is.** Every value of
 a scenario is a cell: a named value, a place, a start, an end, a length,
@@ -175,25 +193,10 @@ in one direction, the one the writer left open.
   makes anything begin earlier.
 
 **Time: every line is an interval on a channel** (a character's voice,
-its place, its arm).
-
-- **A start** is the latest of three: its block's rule, or its own
-  anchor in place of it; the end of the last thing written above it on
-  its channel; its block's start. A block's rule is the end of the line
-  before plus `pause` (in order), or the block's start (together).
-- **An end** is the start plus the length. A voice's and a sound's
-  length is measured. A move given a speed or a length has that one. A
-  move given neither is fitted: it ends with the voices of its block,
-  no faster than its `fastest` and no slower than its `slowest`. What is
-  open (a look, a loop) or marked to be cut ends with its block.
-- **A block ends** at the latest end of what is in it, the open and the
-  cut left out. So a radio beside the talk sets the time, and a radio
-  marked to be cut ends where the talk does.
-- A channel never does two things, and keeps the written order: the
-  later thing waits.
-- At its core this is the critical-path method: each start is the
-  longest path to it through a graph with no loops, so there is one
-  earliest timing. The cut and the fit read finished values on top.
+its place, its arm). Its laws are in `AGENTS.md`, "What happens at once".
+At their core they are the critical-path method: each start is the longest
+path to it through a graph with no loops, so there is one earliest timing.
+The cut and the fit read finished values on top.
 
 **The types of parametrization.** The examples only show the kind: the
 script's words for each are settled in its step.
