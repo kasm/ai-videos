@@ -176,8 +176,8 @@
   lengths tried spoil (the ones looked at have walks anchored part-way into
   one another, or to one's end). For step 13, a script cannot change the
   background within a scene, which `sundown` and `the-shy-visitor` do, in
-  two beats each.
-- **Next: step 8, look at someone who moves.**
+  two beats each: step 7a, new, the user's yes 2026-11-25.
+- **Next: step 7a, change the background.**
 
 
 ## Goal
@@ -511,6 +511,18 @@ later, one walking while it waves, and their order kept in a block
 stretched by its lines; two actions for one channel in one block, and
 two who walk to one spot, are refused by `check`; `all-at-once` has such
 a block and the user accepts it.
+
+### 7a. Change the background (the tool, cartoons)
+
+A line changes its scene's background as it begins, at once, as a beat's
+`background` does: everyone stays where they are, and it stays so until
+another line changes it. Nobody does it, so whose line it is, and its word,
+are settled in the step. **Done when:** `src/picture.test.ts` shows the
+frame before a change, its first frame and one long after, a walk going on
+through it, and a change anchored to a word; two changes that would begin
+at once, a name the library lacks and a change to the background that is
+there already are refused by `check`; the page's frames are the same;
+`all-at-once` has one and the user accepts it.
 
 ### 8. Look at someone who moves (the tool, cartoons)
 
