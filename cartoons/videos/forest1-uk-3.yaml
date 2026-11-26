@@ -1,0 +1,40 @@
+use: cartoon
+language: uk
+script: |
+  tune loop
+scenes:
+  - background: canopy
+    places:
+      mole: left-of(car, near)
+      squirrel: right-of(car, near)
+    faces: { squirrel: left }
+    values: { car: 960 }
+    script: |
+      narrator say: Високо в кронах пливе кошик з Білкою і Кротом.
+      squirrel say: Повір мені, юний друже, нема нічого кращого,
+      squirrel say: ніж просто вовтузитися на верхівках дерев.
+      [mess] squirrel say: Просто вовтузитися... на... верхівках...
+      mole say @ mess.word(верхівках): Білко, глянь угору!
+      & mole jump
+      narrator say: Запізно. Кошик з розгону б'ється об гілку.
+      squirrel jump
+      & narrator say: Білка падає на спину, лапками догори.
+      narrator say: Та вона, сміючись, підводиться й веде далі.
+      squirrel say: ...на верхівках чи серед гілля.
+      squirrel say: Дістанешся до крони, чи нікуди не доберешся,
+      squirrel say: ти завжди при ділі, а нічого й не робиш.
+      squirrel say: Помандруємо разом гілками на цілий день?
+      mole jump times=3
+      & narrator say: Кріт аж підстрибує від щастя.
+      narrator say: Білка приносить з дупла товстий кошик з обідом.
+      narrator say: І вагончик рушає далі, канатною дорогою.
+      mole say: А що там усередині?
+      squirrel say: Смажені каштани, лісові й кедрові горіхи,
+      squirrel say: буковий горішок, мариновані жолуді, мед,
+      [list] squirrel say: ягоди, березовий сік, вино з бузини...
+      mole say @ list.word(сік): Ой, годі, годі!
+      & mole jump times=2
+      narrator say: Зелене світло й запах смоли п'янять Крота.
+      mole say: Отже... оце... і є... ліс!
+      squirrel say: Не просто ліс, а Ліс. Це мій світ.
+      squirrel say: І іншого мені не треба.

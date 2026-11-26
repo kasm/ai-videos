@@ -85,6 +85,11 @@ give the tool the paths from there: `make cartoons/videos/<name>.yaml`):
   a web chat, the story in it: copy the file's whole text into the chat.
   Paste its reply into `stories/<name>.reply.md`; told "continue", add the
   next message after it.
+- `--language uk` (or `ru`), on `story` or `prompt`: the episodes in that
+  language, whatever the story's own, and the prompt written in it:
+  `videos/<name>-uk-1.yaml` and on, beside the English ones, and the
+  reply's file `stories/<name>-uk.reply.md` (the tool's `AGENTS.md`,
+  "prompt").
 - `npm run -s video -- import stories/<name>.reply.md`: writes each
   episode the tool and the plugin take as `videos/<episode>.yaml`, and
   what the reply adds to `library.yaml`, and writes nothing over. What it
@@ -186,7 +191,9 @@ characters:
   voice is one, which speaks its own language (`voice: am_puck`), or one in
   each language, as above; the narrator's in `package.json` is the same.
   A line whose speaker has no voice in the cartoon's language, or one of
-  another, is refused, with that language's voices. Every character here
+  another, is refused, with that language's voices; so is a line in
+  Cyrillic letters in a cartoon in English, one that forgot its
+  `language:`. Every character here
   has one in English, Ukrainian and Russian, each the same one of
   Supertonic's in both (Pip's `m1`); Marten shares Tuk's, as the two never
   meet. `videos/meet-uk.yaml` and `videos/meet-ru.yaml` are `meet` in
@@ -380,8 +387,8 @@ scenes:
 - **The guide** to a cartoon is `SCRIPT_GUIDE` in `guide.ts`, the
   plugin's part, and the same in Ukrainian and Russian (`guide-uk.ts`,
   `guide-ru.ts`); the tool adds how a line is written, the actions and the
-  constructions. The prompt for a web chat teaches it, in English for now
-  (Running, above; the tool's `AGENTS.md`, "prompt"), and `import` checks
+  constructions. The prompt for a web chat teaches it, in the episodes'
+  language (Running, above; the tool's `AGENTS.md`, "prompt"), and `import` checks
   each episode as `check` does. The tests compile each language's example
   against the library, and find the three the same cartoon: the same rows,
   only the words and the voices in their language.

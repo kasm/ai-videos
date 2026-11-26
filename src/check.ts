@@ -1,7 +1,8 @@
 // The check of a video written as a script (AGENTS.md, "A script"), the only pass that refuses, as
 // `check`, `make` and `import` run it: the tool's and the plugin's (scenario.ts), then each speaker's
-// voice one the tool speaks in, in the video's language, known with no model on the disk, and each
-// sound that is played a file that ffmpeg reads. A plan's lines have the same voice check (unspoken).
+// voice one the tool speaks in, in the video's language, known with no model on the disk, its words
+// none in Cyrillic letters when that language is English, and each sound that is played a file that
+// ffmpeg reads. A plan's lines have the same voice check (unspoken).
 import path from "node:path";
 import type { PluginHost } from "./make.ts";
 import { listed } from "./names.ts";
@@ -45,12 +46,26 @@ function unsayable(video: Voicing, who: string, voices: Voice[]): { wrong: strin
   return { wrong, hint: `give ${who === NARRATOR ? `the ${NARRATOR}` : who} a voice in ${name}, ${where}${beside}; the ${name} voices are ${listed(names)}` };
 }
 
+/**
+ * Why a line's words cannot be said in an English voice, or nothing: they are in Cyrillic letters,
+ * which no English voice reads. So a video in Ukrainian or Russian that does not say its language,
+ * and is English by default, is refused, not said as gibberish.
+ */
+function unreadable(video: Voicing, text: string): { wrong: string; hint: string } | undefined {
+  if (video.language !== "en" || !/\p{Script=Cyrillic}/u.test(text)) return undefined;
+  const others = Object.entries(LANGUAGES).filter(([code]) => code !== "en");
+  return {
+    wrong: "says it in Cyrillic letters, which no English voice reads, and the video is in English: it says no other language",
+    hint: `a video in ${listed(others.map(([, name]) => name), "or")} says so on top, beside use: ${listed(others.map(([code]) => `language: ${code}`), "or")}; else write the line in English`,
+  };
+}
+
 /** The first line of a plan's script that cannot be said in its speaker's voice, as a mistake to throw; nothing when each can. */
 export async function unspoken(script: VideoScript): Promise<string | undefined> {
   const voices = await toolVoices();
   for (const line of script.scenes.flatMap((scene) => scene.narration)) {
     const who = line.speaker ?? NARRATOR;
-    const why = unsayable(script, who, voices);
+    const why = unsayable(script, who, voices) ?? unreadable(script, line.text);
     if (why) return `"${line.text}" is said by ${who === NARRATOR ? `the ${NARRATOR}` : who}, who ${why.wrong}: ${why.hint}`;
   }
   return undefined;
@@ -93,7 +108,7 @@ export async function checkScript(video: VideoFile, host: PluginHost): Promise<C
   if ("issues" in checked) return checked;
   const voices = await toolVoices();
   const unsaid = checked.scenes.flatMap((scene) => linesIn(scene.items)).flatMap((line): Issue[] => {
-    const why = "text" in line ? unsayable(video.settings, line.who, voices) : undefined;
+    const why = "text" in line ? (unsayable(video.settings, line.who, voices) ?? unreadable(video.settings, line.text)) : undefined;
     return why ? [{ line: line.line, message: `${line.who === NARRATOR ? `the ${NARRATOR}` : line.who} ${why.wrong}`, hint: why.hint }] : [];
   });
   const { lengths, issues } = await measured(checkedLines(checked), video.plugin.dir);

@@ -1,0 +1,43 @@
+use: cartoon
+language: uk
+script: |
+  tune loop
+scenes:
+  - background: elm-bower
+    places:
+      squirrel: left-of(bower, near)
+      mole: right-of(bower, near)
+    faces: { mole: left }
+    values: { bower: 760 }
+    script: |
+      narrator say: Сонце сідає нижче, і Кротові не сидиться.
+      mole say: Білочко! Будь ласка, дай мені тягнути линву!
+      squirrel say: Ще ні, мій юний друже.
+      squirrel say: Зачекай, поки трохи повчишся.
+      narrator say: Кріт заздрить, і гордість не дає йому спокою.
+      together:
+        mole jump
+        narrator say: Раптом він схоплюється й хапає линву.
+      squirrel jump
+      & narrator say: Здивована Білка валиться навзнак.
+      narrator say: Кріт щосили смикає й знімає гальмо.
+      narrator say: І тут... шшух! Вагончик перекидається!
+      narrator say: А Кріт летить донизу, крізь гілля!
+  - background: glade
+    places: { mole: middle, squirrel: off-right }
+    faces: { squirrel: left }
+    script: |
+      rustle play
+      & narrator say: Листя шмагає його по вухах, а він усе падає.
+      narrator say: В останню мить він хапається за тонку ліщину.
+      narrator say: А вона вже тріщить...
+      narrator say: Аж раптом хтось міцно хапає його за шию.
+      squirrel walk to=right-of(mole, near)
+      & squirrel say: Ха-ха-ха! Тримаю, тримаю!
+      narrator say: Це Білка, і вона аж труситься від сміху.
+      narrator say: На ліані вона спускає Крота на м'який мох.
+      squirrel turn
+      squirrel walk to=off-right
+      & narrator say: А тоді лізе назад, ставити вагончик на місце.
+      narrator say: І рятувати кошик з обідом, що застряг у гілках.
+      narrator say: А Кріт стоїть на моху, весь у синцях і листі.

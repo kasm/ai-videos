@@ -60,7 +60,27 @@
     and `--fit` as before (its plan made again, the host being in its key),
     and its typecheck passed. `npm test` (341) and `npm run typecheck`, the
     tool's and cartoons', passed.
-- **Next: step 5.** Open: word stress (above).
+- Step 5 done 2026-11-27: the prompt in the episodes' language
+  (`--language uk` or `ru` on `prompt` and `story`).
+  - Checked: `prompt cartoons/stories/forest1.md --language uk`, and
+    `ru`, printed a prompt in that language but for names, code and
+    `library.yaml`; `src/prompt.test.ts` finds no English word left in
+    it. `src/guide.test.ts` finds each language's examples the English
+    rows, compiles them, and its prose the same code. `src/prompt.test.ts`
+    offers a new character a voice when all of a language's are taken,
+    and `src/story.test.ts` takes a Ukrainian reply to its end. A fresh
+    `claude -p`, given the Ukrainian prompt from an empty folder, wrote 7
+    episodes and «Усі епізоди написано.»; `import` took all 7 at once
+    (`cartoons/videos/forest1-uk-1.yaml` to `-7`), and `make` spoke each
+    in Supertonic's Ukrainian voices (narrator `uk_f1`, the cast's, and
+    the free `uk_f5` for the jays) into `cartoons/out/forest1-uk-*.mp4`,
+    54–73 s each, HyperFrames' check passing. `check` refuses a line in
+    Cyrillic in a video in English. `make cartoons/videos/hello.yaml`
+    took every stage from the cache (after one drawing, step 4 having
+    changed the plugin's folder); RayCraft's `water-switch` checked.
+    `npm test` (348) and `npm run typecheck`, the tool's and cartoons'
+    (67), passed.
+- **Every step is done.** Open: word stress (above).
 
 
 ## Goal

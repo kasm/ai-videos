@@ -1,7 +1,7 @@
 // Names in a hint: those there are, as a person reads them, and the one that was most likely meant.
 
-/** `a, b and c`. */
-export const listed = (names: string[]) => (names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : (names[0] ?? ""));
+/** `a, b and c`, or with another word for "and" (a prompt's in its language). */
+export const listed = (names: string[], and = "and") => (names.length > 1 ? `${names.slice(0, -1).join(", ")} ${and} ${names.at(-1)}` : (names[0] ?? ""));
 
 /** How many letters put in, left out or changed make `a` into `b`. */
 function distance(a: string, b: string): number {

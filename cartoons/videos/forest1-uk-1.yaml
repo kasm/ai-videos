@@ -1,0 +1,43 @@
+use: cartoon
+language: uk
+script: |
+  tune loop
+scenes:
+  - background: glade
+    places: { mole: off-left, rabbit: middle }
+    faces: { rabbit: left }
+    script: |
+      narrator say: Глибоко під лісовою галявиною жив собі Кріт.
+      narrator say: Цілий ранок він прибирав свою нірку.
+      narrator say: У горлі пил, хутро в бризках вапна,
+      narrator say: а спина болить так, що й не розігнутися.
+      narrator say: Але весна пробралася навіть у темну нірку.
+      narrator say: І збудила в ньому солодкий неспокій.
+      mole say: А, хай йому грець, тому прибиранню!
+      rustle play
+      & narrator say: Кріт кинув щітку й помчав угору тунелем.
+      narrator say: Він шкрябався й дерся, аж нарешті — хоп!
+      mole walk to=left
+      & narrator say: Його ніс вигулькнув на сонячну галявину.
+      together:
+        mole jump times=3
+        mole say: Оце так! Оце краса!
+      narrator say: Кріт аж підстрибує від радості життя.
+      mole walk to=left-of(rabbit, near)
+      & narrator say: Він дріботить по моху до ожинових кущів.
+      rabbit point
+      & rabbit say: Шість монет за прохід приватною стежкою!
+      together:
+        mole walk to=right-of(rabbit, near) speed=fast
+        rabbit look-at target=mole
+        rabbit stand @ block.start + 0.2s
+        rabbit jump @ block.start + 0.2s
+        narrator say: Та нетерплячий Кріт просто збиває його з ніг.
+      mole turn
+      & narrator say: Кролики визирають з нірок, і Кріт гукає їм.
+      mole say: Жолудевий соус вам!
+      mole turn
+      mole walk to=off-right
+      & narrator say: І мандрує далі, крізь папороть і галявини.
+      narrator say: Усі навколо метушаться й мостять гнізда.
+      narrator say: А він тут єдиний ледар, і як же це чудово!

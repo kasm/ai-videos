@@ -4,17 +4,22 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { compile, type CompiledLine } from "./compile.ts";
-import { SCRIPT, guideOf } from "./guide.ts";
+import { GUIDE_WORDS, SCRIPT, guideOf } from "./guide.ts";
 import { isBlock, readScript } from "./read.ts";
 import type { Schema } from "./plugin.ts";
 import { checkScenario, linesIn, type ScriptItem, type ScriptPlugin, type WrittenScript } from "./scenario.ts";
 import { writtenScript } from "./video-file.ts";
 
-/** The examples of the tool's part, each as it is written. */
-const EXAMPLES = [...SCRIPT.matchAll(/```script\n([\s\S]*?)```/g)].map((m) => m[1]!);
+/** The examples of a text of the tool's part, each as it is written. */
+const examplesIn = (text: string) => [...text.matchAll(/```script\n([\s\S]*?)```/g)].map((m) => m[1]!);
+/** The files in a text of the tool's part, each as it is written. */
+const filesIn = (text: string) => [...text.matchAll(/```yaml\n([\s\S]*?)```/g)].map((m) => m[1]!);
 
-/** The files in the tool's part, each as it is written. */
-const FILES = [...SCRIPT.matchAll(/```yaml\n([\s\S]*?)```/g)].map((m) => m[1]!);
+/** The examples of the tool's part, in English, each as it is written. */
+const EXAMPLES = examplesIn(SCRIPT);
+
+/** The files in the tool's part, in English, each as it is written. */
+const FILES = filesIn(SCRIPT);
 
 /** `go` takes `to`, a name, and 2 seconds at its own speed, and is fitted to words; `nod` takes its 2 seconds; `watch` is open. */
 const to: Schema = { "~standard": { version: 1, vendor: "test", validate: (values) => ({ value: values }), jsonSchema: { input: () => ({ properties: { to: {} } }), output: () => ({}) } } };
@@ -282,15 +287,54 @@ test("a plugin's guide: the tool's part, the plugin's, each action and construct
   assert.match(guideOf({ ...square, actions: { spin }, names: {} }, "en"), /\n- \*\*spin\*\*: It spins\. Channels: `place` and `facing`\. For example: `sq spin`\n$/);
 });
 
-test("a plugin's guide in a language: its part and its descriptions in that one, and one it does not write is refused", () => {
+test("a plugin's guide in a language: the tool's words and the plugin's part and descriptions in that one, and one it does not write is refused", () => {
   const slide = { description: { en: "The square slides to a side.", uk: "Квадрат ковзає вбік." }, example: "sq slide to=right", channels: ["place"], fits: true };
+  const look = { description: { en: "It looks.", uk: "Він дивиться." }, example: "sq look", channels: ["facing", "eyes"], open: true };
   const beside = { description: { en: "Beside a place.", uk: "Біля місця." }, example: "beside(mo, 2)" };
-  const square = { guide: { en: "A square slides to a side.", uk: "Квадрат ковзає вбік і говорить." }, actions: { slide }, constructions: { beside }, names: {} };
+  const square = { guide: { en: "A square slides to a side.", uk: "Квадрат ковзає вбік і говорить." }, actions: { slide, look }, constructions: { beside }, names: { slow: 0.6, fast: 1.6 } };
   const uk = guideOf(square, "uk");
-  assert.match(uk, /\n## The format\n\nКвадрат ковзає вбік і говорить\.\n\n## The actions\n\n/);
-  assert.match(uk, /\n- \*\*slide\*\*: Квадрат ковзає вбік\. Channel: `place`; it is fitted\. For example: `sq slide to=right`\n/);
-  assert.match(uk, /\n- \*\*beside\*\*: Біля місця\. For example: `beside\(mo, 2\)`\n/);
-  assert.doesNotMatch(uk, /The square slides|Beside a place/);
+  assert.ok(uk.startsWith(`## Сценарій\n\n${GUIDE_WORDS.uk.script.trim()}\n\n## Формат\n\nКвадрат ковзає вбік і говорить.\n\n## Дії\n\n`));
+  assert.match(uk, /\n- \*\*say\*\*: Персонаж каже слова після двокрапки своїм голосом; слова оповідача кажуть голосом відео\. Канал: `voice`\. Наприклад: `narrator say: Жили-були\.`\n/);
+  assert.match(uk, /\n- \*\*loop\*\*: Звук грає знову й знову\. Канал: `sound`; відкрита\. Наприклад: `tune loop volume=-20dB`\n/);
+  assert.match(uk, /\n- \*\*slide\*\*: Квадрат ковзає вбік\. Канал: `place`; підганяється\. Наприклад: `sq slide to=right`\n- \*\*look\*\*: Він дивиться\. Канали: `facing` і `eyes`; відкрита\. Наприклад: `sq look`\n/);
+  assert.match(uk, /\n## Конструкції\n\nЗначення можна обчислити з інших конструкцією: .*\n\n- \*\*beside\*\*: Біля місця\. Наприклад: `beside\(mo, 2\)`\n\nЦі імена означають числа в будь-якому значенні: `slow` — 0\.6 і `fast` — 1\.6\.\n$/);
+  assert.doesNotMatch(uk, /The square slides|Beside a place|For example|Channel/);
   assert.match(guideOf(square, "en"), /\n- \*\*slide\*\*: The square slides to a side\. /);
   assert.throws(() => guideOf(square, "ru"), /^Error: the plugin's guide to a script is in English and Ukrainian, and not in Russian$/);
+});
+
+/** A script's rows as read, with what is said and the words anchored at left out: the same in every language. */
+const rows = (items: unknown) => JSON.parse(JSON.stringify(items, (key, value) => (key === "text" ? undefined : key === "word" ? "a word" : typeof value === "string" ? value.replace(/\.word\([^)]*\)/g, ".word(…)") : value)));
+
+/** The code a text of the tool's part writes in its prose, each piece once for each time, what is said and the words anchored at left out. */
+const codeIn = (text: string) =>
+  [...text.replace(/```[\s\S]*?```/g, "").matchAll(/`([^`\n]+)`/g)]
+    .map((m) => m[1]!.replace(/\.word\([^)]*\)/g, ".word(…)").replace(/^(.* say( .*)?): .*$/, "$1: …"))
+    .sort();
+
+test("the tool's part is in English, Ukrainian and Russian: the same examples, row by row, only the words in their language, and the same code in its prose", async () => {
+  assert.deepEqual(Object.keys(GUIDE_WORDS), ["en", "uk", "ru"]);
+  assert.equal(GUIDE_WORDS.en.script, SCRIPT);
+  for (const [language, { script }] of Object.entries(GUIDE_WORDS).slice(1)) {
+    const examples = examplesIn(script);
+    assert.equal(examples.length, EXAMPLES.length, language);
+    for (const [k, example] of examples.entries()) {
+      assert.deepEqual(rows(readScript(example).items), rows(readScript(EXAMPLES[k]!).items), `${language}: the example of "${EXAMPLES[k]!.split("\n")[0]}"`);
+      // What is said is in the language: its letters are Cyrillic.
+      for (const line of linesIn(readScript(example).items)) if (line.text) assert.match(line.text, /\p{Script=Cyrillic}/u, `${language}: ${line.text}`);
+      // It compiles, as the English does.
+      const lines = await compiled(example);
+      assert.equal(lines.length, (await compiled(EXAMPLES[k]!)).length);
+    }
+    const files = filesIn(script);
+    assert.equal(files.length, FILES.length, language);
+    for (const [k, file] of files.entries()) {
+      const [own, english] = [writtenScript(file)!, writtenScript(FILES[k]!)!];
+      assert.deepEqual(rows(own), rows(english), `${language}: file ${k + 1}`);
+      assert.equal((await compiledScenes(own)).flat().length, (await compiledScenes(english)).flat().length);
+    }
+    assert.deepEqual(codeIn(script), codeIn(SCRIPT), language);
+    // Its headings are as many as the English's.
+    assert.equal(script.match(/^### /gm)!.length, SCRIPT.match(/^### /gm)!.length);
+  }
 });

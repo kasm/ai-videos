@@ -1,0 +1,46 @@
+use: cartoon
+language: uk
+script: |
+  tune loop
+scenes:
+  - background: oak-foot
+    places: { mole: off-left, squirrel: off-right }
+    faces: { squirrel: left }
+    values: { beech: 1560 }
+    script: |
+      ending together:
+        mole walk to=left
+        narrator say: Кріт мандрував лісом усе далі й далі.
+      narrator say: Аж раптом опинився під старезним дубом.
+      narrator say: Ніколи ще він не бачив Лісової Крони.
+      narrator say: Живий зелений храм гойдався й зітхав.
+      narrator say: Він кидав тіні й ловив сонячні промені.
+      narrator say: Зачарований Кріт слухав, як шепочуть гілки.
+      narrator say: Вони розповідали казки з самого серця землі.
+      narrator say: Аж ось у дуплі сусіднього бука щось блиснуло.
+      narrator say: Мов крихітна зірочка. А тоді підморгнуло.
+      squirrel walk to=beech
+      & narrator say: І довкола нього з'явилася руда мордочка.
+      narrator say: Кругла, жвава мордочка з вусами.
+      narrator say: Вушка з китичками й пишний хвіст.
+      narrator say: Це була Руда Білка!
+      squirrel wave
+      & squirrel say: Привіт, Кроте! Хочеш до мене нагору?
+      squirrel stand
+      & mole say: Ой, тобі легко казати!
+      narrator say: Тоді Білка відв'язує плетену лозу.
+      narrator say: І спускає ліщиновий кошик на блоках.
+      squirrel walk to=right-of(mole, near)
+      & narrator say: Вона допомагає Кротові залізти в кошик.
+      narrator say: І плавно тягне їх обох угору, у гілля.
+  - background: canopy
+    places:
+      mole: left-of(car, near)
+      squirrel: right-of(car, near)
+    faces: { squirrel: left }
+    values: { car: 960 }
+    script: |
+      narrator say: Вище й вище, аж до самої зеленої крони.
+      mole jump times=2
+      & mole say: Я ще ніколи в житті не був на деревах!
+      narrator say: Кріт аж завмирає від захвату.

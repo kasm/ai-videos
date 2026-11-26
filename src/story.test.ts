@@ -30,13 +30,30 @@ export default {
 };
 `;
 
-/** A project with the square plugin, its settings as given, a library of red, and a story. */
-async function project(name: string, settings: Record<string, unknown> = {}) {
+/** A square of a colour of the library, whose videos are scripts, its guide in English and Ukrainian. */
+const SCRIPT_PLUGIN = `
+export default {
+  scene: "square",
+  stage: { width: 160, height: 90 },
+  script: {
+    actions: {},
+    guide: { en: "A square of a colour of the library says its lines.", uk: "Квадрат кольору з бібліотеки каже свої репліки." },
+    check(scenes, library) {
+      const issues = scenes.filter((scene) => !library?.raw?.colours?.[scene.setting.colour]).map((scene) => ({ line: scene.line, message: "no colour is named " + scene.setting.colour, hint: "name a colour of the library" }));
+      return issues.length ? { issues } : { scenes: scenes.map((scene) => ({ setting: { colour: scene.setting.colour }, actions: [] })) };
+    },
+    draw: () => () => "<svg/>",
+  },
+};
+`;
+
+/** A project with a square plugin, its settings as given, a library of red, and a story. */
+async function project(name: string, settings: Record<string, unknown> = {}, plugin = PLUGIN) {
   const root = path.join(scratch, name);
   await mkdir(path.join(root, "src"), { recursive: true });
   await mkdir(path.join(root, "stories"), { recursive: true });
   await writeFile(path.join(root, "package.json"), JSON.stringify({ "ai-videos": { plugin: "src/plugin.mjs", ...settings } }));
-  await writeFile(path.join(root, "src", "plugin.mjs"), PLUGIN);
+  await writeFile(path.join(root, "src", "plugin.mjs"), plugin);
   await writeFile(path.join(root, "library.yaml"), "colours:\n  red: '#d04040'\n");
   await writeFile(path.join(root, "stories", "sq.md"), "Two squares meet in a field.\n");
   return { root, story: path.join(root, "stories", "sq.md") };
@@ -102,7 +119,7 @@ test("a story through the chat: the prompt, an answer cut off and continued, wha
   ]);
   const { make, calls } = makes(root);
   const said: string[] = [];
-  const made = await runStory(story, io, make, (m) => said.push(m));
+  const made = await runStory(story, "en", io, make, (m) => said.push(m));
   const log = said.join("\n");
 
   // The prompt first, the story in it, then what was refused, as the import words it for the chat.
@@ -129,7 +146,7 @@ test("a story through the chat: the prompt, an answer cut off and continued, wha
   const again = user([]);
   const remade = makes(root);
   const said2: string[] = [];
-  await runStory(story, again.io, remade.make, (m) => said2.push(m));
+  await runStory(story, "en", again.io, remade.make, (m) => said2.push(m));
   assert.deepEqual([again.given, again.asked], [[], []]);
   assert.match(said2.join("\n"), /stories\/sq\.reply\.md is there: going on from it\. To begin anew, in a new chat, delete it\./);
   assert.deepEqual(remade.calls, calls);
@@ -146,7 +163,7 @@ test("by default only the videos are made; done goes on with what there is", asy
   ]);
   const { make, calls } = makes(root);
   const said: string[] = [];
-  const made = await runStory(story, io, make, (m) => said.push(m));
+  const made = await runStory(story, "en", io, make, (m) => said.push(m));
   assert.match(said.join("\n"), /The clipboard holds no YAML block: copy the chat's whole answer with its copy button, which keeps the ```yaml blocks\./);
   assert.match(given[1]!, /- sq-2: no colour is named blue/);
   assert.deepEqual(calls, ["sq-1 video"]);
@@ -157,7 +174,44 @@ test("nothing taken is nothing to make; a reply is no story", async () => {
   const { root, story } = await project("none");
   const { io } = user([{ copied: episode("sq-1", "blue") }, { type: GO_ON }, { type: GO_ON }]);
   const { make, calls } = makes(root);
-  await assert.rejects(runStory(story, io, make, () => {}), /Stopped: no episode of stories\/sq\.reply\.md was taken, so there is nothing to make\./);
+  await assert.rejects(runStory(story, "en", io, make, () => {}), /Stopped: no episode of stories\/sq\.reply\.md was taken, so there is nothing to make\./);
   assert.deepEqual(calls, []);
-  await assert.rejects(runStory(replyFileOf(story), io, make, () => {}), /sq\.reply\.md: a story is <name>\.md, its name in lowercase letters, digits and dashes \(a reply, <name>\.reply\.md, is not one\)/);
+  await assert.rejects(runStory(replyFileOf(story), "en", io, make, () => {}), /sq\.reply\.md: a story is <name>\.md, its name in lowercase letters, digits and dashes \(a reply, <name>\.reply\.md, is not one\)/);
+});
+
+/** An episode in Ukrainian, written as a script: the narrator says a line on a square of a colour. */
+const ukrainian = (name: string, colour: string) => `${fence}yaml\nepisode: ${name}\nuse: square\nlanguage: uk\nscenes:\n  - colour: ${colour}\n    script: |\n      narrator say: Два квадрати зустрілися.\n${fence}\n`;
+
+test("a story in Ukrainian: the prompt in it, the reply in its own file, continued and mended in its words, and its episodes made", async () => {
+  const { root, story } = await project("uk", { voice: { en: "af_heart", uk: "uk_f1" } }, SCRIPT_PLUGIN);
+  const first = `Ось вони.\n\n${ukrainian("sq-uk-1", "red")}\n${fence}yaml\nepisode: sq-uk-2\nuse: sq`;
+  const second = `${ukrainian("sq-uk-2", "green")}\nУсі епізоди написано.\nПоле лишилося поза епізодами.\n`;
+  const mended = ukrainian("sq-uk-2", "red");
+  const { io, given, left } = user([{ copied: first }, { copied: second }, { copied: mended }]);
+  const { make, calls } = makes(root);
+  const said: string[] = [];
+  await runStory(story, "uk", io, make, (m) => said.push(m));
+  const log = said.join("\n");
+
+  // The prompt is in Ukrainian, its episodes named with the language's code, and the story in it as written.
+  assert.match(given[0]!, /^# Відео з історії\n/);
+  assert.match(given[0]!, /\nepisode: sq-uk-1 +# ім'я епізоду\n/);
+  assert.match(given[0]!, /\n## Формат\n\nКвадрат кольору з бібліотеки каже свої репліки\.\n/);
+  assert.match(given[0]!, /Two squares meet in a field\.\n$/);
+  // Cut off, the chat is told to go on in the prompt's word; it ends with the line in Ukrainian.
+  assert.match(log, /The chat has not said "Усі епізоди написано\."\. If it stopped before the end, type продовжуй in the chat, and copy its answer\./);
+  assert.match(given[1]!, /^The tool refused these episodes\. Send each again, its block whole and mended:\n\n- sq-uk-2: a mistake, at its line of the block[\s\S]*no colour is named green/);
+  assert.equal(left.length, 0);
+
+  // The reply's file is the language's own, beside the story, and the episodes say their language.
+  assert.equal(replyFileOf(story, "uk"), path.join(root, "stories", "sq-uk.reply.md"));
+  assert.equal(await readFile(replyFileOf(story, "uk"), "utf8"), `${first}\n\n${second}\n${mended}`);
+  await assert.rejects(readFile(replyFileOf(story), "utf8"));
+  assert.equal(await readFile(path.join(root, "videos", "sq-uk-2.yaml"), "utf8"), "use: square\nlanguage: uk\nscenes:\n  - colour: red\n    script: |\n      narrator say: Два квадрати зустрілися.\n");
+  assert.deepEqual(calls, ["sq-uk-1 video", "sq-uk-2 video"]);
+
+  // Run again in Ukrainian, it goes on from its file.
+  const again = user([]);
+  await runStory(story, "uk", again.io, makes(root).make, () => {});
+  assert.deepEqual([again.given, again.asked], [[], []]);
 });

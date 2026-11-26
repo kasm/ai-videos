@@ -3,7 +3,8 @@
 // clipboard: the prompt and what was refused are put on it, and each answer the user copies is
 // added to the reply's file. That file is all the command keeps, so a run stopped half-way goes on
 // from it. What it makes is each episode's outputs (video-file.ts): the pages first, each opened
-// as the preview, then the videos.
+// as the preview, then the videos. The episodes are in a language: the prompt is written in it,
+// and each language has a reply's file of its own.
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { existsSync } from "node:fs";
@@ -13,8 +14,8 @@ import path from "node:path";
 import { createInterface } from "node:readline";
 import { importReply, readReply } from "./import.ts";
 import { pluginOf } from "./make.ts";
-import { ALL_WRITTEN, promptFor } from "./prompt.ts";
-import { slug } from "./script.ts";
+import { PROMPT_WORDS, episodesOf, promptFor, saysAllWritten, storyOf } from "./prompt.ts";
+import type { Language } from "./script.ts";
 import { readVideoFile } from "./video-file.ts";
 
 /** What story does through the user: the clipboard, the keyboard and the browser. */
@@ -35,22 +36,24 @@ export type MakeOne = (video: string, as: "video" | "web") => Promise<string>;
 /** Typed in place of Enter, it goes on with what there is: for a chat that never says it is done, or a block it cannot mend. */
 export const GO_ON = "done";
 
-/** The file a story's replies go into, beside it: stories/<name>.reply.md. */
-export const replyFileOf = (story: string) => story.replace(/\.md$/, ".reply.md");
+/**
+ * The file a story's replies in a language go into, beside it, named as its episodes are:
+ * stories/<name>.reply.md, and in another language than English stories/<name>-uk.reply.md.
+ */
+export const replyFileOf = (story: string, language: Language = "en") => path.join(path.dirname(story), `${episodesOf(storyOf(story), language)}.reply.md`);
 
 /**
- * Takes the story in `file` through the chat and makes its episodes: returns the files made. With
- * its reply's file there already, it goes on from it: no new prompt, its import first.
+ * Takes the story in `file` through the chat and makes its episodes in `language`: returns the
+ * files made. With its reply's file in that language there already, it goes on from it: no new
+ * prompt, its import first.
  */
-export async function runStory(file: string, io: StoryIO, make: MakeOne, log: (msg: string) => void): Promise<string[]> {
-  const name = slug.safeParse(path.basename(file).replace(/\.md$/, ""));
-  if (!file.endsWith(".md") || !name.success) {
-    throw new Error(`${file}: a story is <name>.md, its name in lowercase letters, digits and dashes (a reply, <name>.reply.md, is not one): it names the episodes`);
-  }
+export async function runStory(file: string, language: Language, io: StoryIO, make: MakeOne, log: (msg: string) => void): Promise<string[]> {
+  storyOf(file, " (a reply, <name>.reply.md, is not one)");
+  const words = PROMPT_WORDS[language];
   const plugin = await pluginOf(file);
   if (!plugin) throw new Error(`${file}: no package.json above it names a plugin ("ai-videos": { "plugin" }), and a story is made by a plugin`);
   const shown = (f: string) => path.relative(plugin.dir, f).split(path.sep).join("/");
-  const reply = replyFileOf(file);
+  const reply = replyFileOf(file, language);
 
   // What was last put on the clipboard for the chat, and last added from it: either one there still is too soon.
   let given = "";
@@ -65,7 +68,7 @@ export async function runStory(file: string, io: StoryIO, make: MakeOne, log: (m
       if (text.trim() === "") log("The clipboard holds no text: copy the chat's answer.");
       else if (text.trim() === given.trim()) log("The clipboard still holds what was put there for the chat: copy the chat's answer.");
       else if (text.trim() === added.trim()) log(`That answer is in ${shown(reply)} already: copy the chat's next one.`);
-      else if (read.blocks.length === 0 && read.cut.length === 0 && !text.toLowerCase().includes(ALL_WRITTEN.toLowerCase().replace(/\.$/, ""))) {
+      else if (read.blocks.length === 0 && read.cut.length === 0 && !saysAllWritten(text)) {
         log("The clipboard holds no YAML block: copy the chat's whole answer with its copy button, which keeps the ```yaml blocks.");
       } else {
         const before = existsSync(reply) ? await readFile(reply, "utf8") : "";
@@ -85,7 +88,7 @@ export async function runStory(file: string, io: StoryIO, make: MakeOne, log: (m
 
   if (existsSync(reply)) log(`${shown(reply)} is there: going on from it. To begin anew, in a new chat, delete it.`);
   else {
-    const prompt = await promptFor(file, log);
+    const prompt = await promptFor(file, language, log);
     await give(prompt, `The prompt is on the clipboard (${prompt.length} characters): paste it into a new chat. When the chat has answered, copy its whole answer.`);
     await take(false);
   }
@@ -97,7 +100,7 @@ export async function runStory(file: string, io: StoryIO, make: MakeOne, log: (m
     log("");
     const imported = await importReply(reply, log);
     if (!imported.ended && !goingOn) {
-      log(`\nThe chat has not said "${ALL_WRITTEN}". If it stopped before the end, type continue in the chat, and copy its answer.`);
+      log(`\nThe chat has not said "${words.allWritten}". If it stopped before the end, type ${words.goOn} in the chat, and copy its answer.`);
       if (await take(true)) continue;
       goingOn = true;
     }

@@ -1,0 +1,53 @@
+use: cartoon
+language: uk
+script: |
+  tune loop
+scenes:
+  - background: canopy
+    places:
+      mole: left-of(car, near)
+      squirrel: right-of(car, near)
+    faces: { squirrel: left }
+    values: { car: 960 }
+    script: |
+      narrator say: Кошик пливе крізь крону, а Білка розповідає.
+      squirrel say: Восени буря гойдає моє гніздо, мов корабель.
+      squirrel say: А навесні тане сніг, і кора пахне, як пряник.
+      squirrel say: Тут завжди весело, і товариства вдосталь.
+      squirrel say: Дятли, сойки, повзики, і всі чогось хочуть!
+  - background: elm-bower
+    places:
+      squirrel: left-of(bower, near)
+      mole: right-of(bower, near)
+      marten: off-right
+    faces: { marten: left }
+    values: { bower: 760 }
+    script: |
+      narrator say: Вони причалюють до мохового майданчика.
+      narrator say: Високо на старому в'язі, біля темних хащів.
+      mole point
+      & mole say: А що там, у темряві?
+      mole stand
+      & mole turn
+      squirrel say: Та це просто Глибока Гущавина.
+      squirrel say: Ми, мешканці крон, туди рідко ходимо.
+      squirrel say: Під корінням там живе старий добрий Борсук.
+      squirrel say: Його ніхто не чіпає.
+      squirrel say: А от ласкам, горностаям і лисам — не вір.
+      squirrel say: А за Гущавиною — Широкий Світ.
+      squirrel say: Він нам обом байдужий. А тепер — обідати!
+      narrator say: Кріт розгортає пакунки на скатертині з листя.
+      mole jump
+      & mole say: Ой, матінко! Оце так!
+      narrator say: І вони беруться до їжі.
+      rustle play
+      & narrator say: Аж ось унизу гойдаються гілочки.
+      squirrel wave
+      & squirrel say: Куницю! Гей, Куницю, лізь до нас!
+      squirrel stand
+      together:
+        marten walk to=right-of(mole, near)
+        mole look-at target=marten
+        narrator say: І на гілку вилазить гнучка лісова Куниця.
+      marten say: Ах ви ж ненажери!
+      marten say: Видно, сьогодні весь світ на деревах!

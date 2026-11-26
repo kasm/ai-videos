@@ -1,0 +1,53 @@
+use: cartoon
+language: uk
+cast: { jays: uk_f5 }
+script: |
+  tune loop
+scenes:
+  - background: canopy
+    places:
+      mole: left-of(car, near)
+      squirrel: right-of(car, near)
+    faces: { squirrel: left }
+    values: { car: 960 }
+    script: |
+      narrator say: Сумний Кріт знову в кошику, високо в кроні.
+      mole say: Білочко, мій щедрий друже!
+      mole say: Мені дуже соромно за мою дурну поведінку.
+      mole say: Я був справжнім віслюком. Ти мені пробачиш?
+      squirrel say: Та що ти! Що Рудій Білці якесь падіння?
+      squirrel say: Ходи до мене, погостюй трохи.
+      squirrel say: Я навчу тебе лазити й ходити по гілці.
+      squirrel say: І скоро ти будеш у кронах не гірший за нас.
+      narrator say: Зворушений Кріт витирає сльозу.
+      narrator say: А тут над ними хихочуть дві сойки.
+      jays say: Хі-хі-хі! Кріт із дерева гепнувся!
+      mole say: А ви самі колись із гнізда випадали!
+  - background: squirrel-drey
+    places: { mole: left, squirrel: middle }
+    faces: { squirrel: left }
+    script: |
+      narrator say: Удома Білка запалює смоляний світильник.
+      narrator say: І загортає Крота в листяний халат біля вогню.
+      in order:
+        under volume=-12dB:
+          squirrel say: А якось над моїм гніздом кружляв яструб...
+          squirrel say: А лісоруби як застукають сокирами...
+        narrator say: І до самої вечері розповідає лісові історії.
+        narrator say: Про яструбів, лісорубів і нічні походи.
+      mole turn
+      together:
+        mole walk to=off-left speed=slow
+        squirrel walk to=off-left speed=slow
+        narrator say: Після вечері Білка веде сонного Крота спати.
+      narrator say: У найкращу спальню-дупло, на мохову подушку.
+      narrator say: Кріт засинає, щасливий-щасливий.
+      narrator say: А надворі тихо шепоче Лісова Крона.
+  - background: canopy
+    places: { squirrel: left, mole: middle }
+    script: |
+      narrator say: Той день був першим із багатьох.
+      mole jump times=2
+      & narrator say: Кріт навчився стрибати й лазити.
+      narrator say: А ще він прикладав вухо до шорсткої кори.
+      narrator say: І слухав, що шепоче вітер серед листя.

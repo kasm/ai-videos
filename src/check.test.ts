@@ -44,7 +44,7 @@ export default {
   plan: (s) => ({
     duration: s.wait + 1,
     events: [{ name: "start", at: 0, span: "hold" }, { name: "slide", at: s.wait, span: "move" }],
-    texts: [{ text: "It waits.", from: 0, to: s.wait }, { text: "It slides.", speaker: s.who ?? "sq", from: s.wait, to: s.wait + 1 }],
+    texts: [{ text: "It waits.", from: 0, to: s.wait }, { text: s.says ?? "It slides.", speaker: s.who ?? "sq", from: s.wait, to: s.wait + 1 }],
   }),
   frame: () => "<svg/>",
   script: {
@@ -290,6 +290,20 @@ test("check takes only voices of the video's language: a speaker's in it, the na
   assert.match(plan.stderr, /plan-uk\.yaml: "It slides\." is said by sq, who speaks in am_puck, which is English, and the video is in Ukrainian \(language: uk\): give sq a voice in Ukrainian, /);
   const language = await cli(["check", await video("de", lines("de", "pip say: Hallo!"))]);
   assert.match(language.stderr, /de\.yaml: a setting is not valid:\n.*a language is en, uk, ru\n {2}→ at language/);
+});
+
+test("check refuses words in Cyrillic letters in a video in English: one that does not say its language is not said as gibberish", async () => {
+  // A chat's episode in Ukrainian with no language: line, English by default.
+  const forgot = await cli(["check", await video("forgot", script(["sq say: Hello!", "narrator say: Ось вони, café."]))]);
+  assert.equal(forgot.code, 1);
+  assert.match(forgot.stderr, /^1 mistake in .*forgot\.yaml:\n/);
+  assert.match(forgot.stderr, /forgot\.yaml:6: narrator say: Ось вони, café\.\n {2}the narrator says it in Cyrillic letters, which no English voice reads, and the video is in English: it says no other language\n {2}Hint: a video in Ukrainian or Russian says so on top, beside use: language: uk or language: ru; else write the line in English\n/);
+  // Other letters than English's are its voices' to read.
+  const latin = await cli(["check", await video("latin", script(["sq say: A café, naïve and déjà vu."]))]);
+  assert.equal(latin.code, 0, latin.stderr);
+  // A plan's lines alike.
+  const plan = await cli(["check", await video("plan-cyrillic", "use: square\nwait: 1\nsays: Привіт.\n")]);
+  assert.match(plan.stderr, /plan-cyrillic\.yaml: "Привіт\." is said by sq, who says it in Cyrillic letters, which no English voice reads, and the video is in English: it says no other language: a video in Ukrainian or Russian says so on top/);
 });
 
 test("check refuses a sound whose file is missing, by its name, and one that holds no sound, with the lines that play it", async () => {

@@ -1,14 +1,37 @@
 // The guide to writing a video as a script (AGENTS.md, "A script"): the tool's part, how a script's
 // lines, blocks and values are written, with a plugin's own (host.ts, Described): what its videos can
 // show and a scene's keys, its actions and its constructions, each described once, and its names for
-// numbers. Each step of the plan adds what it gives a script to say; the prompt for a web chat
-// (prompt.ts) will be made from it.
+// numbers. It is the format in the prompt for a web chat (prompt.ts), in the episodes' language: the
+// tool's words are here in English, and in guide-uk.ts and guide-ru.ts in Ukrainian and Russian, the
+// same, part by part. A change to one is made in the other two.
+import { GUIDE_RU } from "./guide-ru.ts";
+import { GUIDE_UK } from "./guide-uk.ts";
 import type { Described } from "./host.ts";
 import { listed } from "./names.ts";
 import { SOUND, VOICE } from "./plan.ts";
 import { LOOP, PLAY, SAY } from "./read.ts";
 import type { ByLanguage } from "./scenario.ts";
 import { LANGUAGES, type Language } from "./script.ts";
+
+/** What the guide to a script says in one language, beside the plugin's part: the tool's part, and the words around the plugin's. */
+export interface GuideWords {
+  /** The tool's part, in Markdown: how a script's lines, blocks and values are written (SCRIPT). */
+  script: string;
+  headings: { script: string; format: string; actions: string; constructions: string };
+  /** The tool's own actions, each described, and the words of `say`'s example. */
+  say: string;
+  sayExample: string;
+  play: string;
+  loop: string;
+  /** An action's channels, each in backticks, and whether it is fitted or open: `Channel: \`place\`; it is fitted.` */
+  channels: (channels: string[], how: "fitted" | "open" | undefined) => string;
+  /** An example, as a script writes it: `For example: \`…\``. */
+  forExample: (example: string) => string;
+  /** How a construction is written, for a plugin that has some. */
+  constructed: string;
+  /** The plugin's names for numbers, `slow` and its number each. */
+  names: (names: [name: string, number: number][]) => string;
+}
 
 /** The tool's part, in Markdown. Each `script` block in it is a script the tool takes, and each `yaml` block a file's, its characters, `go` and `nod` made up (guide.test.ts). */
 export const SCRIPT = `
@@ -279,40 +302,58 @@ scenes:
 A channel does one thing at a time: two lines of one character, or two of its actions on one channel, never overlap, whatever blocks they are in. The second waits for the first.
 `;
 
-/** How a construction is written, for a plugin that has some. */
-const CONSTRUCTED = "A value may be worked out from others by a construction: its name, and in parentheses what it is worked out from, each a value itself, a comma between one and the next. It stands by itself, or in another's parentheses: it is no number, so nothing is added to it. Between `{` and `}` a comma ends a value, so there a construction is written in quotes, or its key on a row of its own.";
+/** A channel's name as the guide writes it. */
+const code = (name: string) => `\`${name}\``;
+
+/** The guide's words in English. */
+export const GUIDE_EN: GuideWords = {
+  script: SCRIPT,
+  headings: { script: "A script", format: "The format", actions: "The actions", constructions: "The constructions" },
+  say: "The character says the words after the colon, in its voice; the narrator's are said in the video's.",
+  sayExample: "Once upon a time.",
+  play: "The sound is played once, for as long as its file lasts.",
+  loop: "The sound is played again and again.",
+  channels: (channels, how) => `${channels.length > 1 ? "Channels" : "Channel"}: ${listed(channels.map(code))}${how === "fitted" ? "; it is fitted" : how === "open" ? "; it is open" : ""}.`,
+  forExample: (example) => `For example: \`${example}\``,
+  constructed:
+    "A value may be worked out from others by a construction: its name, and in parentheses what it is worked out from, each a value itself, a comma between one and the next. It stands by itself, or in another's parentheses: it is no number, so nothing is added to it. Between `{` and `}` a comma ends a value, so there a construction is written in quotes, or its key on a row of its own.",
+  names: (names) => `These names stand for numbers in any value: ${listed(names.map(([name, number]) => `\`${name}\` is ${number}`))}.`,
+};
+
+/** The guide's words in each language the tool writes it in. */
+export const GUIDE_WORDS: Record<Language, GuideWords> = { en: GUIDE_EN, uk: GUIDE_UK, ru: GUIDE_RU };
 
 /**
- * The guide for a plugin whose videos are written as scripts: the tool's part, the plugin's, the actions, the constructions, and its names for numbers.
- * The plugin's texts are those in `language`: a plugin that writes none in it is refused.
+ * The guide for a plugin whose videos are written as scripts, in `language`: the tool's part, the plugin's, the actions, the constructions, and its names for numbers.
+ * The plugin's texts are those in that language: a plugin that writes none in it is refused.
  */
 export function guideOf(script: NonNullable<Described["script"]>, language: Language): string {
   const guide = script.guide[language];
   if (guide === undefined) throw new Error(`the plugin's guide to a script is in ${listed(Object.keys(script.guide).map((code) => LANGUAGES[code as Language]))}, and not in ${LANGUAGES[language]}`);
+  const words = GUIDE_WORDS[language];
   // Its descriptions are in the guide's languages: the host checked them so (host.ts, PluginShape).
   const inIt = (text: ByLanguage) => text[language]!;
-  const names = Object.entries(script.names).map(([name, number]) => `\`${name}\` is ${number}`);
-  const forExample = (example: string) => `For example: \`${example}\``;
-  const onChannels = (channels: string[], how = "") => `${channels.length > 1 ? "Channels" : "Channel"}: ${listed(channels.map((channel) => `\`${channel}\``))}${how}.`;
-  const actions = Object.entries(script.actions).map(([name, { description, example, channels, fits, open }]) => `- **${name}**: ${inIt(description)} ${onChannels(channels, fits ? "; it is fitted" : open ? "; it is open" : "")} ${forExample(example)}`);
+  const { channels: on, forExample } = words;
+  const actions = Object.entries(script.actions).map(([name, { description, example, channels, fits, open }]) => `- **${name}**: ${inIt(description)} ${on(channels, fits ? "fitted" : open ? "open" : undefined)} ${forExample(example)}`);
   const constructions = Object.entries(script.constructions).map(([name, { description, example }]) => `- **${name}**: ${inIt(description)} ${forExample(example)}`);
+  const names = Object.entries(script.names);
   return [
-    "## A script",
+    `## ${words.headings.script}`,
     "",
-    SCRIPT.trim(),
+    words.script.trim(),
     "",
-    "## The format",
+    `## ${words.headings.format}`,
     "",
     guide.trim(),
     "",
-    "## The actions",
+    `## ${words.headings.actions}`,
     "",
-    `- **${SAY}**: The character says the words after the colon, in its voice; the narrator's are said in the video's. ${onChannels([VOICE])} ${forExample(`narrator ${SAY}: Once upon a time.`)}`,
-    `- **${PLAY}**: The sound is played once, for as long as its file lasts. ${onChannels([SOUND])} ${forExample(`bell ${PLAY}`)}`,
-    `- **${LOOP}**: The sound is played again and again. ${onChannels([SOUND], "; it is open")} ${forExample(`tune ${LOOP} volume=-20dB`)}`,
+    `- **${SAY}**: ${words.say} ${on([VOICE], undefined)} ${forExample(`narrator ${SAY}: ${words.sayExample}`)}`,
+    `- **${PLAY}**: ${words.play} ${on([SOUND], undefined)} ${forExample(`bell ${PLAY}`)}`,
+    `- **${LOOP}**: ${words.loop} ${on([SOUND], "open")} ${forExample(`tune ${LOOP} volume=-20dB`)}`,
     ...actions,
     "",
-    ...(constructions.length > 0 ? ["## The constructions", "", CONSTRUCTED, "", ...constructions, ""] : []),
-    ...(names.length > 0 ? [`These names stand for numbers in any value: ${listed(names)}.`, ""] : []),
+    ...(constructions.length > 0 ? [`## ${words.headings.constructions}`, "", words.constructed, "", ...constructions, ""] : []),
+    ...(names.length > 0 ? [words.names(names), ""] : []),
   ].join("\n");
 }

@@ -16,6 +16,7 @@ npm run video -- make <file> --profile quiet  the same, a profile's settings ove
 npm run video -- make <file> --as web         its web page: one HTML file that plays offline (see The web page)
 npm run video -- story <story>.md             a story to its videos, by a web chat and the clipboard (see Projects, story)
 npm run -s video -- prompt <story>.md         the prompt for a web chat, on stdout (see Projects, prompt)
+npm run -s video -- prompt <story>.md --language uk   the same for episodes in Ukrainian (or ru), and story too
 npm run video -- import <reply file>          the chat's reply: its episodes as video files (see Projects, import)
 npm run -s video -- check <dir>/<name>.yaml   a video file checked, with nothing spoken or written (see A script)
 npm run video -- voices ["text"]              the voices, and samples in out/voice-samples/ (see The voices)
@@ -43,7 +44,7 @@ the voice models always stay in this tool.
 | Path | What it is |
 | --- | --- |
 | `scenes/clip/scene.html` | The scene template (a HyperFrames sub-composition with `{{placeholders}}`): the plugin's clip, muted, with the captions over it. |
-| `src/` | The pipeline: `video-file` (the file, its settings in layers, and the `script` the pipeline reads) → the plugin in its process (`plugin`, `make`, `host`): its plan → `tts` (with `supertonic`) → `timeline` (and `fit` with `mouth`) → `sound` → the drawing (`moments`, `frames`, `clip`) → `compose` (with `bundle` and `captions`) → `render`; `page`, the web page; `stages` and `lock`, a make's cache and its lock (see The cache); `setup`, what the commands need on the disk; `prompt` and `import`, a story's prompt for a web chat and its reply taken in, and `story`, the two by the clipboard and the episodes made (see prompt, import, story); `loudness`, how loud a voice or a sound is (see How loud); `read`, `scenario` with `names` and `labels`, `values` with `formula`, `plan` with `times` and `words`, `compile`, `shown` and `guide`, a video written as a script: its lines and blocks read and checked, what its values come to, when each begins and ends, compiled, what each frame of it shows, and how it is taught (see A script, Values, What happens at once), and `check`, the check of a script as `check`, `make` and `import` run it; `random`, what every random test draws from, to say how many different scripts or plans it tried. |
+| `src/` | The pipeline: `video-file` (the file, its settings in layers, and the `script` the pipeline reads) → the plugin in its process (`plugin`, `make`, `host`): its plan → `tts` (with `supertonic`) → `timeline` (and `fit` with `mouth`) → `sound` → the drawing (`moments`, `frames`, `clip`) → `compose` (with `bundle` and `captions`) → `render`; `page`, the web page; `stages` and `lock`, a make's cache and its lock (see The cache); `setup`, what the commands need on the disk; `prompt` and `import`, a story's prompt for a web chat and its reply taken in, and `story`, the two by the clipboard and the episodes made (see prompt, import, story); `loudness`, how loud a voice or a sound is (see How loud); `read`, `scenario` with `names` and `labels`, `values` with `formula`, `plan` with `times` and `words`, `compile`, `shown` and `guide` (with `guide-uk` and `guide-ru`), a video written as a script: its lines and blocks read and checked, what its values come to, when each begins and ends, compiled, what each frame of it shows, and how it is taught, in each language (see A script, Values, What happens at once), and `check`, the check of a script as `check`, `make` and `import` run it; `random`, what every random test draws from, to say how many different scripts or plans it tried. |
 | `cartoons/` | A project of the tool's, in this repo: the cartoon plugin (`cartoons/src/plugin.ts`), its library, videos and stories, and its notes, `cartoons/CLAUDE.md`. Its `episode` skill is the repo's, `.claude/skills/episode/`. |
 | `out/voice-samples/` | What `voices` writes. |
 | `.cache/tts/` | Narration audio, keyed by text, voice and speed. |
@@ -358,8 +359,10 @@ scenes:
 - **The guide** to writing a script (`guideOf`, `src/guide.ts`) is the tool's part (a line's form,
   `say`, blocks, joining, channels, anchors, values, sounds, what is refused), the plugin's `script.guide`, the actions
   and the constructions, each with its description and example, an action with its channels and whether it is fitted or open, and the plugin's names for numbers. Each part's examples are compiled by a test. It is
-  made in a language: the plugin's texts are those in it, and a plugin that writes none in it is refused; the tool's
-  part is in English. It is the format in the prompt for a web chat (see `prompt`), in English.
+  made in a language, and all of it is in it but the code: the tool's part in English, Ukrainian or Russian
+  (`src/guide-uk.ts`, `src/guide-ru.ts`, the same rows in its examples, only the words in their language), and
+  the plugin's texts those in it; a plugin that writes none in it is refused. It is the format in the prompt for a
+  web chat (see `prompt`), in the episodes' language.
 
 `src/read.test.ts`, `src/formula.test.ts`, `src/values.test.ts`, `src/scenario.test.ts`,
 `src/plan.test.ts`, `src/words.test.ts`,
@@ -538,11 +541,14 @@ American and British English are both `en`).
   and one voice over all of them; a language the tool has not is refused.
 - **Refused** by `check`, `make` and `import`, at the line, each with a hint naming that language's
   voices and the speaker's others: a line whose speaker has no voice in the video's language, or one
-  of another language, or one that is none of the tool's. A plan's lines are refused alike, the first
+  of another language, or one that is none of the tool's; and, in a video in English, a line in
+  Cyrillic letters, which no English voice reads (`unreadable`): a video in Ukrainian or Russian that
+  forgot its `language:` is refused, not said as gibberish. A plan's lines are refused alike, the first
   with its text (`unspoken`, `src/check.ts`).
 - **The build and the page** carry it as their `lang`, and the captions' font has its letters
   (Inter's Cyrillic too).
-- The prompt still offers the English voices alone, and each character's English one (see prompt).
+- **A story's prompt** is in the language its episodes are to be in, with that language's voices
+  alone (see prompt).
 
 `src/video-file.test.ts`, `src/check.test.ts` and `src/import.test.ts` show each rule.
 
@@ -748,23 +754,37 @@ again.
 `npm run -s video -- prompt stories/<name>.md` writes the prompt for a story (a book's chapter) to
 stdout, for any web chat to answer with no tools and no files of its own (`src/prompt.ts`). The
 story's project is the nearest `package.json` above it with a plugin, which is started for its
-guides and commands, then closed. What it reads goes to stderr. In order:
+guides and commands, then closed. What it reads goes to stderr.
+
+`--language uk` (or `ru`; `en` when left out) is the language the episodes are to be in, whatever the
+story's own: the prompt is written in it, all but names, code (a script's syntax, keys, actions) and
+the library as written. The episodes are named after the story with the language's code,
+`<name>-uk-1`, so beside the English ones (`<name>-1`), as `meet-uk` is beside `meet`. The tool's
+words are in `src/prompt.ts` in English and in `src/guide-uk.ts` and `src/guide-ru.ts` in the
+others; the tool's own messages, which a chat is sent back, stay English, and the prompt says so. A
+plugin whose videos are no scripts writes its guide and commands in English alone: its prompt in
+another language is refused. In order:
 
 1. The tool's part: the task, and what a reply is: one YAML block per episode, its name on top
    (`episode: <name>-1`, `<name>-2`…, or `<name>` for a story of one episode), then `library:` with
-   only what the library lacks (each new character with its `voice`), then the video file. A reply
-   ends with the line `All episodes written.`; one cut off is told "continue", and begins the
-   block that was cut off again, whole.
-2. The format. For a plugin with a `script`, the guide to writing a script (see A script), in
-   English, and nothing of its `guide` and commands: its videos are written as scripts. For any other, its
-   `guide`, then its commands, each with its description and its example as written.
+   only what the library lacks (each new character with its `voice`), then the video file, with
+   `language: uk` under `use:` in another language than English. A reply ends with a line in its
+   language, `All episodes written.`, `Усі епізоди написано.` or `Все эпизоды написаны.`; one cut off
+   is told so in a word of its language, "continue", «продовжуй» or «продолжай», and begins the block
+   that was cut off again, whole.
+2. The format. For a plugin with a `script`, the guide to writing a script (see A script), in the
+   episodes' language, and nothing of its `guide` and commands: its videos are written as scripts.
+   For any other, its `guide`, then its commands, each with its description and its example as
+   written.
 3. `library.yaml` as written, when the project has one.
-4. The voices: the narrator's (the project's `voice`), the library's characters', each its English
-   one, and the rest of the tool's English ones (kokoro-js's), which nobody has, grouped by English
-   and gender, best first (Kokoro's grades).
+4. The voices of the episodes' language, grouped by gender (and in English, American or British):
+   in each, those nobody has, then those the narrator (the project's `voice`) or a character of the
+   library has, each with who; Kokoro's best first (its grades). A new character gets one nobody has
+   that suits it, and when none is free, one of a character who is in none of its episodes.
 5. The story, as written.
 
-It speaks and draws nothing, so it needs nothing from `setup`. `src/prompt.test.ts` shows each part.
+It speaks and draws nothing, so it needs nothing from `setup`. `src/prompt.test.ts` shows each part,
+in each language.
 
 ### `import`
 
@@ -775,8 +795,9 @@ nearest `package.json` above the file with a plugin (`src/import.ts`).
 - **The blocks:** each whole YAML block (`` ```yaml `` to its fence) is an episode; blocks of
   another language are passed over. A block with no end, or one a new YAML block begins inside,
   was cut off and is not counted. When two blocks name one episode, the later counts. The log says
-  each, and whether the reply says `All episodes written.` after a block: said once, it stays
-  said, as the blocks the chat mends come after it.
+  each, and whether the reply says `All episodes written.` after a block, in any of the tool's
+  languages: said once, it stays said, as the blocks the chat mends come after it. It needs no
+  language: an episode says its own, and is checked in it.
 - **An episode** is its name (`episode:`), what it adds to the library (`library:`, by section, as
   `library.yaml` has them), and its video file: the block without those two keys, as written, its
   comments kept.
@@ -805,14 +826,16 @@ Like `prompt`, it needs nothing from `setup`. `src/import.test.ts` shows each ca
 
 `npm run video -- story stories/<name>.md` takes a story to its videos in one command, through a
 web chat of the user's (`src/story.ts`). The tool and the chat meet on the clipboard, and the user
-presses Enter in the terminal when the chat's answer is copied. Windows only.
+presses Enter in the terminal when the chat's answer is copied. Windows only. With `--language uk`
+(or `ru`) its episodes are in that language (see prompt), and its reply's file is
+`stories/<name>-uk.reply.md`, beside the English one.
 
 | # | Who | What | Reads | Writes |
 | --- | --- | --- | --- | --- |
 | 1 | the tool | the prompt, on the clipboard (see prompt) | `stories/<name>.md`, `library.yaml`, the plugin | the clipboard |
 | 2 | the user | pastes it into a new chat; copies the chat's whole answer (its copy button keeps the blocks); presses Enter | | |
 | 3 | the tool | the answer added to the reply's file, which is then imported (see import) | the clipboard | `stories/<name>.reply.md`, `videos/<episode>.yaml`, `library.yaml` |
-| 3a | | cut off (no `All episodes written.`): the user types "continue" in the chat, copies its answer, presses Enter: 3 again | | |
+| 3a | | cut off (no `All episodes written.`): the user types "continue" (the prompt's word, which the tool names) in the chat, copies its answer, presses Enter: 3 again | | |
 | 3b | the tool | refused: the message for the chat, on the clipboard; the user pastes it, copies the answer, presses Enter: 3 again | | the clipboard |
 | 4 | the tool | each episode taken, made as its outputs say: the pages first, each opened in the browser, then the videos (see make) | `videos/<episode>.yaml` | `.cache/<episode>/`, `out/<episode>.*` |
 
@@ -823,8 +846,8 @@ presses Enter in the terminal when the chat's answer is copied. Windows only.
 - **`done`,** typed in place of Enter once the chat has answered, goes on with what there is: for a
   chat that never says `All episodes written.`, or an episode it cannot mend. Only the episodes
   taken are made; none taken stops it.
-- **The reply's file is all it keeps.** With `stories/<name>.reply.md` there, `story` copies no
-  prompt: it imports the file, and goes on from there. So a run stopped (Ctrl+C, a make that
+- **The reply's file is all it keeps.** With `stories/<name>.reply.md` there (of the language it is
+  given), `story` copies no prompt: it imports the file, and goes on from there. So a run stopped (Ctrl+C, a make that
   failed) goes on when typed again, and one made already makes again from the cache. To begin
   anew, in a new chat, delete the file.
 - **What it needs** is checked before the prompt: the voice, and HyperFrames' Chrome when the

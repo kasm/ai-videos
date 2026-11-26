@@ -12,7 +12,7 @@ import { isMap, isScalar, parseDocument, stringify, type Pair } from "yaml";
 import { checkScript, unspoken } from "./check.ts";
 import { pluginOf, startPlugin } from "./make.ts";
 import { listed } from "./names.ts";
-import { ALL_WRITTEN } from "./prompt.ts";
+import { ALL_WRITTEN, saysAllWritten } from "./prompt.ts";
 import { issueItems, type Issue } from "./scenario.ts";
 import { LANGUAGES, slug, type Language } from "./script.ts";
 import { spokenIn, toolVoices, type Voice } from "./tts.ts";
@@ -70,7 +70,7 @@ export function readReply(text: string): Reply {
     } else if (closed) outside.push(line);
   }
   if (open?.yaml) cut.push(open.line);
-  return { blocks, cut, ended: outside.join("\n").toLowerCase().includes(ALL_WRITTEN.toLowerCase().replace(/\.$/, "")) };
+  return { blocks, cut, ended: saysAllWritten(outside.join("\n")) };
 }
 
 /** One thing a block adds to the library: its section (`characters`), its name, and its text as written there. */
@@ -277,7 +277,9 @@ export async function importReply(file: string, log: (msg: string) => void): Pro
   if (reply.blocks.length === 0 && reply.cut.length === 0) throw new Error(`${file} holds no YAML block: paste the chat's reply into it, its blocks as the chat wrote them`);
   log(`Reply: ${shown(file)}: ${reply.blocks.length} whole block${reply.blocks.length === 1 ? "" : "s"}`);
   for (const line of reply.cut) log(`  The block at line ${line} is cut off: not counted.`);
-  if (!reply.ended) log(`  It does not say "${ALL_WRITTEN}" after its blocks: if the chat stopped before the end, say "continue" in it, and add its answer to ${shown(file)}.`);
+  if (!reply.ended) {
+    log(`  It does not say "${ALL_WRITTEN}" (or its prompt's line, in another language) after its blocks: if the chat stopped before the end, tell it to continue, in the prompt's word, and add its answer to ${shown(file)}.`);
+  }
 
   // Each episode is its last whole block.
   const refused = new Map<string, string>();

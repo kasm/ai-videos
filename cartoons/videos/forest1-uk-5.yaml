@@ -1,0 +1,50 @@
+use: cartoon
+language: uk
+script: |
+  tune loop
+scenes:
+  - background: elm-bower
+    places:
+      squirrel: left-of(bower, near)
+      mole: right-of(bower, near)
+      marten: perch
+      badger: off-right
+    faces: { marten: left, badger: left }
+    values: { bower: 760, perch: 1210 }
+    script: |
+      narrator say: Кріт, Білка й Куниця обідають на старому в'язі.
+      together:
+        rustle play
+        badger walk to=right-of(marten, near)
+        narrator say: Аж ось з папороті визирає смугаста голова.
+      squirrel wave
+      & squirrel say: Лізь до нас, старий Борсуче!
+      squirrel stand
+      & badger say: Гм! Товариство.
+      badger turn
+      badger walk to=off-right
+      & narrator say: І Борсук зникає в папороті.
+      squirrel say: Ох, терпіти не може товариства.
+      squirrel say: Ну, а хто ще сьогодні в лісі?
+      marten say: Ропух вибрався! На новій літальній штуці!
+      together:
+        squirrel say: Ха-ха-ха!
+        marten say: Ха-ха-ха!
+      narrator say: Вони сміються з Ропухових забаганок.
+      narrator say: Хатки на деревах, тролеї, ночівлі в гамаках...
+      narrator say: Аж тут повз крону мчить полотняний планер.
+      narrator say: Він шалено хилиться то вліво, то вправо.
+      marten say: За хвилину він із нього вилетить!
+      marten say: Я вам розповідав про Ропуха й лісничого?
+      marten say: Отже, Ропух...
+      rustle play
+      & narrator say: Повз пролітає заблуканий жук.
+      marten turn
+      together:
+        marten walk to=off-right speed=fast
+        narrator say: Руда смуга, клац! І нема ні жука, ні Куниці.
+      narrator say: Лише листя тремтить унизу.
+      narrator say: Та звірі не обговорюють раптових зникнень.
+      narrator say: Тож Кріт мовчки складає кошик.
+      narrator say: Він забув лише тарілку з листка й виделку.
+      narrator say: А ще горщик з медом, на якому сидів.

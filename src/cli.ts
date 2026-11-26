@@ -18,7 +18,7 @@ import { compiledPage, writePage, pageVideo, type PagePicture, type PageVideo } 
 import { LOOP } from "./read.ts";
 import { hyperframes, muxSound, renderProject } from "./render.ts";
 import { NARRATOR, issuesText, linesIn, type Default } from "./scenario.ts";
-import { FORMATS, LANGUAGES, voiceOf, type EventLimitsScript, type FormatName, type LoadedVideo } from "./script.ts";
+import { FORMATS, LANGUAGES, voiceOf, type EventLimitsScript, type FormatName, type Language, type LoadedVideo } from "./script.ts";
 import { cachePaths, cacheRoot, ready, setup } from "./setup.ts";
 import { pictureOf } from "./shown.ts";
 import { compiledSounds, compiledVoices, mixKey, writeMix, writeSound } from "./sound.ts";
@@ -59,9 +59,9 @@ Commands
                     with its line and a hint, or the defaults it takes; any other file as its
                     plugin checks it. Needs nothing from setup (AGENTS.md, "A script")
   story <story.md>  A story to its videos, by a web chat and the clipboard: the prompt copied, each
-                    answer copied back into <name>.reply.md and imported, what was refused copied
-                    for the chat, then each episode made. Goes on from the reply's file when it is
-                    there (AGENTS.md, "story"). Windows only
+                    answer copied back into <name>.reply.md (<name>-uk.reply.md for Ukrainian) and
+                    imported, what was refused copied for the chat, then each episode made. Goes on
+                    from the reply's file when it is there (AGENTS.md, "story"). Windows only
   prompt <story.md> The prompt for a web chat, on stdout: the tool's instructions, the format from
                     the plugin, the library and the voices, and the story (AGENTS.md, "prompt")
   import <reply>    A web chat's reply to the prompt, pasted into a file: each episode the tool and
@@ -74,6 +74,10 @@ Options, for make
   --profile <${Object.keys(PROFILES).join("|")}>   These settings over the rest; the finished files are <name>-<profile>.*
   --as <video|web>                The video, or its web page, out/<name>.html, one file that
                                   plays offline, whatever its outputs say
+
+Options, for prompt and story
+  --language <${Object.keys(LANGUAGES).join("|")}>           The episodes' language, English when left out: the prompt is
+                                  written in it, and its episodes are <name>-uk-1 and on
 `;
 
 /**
@@ -533,6 +537,7 @@ async function main() {
       fit: { type: "boolean", default: false },
       profile: { type: "string" },
       as: { type: "string" },
+      language: { type: "string" },
       help: { type: "boolean", short: "h", default: false },
     },
   });
@@ -541,6 +546,11 @@ async function main() {
   if (command !== "make" && (values.fit || values.profile !== undefined || values.as !== undefined)) {
     throw new Error("--fit, --profile and --as are for make");
   }
+  if (values.language !== undefined && command !== "prompt" && command !== "story") throw new Error("--language is for prompt and story: a video file says its own (language: uk)");
+  if (values.language !== undefined && !Object.hasOwn(LANGUAGES, values.language)) {
+    throw new Error(`--language ${values.language}: it is ${Object.entries(LANGUAGES).map(([code, name]) => `${code} (${name})`).join(", ")}`);
+  }
+  const language = (values.language ?? "en") as Language;
   if (command === "setup") return setup(ROOT, CACHE, log);
 
   if (command === "voices") {
@@ -569,7 +579,7 @@ async function main() {
   if (command === "prompt") {
     if (!arg) throw new Error('"prompt" needs a story: its file, e.g. npm run -s video -- prompt stories/the-river-bank.md');
     // The prompt alone goes to stdout, to be copied or piped; what was read goes to stderr.
-    const prompt = await promptFor(path.resolve(CALLER, arg), (m) => console.error(m));
+    const prompt = await promptFor(path.resolve(CALLER, arg), language, (m) => console.error(m));
     return void process.stdout.write(prompt);
   }
 
@@ -590,7 +600,7 @@ async function main() {
     const plugin = await pluginOf(story);
     const outputs = plugin ? ((await readProject(plugin)).settings.outputs as { video: boolean }) : { video: true };
     Object.assign(process.env, ready(ROOT, CACHE, outputs.video ? ["voice", "browser"] : ["voice"]));
-    await runStory(story, windowsIO(), async (video, as) => (await makeFile(video, { fit: false, profile: undefined, as }))[0]!, log);
+    await runStory(story, language, windowsIO(), async (video, as) => (await makeFile(video, { fit: false, profile: undefined, as }))[0]!, log);
     return;
   }
 
