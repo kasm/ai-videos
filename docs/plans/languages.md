@@ -2,7 +2,27 @@
 
 ## Now
 
-- Not started. **Next: step 1.**
+- Step 1 done 2026-11-26: **Supertonic 3, fp32** (Hugging Face
+  `Supertone/supertonic-3`), the user's pick by ear.
+  - Voices: the same ten, F1–F5 and M1–M5, in Ukrainian (`uk`) and in
+    Russian (`ru`), and in its 29 other languages, English among them.
+  - Licence: the weights BigScience OpenRAIL-M, whose use rules include
+    that a published video says its voices are machine-made; the code
+    MIT. Upstream (GitHub) archived 2026-09-09.
+  - Download: 398 MB (four ONNX models), and 0.3 MB a voice.
+  - 44,100 Hz, mono.
+  - Speed: saying a line takes 0.10–0.13 of its length, on this machine's
+    CPU, through the repo's onnxruntime-node, at the official example's
+    8 steps and speed 1.05.
+  - Two runs of a line: different bytes as shipped, its noise being
+    `Math.random()`; the same bytes, in one process and in two, with the
+    noise seeded.
+  - Checked: each voice said five cartoon lines in each language, from
+    Node with nothing fetched, beside Piper's eleven voices and MMS; the
+    user listened. Whisper large-v3-turbo heard them back, with 0.5–3.3 %
+    of the characters wrong in Ukrainian and 0–0.5 % in Russian; F1's
+    lines hashed in two runs, seeded and not.
+- **Next: step 2.**
 
 
 ## Goal
