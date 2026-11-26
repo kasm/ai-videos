@@ -101,9 +101,9 @@ export function promptOf(p: PromptParts): string {
     '- If your reply is cut off, I will say "continue". Then begin again with the block of the episode that was cut off, whole, and go on.',
     "- If I send you what the tool refused, reply with the blocks it names, each whole and mended.",
     "",
-    // A plugin with a script is taught scripts alone: its plan's part, if it has one, is not.
+    // A plugin with a script is taught scripts alone: its plan's part, if it has one, is not. The prompt is in English.
     ...(plugin.script
-      ? [guideOf(plugin.script).trim(), ""]
+      ? [guideOf(plugin.script, "en").trim(), ""]
       : ["## The format", "", (plugin.guide ?? "").trim(), "", "## The commands", "", ...(commands.length > 0 ? commands : ["The format has no commands."]), ""]),
     ...(lib
       ? [

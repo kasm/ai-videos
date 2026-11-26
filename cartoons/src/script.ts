@@ -9,7 +9,18 @@ import { NEAR, place, stageOf } from "./places.ts";
 import { ARM, GROUND, MARKS, PACE, SCENE, name, readLibrary, type Pose } from "./library.ts";
 
 /** An action on the arm: it changes the pose, and takes as long as the arm does. */
-const onArm = (pose: Pose, description: string) => ({ description: `${description} The arm gets there in ${PACE.arm} seconds.`, example: `pip ${pose}`, values: z.strictObject({}), channels: ["arm"] });
+const onArm = (pose: Pose, description: { en: string; uk: string; ru: string }) => ({
+  description: {
+    en: `${description.en} The arm gets there in ${PACE.arm} seconds.`,
+    uk: `${description.uk} Рука опиняється там за ${PACE.arm} с.`,
+    ru: `${description.ru} Рука оказывается там за ${PACE.arm} с.`,
+  },
+  example: `pip ${pose}`,
+  values: z.strictObject({}),
+  channels: ["arm"],
+});
+
+const marks = Object.keys(MARKS).join(", ");
 
 /** What happens at once has no length of its own, and the least there is: a frame. */
 const AT_ONCE = 0.001;
@@ -18,40 +29,72 @@ const AT_ONCE = 0.001;
  * What a line of a script may do, besides the tool's `say`, each described once: what it does, a
  * line that uses it, the values it takes, the channel of the character it keeps busy, and whether it
  * is fitted to words, or open. All but `background` are a character's. The tool's check and the guide
- * come from these.
+ * come from these. Each is described in English, Ukrainian and Russian, as the guide is (guide.ts).
  */
 export const ACTIONS = {
   walk: {
-    description: `The character goes from where it stands to the place \`to\`: a mark (${Object.keys(MARKS).join(", ")}), a point, or one worked out from where others stand (\`to=left-of(mo, near)\`). It takes a whole number of steps, at about ${PACE.walk} px a second. A walk turns nobody: it goes the way the character faces.`,
+    description: {
+      en: `The character goes from where it stands to the place \`to\`: a mark (${marks}), a point, or one worked out from where others stand (\`to=left-of(mo, near)\`). It takes a whole number of steps, at about ${PACE.walk} px a second. A walk turns nobody: it goes the way the character faces.`,
+      uk: `Персонаж іде з того місця, де стоїть, до місця \`to\`: до мітки (${marks}), до точки або до місця, обчисленого з того, де стоять інші (\`to=left-of(mo, near)\`). Він робить ціле число кроків, приблизно ${PACE.walk} px за секунду. \`walk\` нікого не повертає: персонаж іде в той бік, куди обернений.`,
+      ru: `Персонаж идёт с того места, где стоит, к месту \`to\`: к метке (${marks}), к точке или к месту, вычисленному из того, где стоят другие (\`to=left-of(mo, near)\`). Он делает целое число шагов, примерно ${PACE.walk} px в секунду. \`walk\` никого не поворачивает: персонаж идёт в ту сторону, куда повёрнут.`,
+    },
     example: "pip walk to=middle",
     values: z.strictObject({ to: place }),
     channels: ["place"],
     fits: true,
   },
   jump: {
-    description: `The character hops \`times\` times (1 when left out), where it stands or as it walks, and ends on the ground. Each hop takes ${PACE.hop} seconds.`,
+    description: {
+      en: `The character hops \`times\` times (1 when left out), where it stands or as it walks, and ends on the ground. Each hop takes ${PACE.hop} seconds.`,
+      uk: `Персонаж підстрибує \`times\` разів (1, якщо не вказано), на місці або на ходу, і закінчує на землі. Кожен стрибок триває ${PACE.hop} с.`,
+      ru: `Персонаж подпрыгивает \`times\` раз (1, если не указано), на месте или на ходу, и заканчивает на земле. Каждый прыжок длится ${PACE.hop} с.`,
+    },
     example: "pip jump times=2",
     values: z.strictObject({ times: z.number({ error: "it is how many hops, 1 or more" }).int("it is a whole number of hops").positive("it is 1 hop or more").default(1) }),
     channels: ["hop"],
   },
   turn: {
-    description: `The character turns to face the other way, where it stands or as it walks, and stays so. It takes ${PACE.turn} seconds.`,
+    description: {
+      en: `The character turns to face the other way, where it stands or as it walks, and stays so. It takes ${PACE.turn} seconds.`,
+      uk: `Персонаж обертається в інший бік, на місці або на ходу, і так і лишається. Це триває ${PACE.turn} с.`,
+      ru: `Персонаж поворачивается в другую сторону, на месте или на ходу, и так и остаётся. Это длится ${PACE.turn} с.`,
+    },
     example: "pip turn",
     values: z.strictObject({}),
     channels: ["facing"],
   },
   "look-at": {
-    description: `The character faces another of the scene, \`target\`, wherever that one goes: it turns to face them, and turns as they go past. Then it stays facing the way it does as the look ends. A first turn takes ${PACE.turn} seconds. It is where the character faces, and nothing more: it walks, hops, points and talks meanwhile.`,
+    description: {
+      en: `The character faces another of the scene, \`target\`, wherever that one goes: it turns to face them, and turns as they go past. Then it stays facing the way it does as the look ends. A first turn takes ${PACE.turn} seconds. It is where the character faces, and nothing more: it walks, hops, points and talks meanwhile.`,
+      uk: `Персонаж дивиться на іншого персонажа сцени, \`target\`, хоч куди той іде: обертається до нього й повертається слідом, коли той проходить повз. Потім лишається оберненим так, як був, коли погляд закінчився. Перший поворот триває ${PACE.turn} с. Це лише те, куди персонаж обернений, і нічого більше: тим часом він може йти, стрибати, показувати й говорити.`,
+      ru: `Персонаж смотрит на другого персонажа сцены, \`target\`, куда бы тот ни шёл: поворачивается к нему и поворачивается следом, когда тот проходит мимо. Потом остаётся повёрнутым так, как был, когда взгляд закончился. Первый поворот длится ${PACE.turn} с. Это только то, куда персонаж повёрнут, и ничего больше: тем временем он может идти, прыгать, показывать и говорить.`,
+    },
     example: "mo look-at target=pip",
     values: z.strictObject({ target: z.string({ error: "it is the name of a character of the scene" }) }),
     channels: ["facing"],
     open: true,
   },
-  wave: onArm("wave", "The character raises its arm and waves it, and goes on waving until it points or stands."),
-  point: onArm("point", "The character holds its arm straight forward, the way it faces, until it waves or stands."),
-  stand: onArm("stand", "The character lets its arm hang again, as everyone's does when a scene begins."),
+  wave: onArm("wave", {
+    en: "The character raises its arm and waves it, and goes on waving until it points or stands.",
+    uk: "Персонаж піднімає руку й махає нею, і махає далі, доки не зробить `point` або `stand`.",
+    ru: "Персонаж поднимает руку и машет ею, и машет дальше, пока не сделает `point` или `stand`.",
+  }),
+  point: onArm("point", {
+    en: "The character holds its arm straight forward, the way it faces, until it waves or stands.",
+    uk: "Персонаж тримає руку прямо перед собою, туди, куди обернений, доки не зробить `wave` або `stand`.",
+    ru: "Персонаж держит руку прямо перед собой, туда, куда повёрнут, пока не сделает `wave` или `stand`.",
+  }),
+  stand: onArm("stand", {
+    en: "The character lets its arm hang again, as everyone's does when a scene begins.",
+    uk: "Персонаж знову опускає руку, як у всіх на початку сцени.",
+    ru: "Персонаж снова опускает руку, как у всех в начале сцены.",
+  }),
   background: {
-    description: `The background changes to \`to\`, another of the library's, at once as the row begins, and stays so until a row changes it again. Everyone stays where they are, and goes on with what they do. Nobody does it, so its row is the \`${SCENE}\`'s, which does nothing else.`,
+    description: {
+      en: `The background changes to \`to\`, another of the library's, at once as the row begins, and stays so until a row changes it again. Everyone stays where they are, and goes on with what they do. Nobody does it, so its row is the \`${SCENE}\`'s, which does nothing else.`,
+      uk: `Тло змінюється на \`to\`, інше з бібліотеки, одразу, як починається рядок, і лишається таким, доки інший рядок не змінить його знову. Усі лишаються там, де стоять, і далі роблять те, що робили. Цього не робить ніхто, тож у рядку замість персонажа стоїть \`${SCENE}\`, а \`${SCENE}\` нічого іншого не робить.`,
+      ru: `Фон меняется на \`to\`, другой из библиотеки, сразу, как начинается строка, и остаётся таким, пока другая строка не сменит его снова. Все остаются там, где стоят, и продолжают делать то, что делали. Этого не делает никто, поэтому в строке вместо персонажа стоит \`${SCENE}\`, а \`${SCENE}\` больше ничего не делает.`,
+    },
     example: `${SCENE} background to=night`,
     values: z.strictObject({ to: z.string({ error: "it is the name of one of the library's backgrounds" }) }),
     channels: ["background"],

@@ -7,6 +7,8 @@ import type { Described } from "./host.ts";
 import { listed } from "./names.ts";
 import { SOUND, VOICE } from "./plan.ts";
 import { LOOP, PLAY, SAY } from "./read.ts";
+import type { ByLanguage } from "./scenario.ts";
+import { LANGUAGES, type Language } from "./script.ts";
 
 /** The tool's part, in Markdown. Each `script` block in it is a script the tool takes, and each `yaml` block a file's, its characters, `go` and `nod` made up (guide.test.ts). */
 export const SCRIPT = `
@@ -280,13 +282,20 @@ A channel does one thing at a time: two lines of one character, or two of its ac
 /** How a construction is written, for a plugin that has some. */
 const CONSTRUCTED = "A value may be worked out from others by a construction: its name, and in parentheses what it is worked out from, each a value itself, a comma between one and the next. It stands by itself, or in another's parentheses: it is no number, so nothing is added to it. Between `{` and `}` a comma ends a value, so there a construction is written in quotes, or its key on a row of its own.";
 
-/** The guide for a plugin whose videos are written as scripts: the tool's part, the plugin's, the actions, the constructions, and its names for numbers. */
-export function guideOf(script: NonNullable<Described["script"]>): string {
+/**
+ * The guide for a plugin whose videos are written as scripts: the tool's part, the plugin's, the actions, the constructions, and its names for numbers.
+ * The plugin's texts are those in `language`: a plugin that writes none in it is refused.
+ */
+export function guideOf(script: NonNullable<Described["script"]>, language: Language): string {
+  const guide = script.guide[language];
+  if (guide === undefined) throw new Error(`the plugin's guide to a script is in ${listed(Object.keys(script.guide).map((code) => LANGUAGES[code as Language]))}, and not in ${LANGUAGES[language]}`);
+  // Its descriptions are in the guide's languages: the host checked them so (host.ts, PluginShape).
+  const inIt = (text: ByLanguage) => text[language]!;
   const names = Object.entries(script.names).map(([name, number]) => `\`${name}\` is ${number}`);
   const forExample = (example: string) => `For example: \`${example}\``;
   const onChannels = (channels: string[], how = "") => `${channels.length > 1 ? "Channels" : "Channel"}: ${listed(channels.map((channel) => `\`${channel}\``))}${how}.`;
-  const actions = Object.entries(script.actions).map(([name, { description, example, channels, fits, open }]) => `- **${name}**: ${description} ${onChannels(channels, fits ? "; it is fitted" : open ? "; it is open" : "")} ${forExample(example)}`);
-  const constructions = Object.entries(script.constructions).map(([name, { description, example }]) => `- **${name}**: ${description} ${forExample(example)}`);
+  const actions = Object.entries(script.actions).map(([name, { description, example, channels, fits, open }]) => `- **${name}**: ${inIt(description)} ${onChannels(channels, fits ? "; it is fitted" : open ? "; it is open" : "")} ${forExample(example)}`);
+  const constructions = Object.entries(script.constructions).map(([name, { description, example }]) => `- **${name}**: ${inIt(description)} ${forExample(example)}`);
   return [
     "## A script",
     "",
@@ -294,7 +303,7 @@ export function guideOf(script: NonNullable<Described["script"]>): string {
     "",
     "## The format",
     "",
-    script.guide.trim(),
+    guide.trim(),
     "",
     "## The actions",
     "",

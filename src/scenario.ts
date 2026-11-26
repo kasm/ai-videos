@@ -9,6 +9,7 @@ import { listed, nearest } from "./names.ts";
 import { begunBy, timeIssues } from "./plan.ts";
 import type { Library, Schema } from "./plugin.ts";
 import { LOOP, PLAY, SAY, TOOL_ACTIONS, isBlock, isPlayed } from "./read.ts";
+import type { Language } from "./script.ts";
 import type { Shown } from "./shown.ts";
 import { VOLUME, valuesTaken, workOut, type WorkedLine } from "./values.ts";
 
@@ -102,10 +103,20 @@ export interface WrittenScript {
   issues: Issue[];
 }
 
+/** A text in each language it is written in, by the language's code. */
+export type ByLanguage = Partial<Record<Language, string>>;
+
+/**
+ * A text of a plugin's, for a person or a model writing a script: one, in English, or one in each
+ * language the plugin writes, by its code (`{ en: …, uk: … }`). A plugin's texts are all in the same
+ * languages.
+ */
+export type Wording = string | ByLanguage;
+
 /** One of a plugin's actions, described once: the check, the guide and the prompt come from that. */
 export interface Action {
   /** What it does, for a person or a model writing a script. */
-  description: string;
+  description: Wording;
   /** One line that uses it, as a script writes it (`pip walk to=middle`): its values pass `values`. */
   example: string;
   /**
@@ -128,7 +139,7 @@ export interface Action {
 /** One of a plugin's constructions, described once: a value worked out from others, `left-of(pip, near)`. */
 export interface ConstructionOf {
   /** What it is, and what its parentheses take, for a person or a model writing a script. */
-  description: string;
+  description: Wording;
   /** One, as a formula writes it. */
   example: string;
 }
@@ -182,9 +193,10 @@ export interface ScriptPlugin {
   /**
    * Its part of the guide to writing a script (guide.ts), in Markdown: what its videos can show, a
    * scene's own keys, and a whole video file as an example. The tool adds how a script's lines are
-   * written, the actions and the constructions.
+   * written, the actions and the constructions. One, in English, or one in each language it writes,
+   * as its actions' and constructions' descriptions are.
    */
-  guide: string;
+  guide: Wording;
   /**
    * The script checked against the library, and worked out: every scene, in order, or every mistake
    * with its line and a hint. A library that cannot be read is thrown, naming its file.

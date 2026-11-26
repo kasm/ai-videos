@@ -391,11 +391,12 @@ test("a plugin with a script: its guide and actions come with it, and a script's
   const host = await startPlugin((await pluginOf(video))!, (m) => said.push(m));
   try {
     assert.match(said[0]!, /^Plugin: square, .*plugin\.mjs \(its commands: colour; a script's actions: slide\)$/);
+    // Its texts are written once, so they are in English.
     assert.deepEqual(host.script, {
-      guide: "A square slides to a side, and speaks.",
-      actions: { slide: { description: "The square slides to a side.", example: "sq slide to=right", channels: ["place"], fits: true } },
+      guide: { en: "A square slides to a side, and speaks." },
+      actions: { slide: { description: { en: "The square slides to a side." }, example: "sq slide to=right", channels: ["place"], fits: true } },
       names: { slow: 0.5 },
-      constructions: { between: { description: "Between two.", example: "between(left, right)" } },
+      constructions: { between: { description: { en: "Between two." }, example: "between(left, right)" } },
     });
     const timing = { lead: 0.6, gap: 0.4, tail: 1 };
     const library = { file: path.join(root, "library.yaml"), raw: { colours: { red: "#d04040" } } };
@@ -520,7 +521,7 @@ test("a plugin with a script alone has none of the plan's part: it says so when 
   const host = await startPlugin((await pluginOf(video))!, (m) => said.push(m));
   try {
     assert.match(said[0]!, /^Plugin: square, .*plugin\.mjs \(a script's actions: slide\)$/);
-    assert.deepEqual([host.scene, host.picture, host.guide, host.commands, host.script!.guide], ["square", "drawn", undefined, undefined, "A square slides to a side, and speaks."]);
+    assert.deepEqual([host.scene, host.picture, host.guide, host.commands, host.script!.guide], ["square", "drawn", undefined, undefined, { en: "A square slides to a side, and speaks." }]);
     // Its videos/sq.yaml is no script: checked as import and check do, or planned as make does, it is refused.
     const why = /sq\.yaml is not written as a script, and the square plugin's videos are scripts alone: give each scene a script: \(AGENTS\.md, "A script"\)/;
     await assert.rejects(host.check(video, SOURCE, undefined), why);
@@ -534,6 +535,39 @@ test("a plugin with a script alone has none of the plan's part: it says so when 
   await assert.rejects(loaded("no-plan", PLUGIN.replace("plan: (s) =>", "planned: (s) =>")), /is not a plugin[\s\S]*the plan's part has plan too: give it, or none of the plan's part and a script[\s\S]*plan/);
   await assert.rejects(loaded("a-guide", SCRIPT_ALONE.replace('scene: "square",', 'scene: "square", guide: "A square.",')), /the plan's part has commands too[\s\S]*the plan's part has check too[\s\S]*the plan's part has plan too[\s\S]*give frame/);
   await assert.rejects(loaded("nothing", SCRIPT_ALONE.replace("script: {", "notScript: {")), /is not a plugin[\s\S]*give the plan's part \(commands, guide, check, plan, and frame or camera\), or a script, or both/);
+});
+
+/** The square with a script alone, its guide and its descriptions in English, Ukrainian and Russian. */
+const IN_LANGUAGES = SCRIPT_ALONE.replace('description: "The square slides to a side."', 'description: { en: "The square slides to a side.", uk: "Квадрат ковзає вбік.", ru: "Квадрат скользит в сторону." }')
+  .replace('description: "Between two."', 'description: { en: "Between two.", uk: "Між двома.", ru: "Между двумя." }')
+  .replace('guide: "A square slides to a side, and speaks."', 'guide: { en: "A square slides to a side, and speaks.", uk: "Квадрат ковзає вбік і говорить.", ru: "Квадрат скользит в сторону и говорит." }');
+
+test("a script plugin's guide and descriptions in each language it writes come with it, and its texts are all in the same languages", async () => {
+  for (const code of ["en", "uk", "ru"]) assert.equal(IN_LANGUAGES.match(new RegExp(`${code}: "`, "g"))!.length, 3, code);
+  const root = await project("in-languages", () => IN_LANGUAGES);
+  const host = await startPlugin((await pluginOf(path.join(root, "videos", "sq.yaml")))!, quiet);
+  try {
+    assert.deepEqual(host.script, {
+      guide: { en: "A square slides to a side, and speaks.", uk: "Квадрат ковзає вбік і говорить.", ru: "Квадрат скользит в сторону и говорит." },
+      actions: { slide: { description: { en: "The square slides to a side.", uk: "Квадрат ковзає вбік.", ru: "Квадрат скользит в сторону." }, example: "sq slide to=right", channels: ["place"], fits: true } },
+      names: { slow: 0.5 },
+      constructions: { between: { description: { en: "Between two.", uk: "Між двома.", ru: "Между двумя." }, example: "between(left, right)" } },
+    });
+  } finally {
+    host.close();
+  }
+  const loaded = async (name: string, text: string) => loadPlugin(path.join(await project(name, () => text), "src", "plugin.mjs"));
+  // A description in fewer languages than the guide, or one written once (English) beside a guide in three.
+  await assert.rejects(loaded("fewer", IN_LANGUAGES.replace(', ru: "Между двумя."', "")), /is not a plugin[\s\S]*it is in en, uk, and the guide in en, uk, ru: a plugin's texts are all in the same languages\n {2}→ at script\.constructions\.between\.description/);
+  await assert.rejects(loaded("once", IN_LANGUAGES.replace(/description: \{ en: "Between two\.".*?\}/, 'description: "Between two."')), /it is in en, and the guide in en, uk, ru: a plugin's texts are all in the same languages\n {2}→ at script\.constructions\.between\.description/);
+  // A guide in Ukrainian and Russian alone is one: a plugin need not write English.
+  const noEnglish = IN_LANGUAGES.replace(/en: "[^"]*", (uk: )/g, "$1");
+  assert.deepEqual(Object.keys((await loaded("no-english", noEnglish)).script!.guide), ["uk", "ru"]);
+  // A language the tool has not, a table of none, a text left empty, and a text that is neither.
+  await assert.rejects(loaded("french", IN_LANGUAGES.replace('ru: "Квадрат скользит в сторону и говорит."', 'ru: "Квадрат скользит в сторону и говорит.", fr: "Un carré glisse."')), /a language is en, uk, ru, not fr\n {2}→ at script\.guide/);
+  await assert.rejects(loaded("none", IN_LANGUAGES.replace(/guide: \{ en: .*? \},/, "guide: {},")), /give it in one language at least\n {2}→ at script\.guide/);
+  await assert.rejects(loaded("empty", IN_LANGUAGES.replace('uk: "Між двома."', 'uk: " "')), /give the text in this language\n {2}→ at script\.constructions\.between\.description\.uk/);
+  await assert.rejects(loaded("a-number", IN_LANGUAGES.replace(/guide: \{ en: .*? \},/, "guide: 3,")), /a text is one, in English, or one in each language the plugin writes, by its code: \{ en: …, uk: … \}\n {2}→ at script\.guide/);
 });
 
 test("a plugin with no script takes none; an action's example is a line that names it and passes its schema", async () => {

@@ -17,7 +17,7 @@ export { moments } from "./moments.ts";
 export { listed, nearest } from "./names.ts";
 export { SAY, isBlock, readScript } from "./read.ts";
 export { NARRATOR, checkScenario, linesIn } from "./scenario.ts";
-export type { Action, ActionLine, Anchor, Checked, CheckedLine, CheckedOver, CheckedScene, ConstructionOf, Default, Issue, Plain, SceneActions, SceneChecked, ScriptBlock, ScriptItem, ScriptLine, ScriptPlugin, Timing, WrittenAnchor, WrittenOver, WrittenScene, WrittenScript, WrittenValue } from "./scenario.ts";
+export type { Action, ActionLine, Anchor, ByLanguage, Checked, CheckedLine, CheckedOver, CheckedScene, ConstructionOf, Default, Issue, Plain, SceneActions, SceneChecked, ScriptBlock, ScriptItem, ScriptLine, ScriptPlugin, Timing, WrittenAnchor, WrittenOver, WrittenScene, WrittenScript, WrittenValue, Wording } from "./scenario.ts";
 export { shownAs } from "./formula.ts";
 export type { Construction, Span, Worked } from "./formula.ts";
 export { plainValues } from "./values.ts";

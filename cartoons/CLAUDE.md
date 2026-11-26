@@ -47,7 +47,11 @@ the tool's projects, and a session for it is opened in the repo's root.
     to draw a new character or background (`DRAWING`). A web chat reads it
     with no other file of this project, so it says all it needs; the tool
     adds how a script is written, the actions, `library.yaml` and the
-    voices.
+    voices. It is in English; `guide-uk.ts` and `guide-ru.ts` say the same
+    in Ukrainian and Russian (`SCRIPT_GUIDE_UK`, `SCRIPT_GUIDE_RU`), each
+    with its example a cartoon in that language, and each action and
+    construction is described in all three, in place (`ACTIONS`,
+    `CONSTRUCTIONS`). A change to one language is made in the other two.
   - `library.ts`: the library's schema and its check (`readLibrary`), the
     stage, the marks on the ground and each action's own pace (`MARKS`,
     `GROUND`, `PACE`).
@@ -374,10 +378,13 @@ scenes:
   frame, and, when it is over, by where they were as it ended (an action's
   `into` and `length`). So two may look at each other.
 - **The guide** to a cartoon is `SCRIPT_GUIDE` in `guide.ts`, the
-  plugin's part; the tool adds how a line is written, the actions and the
-  constructions. The prompt for a web chat teaches it (Running, above; the
-  tool's `AGENTS.md`, "prompt"), and `import` checks each episode as
-  `check` does.
+  plugin's part, and the same in Ukrainian and Russian (`guide-uk.ts`,
+  `guide-ru.ts`); the tool adds how a line is written, the actions and the
+  constructions. The prompt for a web chat teaches it, in English for now
+  (Running, above; the tool's `AGENTS.md`, "prompt"), and `import` checks
+  each episode as `check` does. The tests compile each language's example
+  against the library, and find the three the same cartoon: the same rows,
+  only the words and the voices in their language.
 
 ## The library
 

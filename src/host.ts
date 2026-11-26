@@ -17,8 +17,8 @@ import { readFormula } from "./formula.ts";
 import type { Call } from "./make.ts";
 import type { DrawingPlugin, EventLimits as Limits, Library, Plan, Plugin, RecordingPlugin, Schema } from "./plugin.ts";
 import { TOOL_ACTIONS, isBlock, readScript } from "./read.ts";
-import { checkScenario, type Action, type Checked, type ConstructionOf, type ScriptPlugin, type Timing, type WrittenScript } from "./scenario.ts";
-import { EventLimits, FORMATS, slug } from "./script.ts";
+import { checkScenario, type Action, type ByLanguage, type Checked, type ScriptPlugin, type Timing, type Wording, type WrittenScript } from "./scenario.ts";
+import { EventLimits, FORMATS, LANGUAGES, slug } from "./script.ts";
 import { pictureOf, shownAt } from "./shown.ts";
 import { OWN, plainValues, valuesTaken } from "./values.ts";
 
@@ -63,8 +63,16 @@ export interface Described {
   /** The plan's part of the prompt, and each command's description and example (its schema stays in the plugin's process): none when its videos are scripts alone. */
   guide?: string;
   commands?: Record<string, { description: string; example: unknown }>;
-  /** Its part of a script, when its videos may be written as one: its guide, each action's description, example, channels and whether it is fitted or open, each construction's description and example, and its names for numbers. */
-  script?: { guide: string; actions: Record<string, Omit<Action, "values">>; names: Record<string, number>; constructions: Record<string, ConstructionOf> };
+  /**
+   * Its part of a script, when its videos may be written as one: its guide, each action's description, example, channels and whether it is fitted or open, each construction's description and example, and its names for numbers.
+   * The guide and each description are in each language the plugin writes, by its code: one written once is `en`.
+   */
+  script?: {
+    guide: ByLanguage;
+    actions: Record<string, Omit<Action, "values" | "description"> & { description: ByLanguage }>;
+    names: Record<string, number>;
+    constructions: Record<string, { description: ByLanguage; example: string }>;
+  };
 }
 
 /** What a job did: the drawing's frames, what was mended, and for the plan its limits and the files it is made from. */
@@ -94,6 +102,20 @@ const isSchema = (v: unknown): v is Schema => {
 };
 const fn = z.custom<never>((v) => typeof v === "function", "give a function");
 const pixels = z.number().int().positive();
+
+/** How a plugin's text for a script is written. */
+const WORDING = "a text is one, in English, or one in each language the plugin writes, by its code: { en: …, uk: … }";
+/** A plugin's text for a script (scenario.ts, Wording): `missing` is said when there is none. Its languages are checked with the plugin's others (PluginShape). */
+const worded = (missing: string) =>
+  z.union([z.string().trim().min(1, missing), z.record(z.string(), z.string().trim().min(1, "give the text in this language"))], {
+    error: (issue) => (issue.input === undefined ? missing : WORDING),
+  });
+/** The languages a text is in, in the tool's order, then any other: one written once is English. */
+const ORDER: string[] = Object.keys(LANGUAGES);
+const rank = (language: string) => (ORDER.includes(language) ? ORDER.indexOf(language) : ORDER.length);
+const languagesOf = (text: Wording) => (typeof text === "string" ? ["en"] : Object.keys(text)).sort((a, b) => rank(a) - rank(b));
+/** A text in each language it is in, as the ready message gives it. */
+const byLanguage = (text: Wording): ByLanguage => (typeof text === "string" ? { en: text } : text);
 
 /** The plan's part of a plugin (plugin.ts): all of it but what is optional, or, in a plugin with a script, none. */
 const PLAN = ["commands", "guide", "check", "repair", "plan", "inputs", "frame", "camera"] as const;
@@ -126,7 +148,7 @@ const PluginShape = z
           slug,
           z
             .object({
-              description: z.string().min(1),
+              description: worded("say what it does"),
               example: z.string().min(1),
               values: z.custom<Schema>(isSchema, "give a schema with ~standard.validate and ~standard.jsonSchema (as zod 4's have)"),
               channels: z.array(slug, "give what of its character it keeps busy: its channels, as [\"place\"]").min(1, "name one channel at least"),
@@ -136,15 +158,34 @@ const PluginShape = z
             .refine(({ fits, open }) => !(fits && open), "it is fitted to words (fits) or goes on to the end of its block (open), one of the two"),
         ),
         names: z.record(slug, z.number()).optional(),
-        constructions: z.record(slug, z.object({ description: z.string().min(1), example: z.string().min(1) })).optional(),
+        constructions: z.record(slug, z.object({ description: worded("say what it is"), example: z.string().min(1) })).optional(),
         tables: z.array(z.string().min(1)).optional(),
-        guide: z.string().trim().min(1, "give the plugin's part of the guide to a script (plugin.ts, script)"),
+        guide: worded("give the plugin's part of the guide to a script (plugin.ts, script)"),
         check: fn,
         draw: fn,
       })
       .optional(),
   })
   .superRefine((p, ctx) => {
+    // A script's texts are each in the tool's languages, and all in the guide's.
+    if (p.script) {
+      const texts: [at: string[], text: Wording][] = [
+        [["script", "guide"], p.script.guide],
+        ...Object.entries(p.script.actions).map(([name, { description }]): [string[], Wording] => [["script", "actions", name, "description"], description]),
+        ...Object.entries(p.script.constructions ?? {}).map(([name, { description }]): [string[], Wording] => [["script", "constructions", name, "description"], description]),
+      ];
+      const guide = languagesOf(p.script.guide).join(", ");
+      for (const [at, text] of texts) {
+        const languages = languagesOf(text);
+        const strange = languages.filter((language) => !Object.hasOwn(LANGUAGES, language));
+        const message =
+          strange.length > 0 ? `a language is ${Object.keys(LANGUAGES).join(", ")}, not ${strange.join(", ")}`
+          : languages.length === 0 ? "give it in one language at least"
+          : guide !== "" && languages.join(", ") !== guide ? `it is in ${languages.join(", ")}, and the guide in ${guide}: a plugin's texts are all in the same languages`
+          : undefined;
+        if (message) ctx.addIssue({ code: "custom", message, path: at });
+      }
+    }
     // The plan's part is all there, or, with a script, none of it.
     const given = PLAN.filter((key) => p[key] !== undefined);
     if (given.length === 0 && p.script) return;
@@ -449,10 +490,10 @@ if (import.meta.main) {
     });
     const commands = plugin.commands && Object.fromEntries(Object.entries(plugin.commands).map(([name, { description, example }]) => [name, { description, example }]));
     const script = plugin.script && {
-      guide: plugin.script.guide,
-      actions: Object.fromEntries(Object.entries(plugin.script.actions).map(([name, { values: _values, ...described }]) => [name, described])),
+      guide: byLanguage(plugin.script.guide),
+      actions: Object.fromEntries(Object.entries(plugin.script.actions).map(([name, { values: _values, description, ...described }]) => [name, { description: byLanguage(description), ...described }])),
       names: plugin.script.names ?? {},
-      constructions: Object.fromEntries(Object.entries(plugin.script.constructions ?? {}).map(([name, { description, example }]) => [name, { description, example }])),
+      constructions: Object.fromEntries(Object.entries(plugin.script.constructions ?? {}).map(([name, { description, example }]) => [name, { description: byLanguage(description), example }])),
     };
     await send({ ready: { scene: plugin.scene, stage: plugin.stage, picture: plugin.camera ? "recorded" : "drawn", ...(plugin.plan ? { guide: plugin.guide, commands } : {}), ...(script ? { script } : {}) } });
   } catch (e) {

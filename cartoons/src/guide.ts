@@ -1,7 +1,9 @@
 // The plugin's part of the video tool's guide to a script (the tool's AGENTS.md, "prompt" and "A
 // script"): what a cartoon can show, a cartoon's file with an example, how to turn a story into it,
 // and how to draw a new character or background for the library. A web chat reads it with no file of
-// this project: the tool adds how a script is written, the actions, library.yaml and the voices.
+// this project: the tool adds how a script is written, the actions, library.yaml and the voices. It is
+// in English; guide-uk.ts and guide-ru.ts say the same in Ukrainian and Russian, and a change here is
+// made there too.
 
 /** How to draw what the library lacks: the guide's last part. */
 const DRAWING = `### Drawing a new character

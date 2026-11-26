@@ -134,6 +134,11 @@ one that plans and records (its `media/plugin/plugin.ts`: a tutorial played by t
       (`places: { mo: left }`).
     - `guide`: its part of the guide to writing a script, in Markdown: what its videos can show, a
       scene's own keys, and a whole video file as an example.
+    - **In each language:** its `guide`, and each action's and construction's `description`, is one
+      text, in English, or one in each language it writes, by its code, as a voice is (see A
+      video's language): `guide: { en: …, uk: …, ru: … }`. All are in the same languages, each one
+      of the tool's, else the plugin is refused when it loads. The guide's example in a language is
+      a video in it.
     - `check(scenes, library)`: the script checked against the library, and worked out. It gets
       each scene's line in the file, its own keys (what is in its `tables` worked out, the rest as
       written), and its lines that name one of the
@@ -166,7 +171,8 @@ one that plans and records (its `media/plugin/plugin.ts`: a tutorial played by t
 - **The process:** `make` starts the host at the first stage it makes (none when each is in the
   cache), in the `package.json`'s folder, and closes it when it is done. Ready, the host says the
   plugin's scene, stage, picture (`drawn` or `recorded`), guide and commands (their descriptions
-  and examples), and its script's guide and actions. Each call is a message (`Call`,
+  and examples), and its script's guide, actions and constructions, the guide and each description
+  by language (one written once as `en`). Each call is a message (`Call`,
   `src/make.ts`), with the video file's source and the library, answered before the next; one that
   fails says why, and `make` stops there. `import`'s call mends, checks and plans a source and
   writes nothing. A script's two are its check, which writes nothing either, and its drawing, with
@@ -352,7 +358,8 @@ scenes:
 - **The guide** to writing a script (`guideOf`, `src/guide.ts`) is the tool's part (a line's form,
   `say`, blocks, joining, channels, anchors, values, sounds, what is refused), the plugin's `script.guide`, the actions
   and the constructions, each with its description and example, an action with its channels and whether it is fitted or open, and the plugin's names for numbers. Each part's examples are compiled by a test. It is
-  the format in the prompt for a web chat (see `prompt`).
+  made in a language: the plugin's texts are those in it, and a plugin that writes none in it is refused; the tool's
+  part is in English. It is the format in the prompt for a web chat (see `prompt`), in English.
 
 `src/read.test.ts`, `src/formula.test.ts`, `src/values.test.ts`, `src/scenario.test.ts`,
 `src/plan.test.ts`, `src/words.test.ts`,
@@ -748,8 +755,8 @@ guides and commands, then closed. What it reads goes to stderr. In order:
    only what the library lacks (each new character with its `voice`), then the video file. A reply
    ends with the line `All episodes written.`; one cut off is told "continue", and begins the
    block that was cut off again, whole.
-2. The format. For a plugin with a `script`, the guide to writing a script (see A script), and
-   nothing of its `guide` and commands: its videos are written as scripts. For any other, its
+2. The format. For a plugin with a `script`, the guide to writing a script (see A script), in
+   English, and nothing of its `guide` and commands: its videos are written as scripts. For any other, its
    `guide`, then its commands, each with its description and its example as written.
 3. `library.yaml` as written, when the project has one.
 4. The voices: the narrator's (the project's `voice`), the library's characters', each its English

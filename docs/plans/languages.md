@@ -48,7 +48,19 @@
     RayCraft's `water-switch` checked and `--fit` as before (its plan made
     again: step 2 changed `package.json`, in its key). `npm test` (339)
     and `npm run typecheck`, the tool's and cartoons' (66), passed.
-- **Next: step 4.** Open: word stress (above).
+- Step 4 done 2026-11-26: a script plugin's guide and descriptions in
+  each language; cartoons' in English, Ukrainian and Russian.
+  - Checked: cartoons' tests (67) compile each language's example against
+    `library.yaml`, and find the three one cartoon, the same rows but the
+    words and the voices. The tool's `check` took each example, its voices
+    in its language, and `make --fit` of the Ukrainian and the Russian
+    spoke every line. `src/host.test.ts` shows the ready message with each
+    language's guide, and refuses a text in other languages than the
+    guide's, or in one the tool has not. RayCraft's `water-switch` checked
+    and `--fit` as before (its plan made again, the host being in its key),
+    and its typecheck passed. `npm test` (341) and `npm run typecheck`, the
+    tool's and cartoons', passed.
+- **Next: step 5.** Open: word stress (above).
 
 
 ## Goal

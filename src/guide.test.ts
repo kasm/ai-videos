@@ -262,22 +262,35 @@ test("the tool's part says what a script has: a line's form, say, blocks, joinin
 });
 
 test("a plugin's guide: the tool's part, the plugin's, each action and construction described once with its example, and its names for numbers", () => {
-  const slide = { description: "The square slides to a side.", example: "sq slide to=right", channels: ["place"], fits: true };
-  const square = { guide: "\nA square slides to a side.\n", actions: { slide }, constructions: {} };
-  const guide = guideOf({ ...square, names: {} });
+  const slide = { description: { en: "The square slides to a side." }, example: "sq slide to=right", channels: ["place"], fits: true };
+  const square = { guide: { en: "\nA square slides to a side.\n" }, actions: { slide }, constructions: {} };
+  const guide = guideOf({ ...square, names: {} }, "en");
   const names = { slow: 0.6, fast: 1.6 };
-  assert.match(guideOf({ ...square, names }), /sq slide to=right`\n\nThese names stand for numbers in any value: `slow` is 0\.6 and `fast` is 1\.6\.\n$/);
+  assert.match(guideOf({ ...square, names }, "en"), /sq slide to=right`\n\nThese names stand for numbers in any value: `slow` is 0\.6 and `fast` is 1\.6\.\n$/);
   // A plugin with constructions has how they are written too.
   assert.ok(!guide.includes("construction"));
-  const constructed = guideOf({ ...square, names, constructions: { beside: { description: "Beside a place.", example: "beside(mo, 2)" } } });
+  const constructed = guideOf({ ...square, names, constructions: { beside: { description: { en: "Beside a place." }, example: "beside(mo, 2)" } } }, "en");
   assert.match(constructed, /sq slide to=right`\n\n## The constructions\n\nA value may be worked out from others by a construction: its name, and in parentheses .*\n\n- \*\*beside\*\*: Beside a place\. For example: `beside\(mo, 2\)`\n\nThese names stand/);
   assert.match(guide, /^## A script\n\nA scene's `script` says what happens in it/);
   assert.match(guide, /\n## The format\n\nA square slides to a side\.\n\n## The actions\n\n/);
   assert.match(guide, /\n- \*\*say\*\*: The character says the words after the colon.* Channel: `voice`\. For example: `narrator say: Once upon a time\.`\n/);
   assert.match(guide, /\n- \*\*play\*\*: The sound is played once.* Channel: `sound`\. For example: `bell play`\n- \*\*loop\*\*: The sound is played again and again\. Channel: `sound`; it is open\. For example: `tune loop volume=-20dB`\n/);
   assert.match(guide, /\n- \*\*slide\*\*: The square slides to a side\. Channel: `place`; it is fitted\. For example: `sq slide to=right`\n$/);
-  const watch = { description: "It watches.", example: "sq watch", channels: ["facing"], open: true };
-  assert.match(guideOf({ ...square, actions: { watch }, names: {} }), /\n- \*\*watch\*\*: It watches\. Channel: `facing`; it is open\. For example: `sq watch`\n$/);
-  const spin = { description: "It spins.", example: "sq spin", channels: ["place", "facing"] };
-  assert.match(guideOf({ ...square, actions: { spin }, names: {} }), /\n- \*\*spin\*\*: It spins\. Channels: `place` and `facing`\. For example: `sq spin`\n$/);
+  const watch = { description: { en: "It watches." }, example: "sq watch", channels: ["facing"], open: true };
+  assert.match(guideOf({ ...square, actions: { watch }, names: {} }, "en"), /\n- \*\*watch\*\*: It watches\. Channel: `facing`; it is open\. For example: `sq watch`\n$/);
+  const spin = { description: { en: "It spins." }, example: "sq spin", channels: ["place", "facing"] };
+  assert.match(guideOf({ ...square, actions: { spin }, names: {} }, "en"), /\n- \*\*spin\*\*: It spins\. Channels: `place` and `facing`\. For example: `sq spin`\n$/);
+});
+
+test("a plugin's guide in a language: its part and its descriptions in that one, and one it does not write is refused", () => {
+  const slide = { description: { en: "The square slides to a side.", uk: "Квадрат ковзає вбік." }, example: "sq slide to=right", channels: ["place"], fits: true };
+  const beside = { description: { en: "Beside a place.", uk: "Біля місця." }, example: "beside(mo, 2)" };
+  const square = { guide: { en: "A square slides to a side.", uk: "Квадрат ковзає вбік і говорить." }, actions: { slide }, constructions: { beside }, names: {} };
+  const uk = guideOf(square, "uk");
+  assert.match(uk, /\n## The format\n\nКвадрат ковзає вбік і говорить\.\n\n## The actions\n\n/);
+  assert.match(uk, /\n- \*\*slide\*\*: Квадрат ковзає вбік\. Channel: `place`; it is fitted\. For example: `sq slide to=right`\n/);
+  assert.match(uk, /\n- \*\*beside\*\*: Біля місця\. For example: `beside\(mo, 2\)`\n/);
+  assert.doesNotMatch(uk, /The square slides|Beside a place/);
+  assert.match(guideOf(square, "en"), /\n- \*\*slide\*\*: The square slides to a side\. /);
+  assert.throws(() => guideOf(square, "ru"), /^Error: the plugin's guide to a script is in English and Ukrainian, and not in Russian$/);
 });

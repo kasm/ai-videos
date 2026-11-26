@@ -136,11 +136,11 @@ function leaves(value: unknown, at: string[] = []): [string[], unknown][] {
   return Object.entries(value).flatMap(([key, inner]) => leaves(inner, [...at, key]));
 }
 
-test("every cartoon of videos/ and the guide's example compile to nothing but numbers, texts and file names, and the library's and the actions' names", async () => {
-  const example = plugin.script.guide.match(/```yaml\n([\s\S]*?)```/)![1]!;
+test("every cartoon of videos/ and the guide's example in each language compile to nothing but numbers, texts and file names, and the library's and the actions' names", async () => {
+  const examples = Object.values(plugin.script.guide).map((guide) => guide.match(/```yaml\n([\s\S]*?)```/)![1]!);
   const videos = readdirSync(path.join(root, "videos")).filter((file) => file.endsWith(".yaml"));
   for (const name of ["hello", "meet", "sundown", "the-shy-visitor", "forest1-1", "forest1-2", "forest1-3", "all-at-once"]) assert.ok(videos.includes(`${name}.yaml`), name);
-  for (const text of [...videos.map((file) => readFileSync(path.join(root, "videos", file), "utf8")), example]) {
+  for (const text of [...videos.map((file) => readFileSync(path.join(root, "videos", file), "utf8")), ...examples]) {
     const script = written(text);
     const checked = await check(text);
     assert.ok("scenes" in checked);
@@ -1006,7 +1006,7 @@ test("where a character begins, written among the values, is refused with a hint
 test("each construction is described, and its example is one of it", async () => {
   assert.deepEqual(Object.keys(plugin.script.constructions), ["left-of", "right-of", "midpoint"]);
   for (const [name, { description, example }] of Object.entries(plugin.script.constructions)) {
-    assert.ok(description.length > 20, `${name} says what it is`);
+    for (const [language, text] of Object.entries(description)) assert.ok(text.length > 20, `${name} says what it is, in ${language}`);
     // Tuk may go where the example says, with Pip and Mo on the stage.
     const { walks } = await xs(["pip: left", "mo: right", "tuk: off-right"], [`tuk walk to=${example}`]);
     assert.ok(example.startsWith(`${name}(`) && walks.length === 1, example);
@@ -1016,7 +1016,7 @@ test("each construction is described, and its example is one of it", async () =>
 test("each action is described, and its example is a line of a script that passes its schema", async () => {
   assert.deepEqual(Object.keys(plugin.script.actions), ["walk", "jump", "turn", "look-at", "wave", "point", "stand", "background"]);
   for (const [name, { description, example, values }] of Object.entries(plugin.script.actions)) {
-    assert.ok(description.length > 20, `${name} says what it does`);
+    for (const [language, text] of Object.entries(description)) assert.ok(text.length > 20, `${name} says what it does, in ${language}`);
     const read = readScript(example);
     assert.deepEqual(read.issues, []);
     const [line] = linesIn(read.items);
@@ -1041,13 +1041,36 @@ test("the check refuses a time that has none, as the tool does, with the lines i
   ]);
 });
 
-test("the guide's example is a cartoon the plugin takes as a script, against the library, and compiles", async () => {
-  const examples = [...plugin.script.guide.matchAll(/```yaml\n([\s\S]*?)```/g)].map((m) => m[1]!);
-  assert.equal(examples.length, 1);
-  assert.equal(parse(examples[0]!).use, plugin.scene);
-  const script = written(examples[0]!);
+/** The guide's example in each language: one, a whole cartoon. */
+const EXAMPLES = Object.entries(plugin.script.guide).map(([language, guide]) => {
+  const examples = [...guide.matchAll(/```yaml\n([\s\S]*?)```/g)].map((m) => m[1]!);
+  assert.equal(examples.length, 1, language);
+  return [language, examples[0]!] as const;
+});
+
+test("the guide is in English, Ukrainian and Russian, and its examples are one cartoon: the same rows, only the words and the voices in their language", () => {
+  assert.deepEqual(EXAMPLES.map(([language]) => language), ["en", "uk", "ru"]);
+  // Each action and construction is described in the same three.
+  for (const { description } of [...Object.values(plugin.script.actions), ...Object.values(plugin.script.constructions)]) assert.deepEqual(Object.keys(description), ["en", "uk", "ru"]);
+  // A row as written, with its words and the word it is anchored at left out, and its line in the file (a file with its language says so on a row more).
+  const rows = (text: string) => written(text).scenes.map((scene) => linesIn(scene.items).map(({ text: _text, line: _line, anchor, ...line }) => ({ ...line, anchor: anchor && { ...anchor, at: typeof anchor.at === "object" && "word" in anchor.at ? "a word" : anchor.at } })));
+  const [en, ...others] = EXAMPLES.map(([, text]) => text);
+  for (const [language, text] of EXAMPLES.slice(1)) {
+    assert.deepEqual(rows(text), rows(en!), language);
+    // A word anchored at is the one its line says, in that line's language.
+    const file = parse(text);
+    assert.deepEqual([file.language, file.cast], [language, { radio: `${language}_f5` }]);
+  }
+  assert.equal(others.length, 2);
+  assert.equal(parse(en!).language, undefined);
+});
+
+/** The guide's example in a language: a cartoon the plugin takes as a script, and compiles. `night` is in the words the night falls at. */
+async function exampleCompiles(example: string, night: string) {
+  assert.equal(parse(example).use, plugin.scene);
+  const script = written(example);
   assert.deepEqual(script.issues, []);
-  const checked = await check(examples[0]!);
+  const checked = await check(example);
   assert.ok("scenes" in checked, JSON.stringify(checked));
   // It shows what a script has so far: two scenes, every action, lines by the narrator, by characters and
   // by a voice of the file's cast, every kind of block, and a value set on every level.
@@ -1082,9 +1105,14 @@ test("the guide's example is a cartoon the plugin takes as a script, against the
   // It changes to the night at the word, as Pip walks up to Mo.
   const [walk, told, change] = compiled.scenes[1]!.lines;
   assert.deepEqual([change!.who, change!.action, "values" in change! && change.values], ["scene", "background", { to: "night" }]);
-  assert.ok("text" in told! && told.text.includes("the night falls") && change!.from > told.from && change!.from < walk!.from + walk!.frames);
+  assert.ok("text" in told! && told.text.includes(night) && change!.from > told.from && change!.from < walk!.from + walk!.frames);
   assert.equal(pictures(compiled).length, compiled.frames);
   // The second scene begins on the frame the first ends on.
   assert.equal(compiled.scenes[1]!.from, compiled.scenes[0]!.frames);
   assert.equal(compiled.frames, compiled.scenes[0]!.frames + compiled.scenes[1]!.frames);
+}
+
+test("the guide's example, in each language, is a cartoon the plugin takes as a script, against the library, and compiles", async () => {
+  const night: Record<string, string> = { en: "the night falls", uk: "настає ніч", ru: "наступает ночь" };
+  for (const [language, example] of EXAMPLES) await exampleCompiles(example, night[language]!);
 });

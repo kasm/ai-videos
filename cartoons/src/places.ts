@@ -11,14 +11,21 @@ import { MARKS, STAGE, type Library, type Mark } from "./library.ts";
 export const NEAR = 0.3;
 const COVER = 0.3;
 
-/** What a place is worked out from others by, each described once: the guide comes from these. */
+/** What a place is worked out from others by, each described once, in English, Ukrainian and Russian: the guide comes from these. */
 export const CONSTRUCTIONS = {
   "left-of": {
-    description: `On the left of a place, as the viewer sees it, with a gap: from body to body, so many widths of the smaller of the two, as it is drawn. \`near\` is ${NEAR}, 1 leaves room for a body between them, and at 0 they touch. Beside a mark, a point or another construction the gap is from that, in widths of who goes there.`,
+    description: {
+      en: `On the left of a place, as the viewer sees it, with a gap: from body to body, so many widths of the smaller of the two, as it is drawn. \`near\` is ${NEAR}, 1 leaves room for a body between them, and at 0 they touch. Beside a mark, a point or another construction the gap is from that, in widths of who goes there.`,
+      uk: `Ліворуч від місця, як бачить глядач, із проміжком від тіла до тіла: стільки ширин меншого з двох, як його намальовано. \`near\` — це ${NEAR}; 1 лишає між ними місце ще для одного тіла, а за 0 вони торкаються. Біля мітки, точки чи іншої конструкції проміжок відміряють від неї, у ширинах того, хто туди йде.`,
+      ru: `Слева от места, как видит зритель, с промежутком от тела до тела: столько ширин меньшего из двух, как он нарисован. \`near\` — это ${NEAR}; 1 оставляет между ними место ещё для одного тела, а при 0 они касаются. Рядом с меткой, точкой или другой конструкцией промежуток отмеряют от неё, в ширинах того, кто туда идёт.`,
+    },
     example: "left-of(pip, near)",
   },
-  "right-of": { description: "On the right of a place, with a gap, as left-of is on its left.", example: "right-of(pip, 0.5)" },
-  midpoint: { description: "Half-way between two places.", example: "midpoint(pip, mo)" },
+  "right-of": {
+    description: { en: "On the right of a place, with a gap, as left-of is on its left.", uk: "Праворуч від місця, із проміжком, як left-of — ліворуч.", ru: "Справа от места, с промежутком, как left-of — слева." },
+    example: "right-of(pip, 0.5)",
+  },
+  midpoint: { description: { en: "Half-way between two places.", uk: "Посередині між двома місцями.", ru: "Посередине между двумя местами." }, example: "midpoint(pip, mo)" },
 } satisfies Record<string, ConstructionOf>;
 
 const MARK_NAMES = Object.keys(MARKS);

@@ -48,10 +48,12 @@ test("the format is the plugin's guide, then its commands, each with its example
 });
 
 test("a plugin whose videos are written as scripts is taught scripts alone: the guide to a script in place of its format and its commands", () => {
-  const slide = { description: "The square slides to a side.", example: "sq slide to=right", channels: ["place"], fits: true };
-  const script = { guide: "\nA square slides to a side.\n", actions: { slide }, names: { fast: 1.6 }, constructions: {} };
+  const slide = { description: { en: "The square slides to a side.", uk: "Квадрат ковзає вбік." }, example: "sq slide to=right", channels: ["place"], fits: true };
+  const script = { guide: { en: "\nA square slides to a side.\n", uk: "\nКвадрат ковзає вбік.\n" }, actions: { slide }, names: { fast: 1.6 }, constructions: {} };
   const prompt = promptOf({ ...PARTS, plugin: { ...PARTS.plugin, script } });
-  assert.ok(prompt.includes(`\n\n${guideOf(script).trim()}\n\n## The library\n\n`));
+  // In English, whatever else the plugin writes.
+  assert.ok(prompt.includes(`\n\n${guideOf(script, "en").trim()}\n\n## The library\n\n`));
+  assert.doesNotMatch(prompt, /Квадрат/);
   assert.match(prompt, /## Your reply\n[\s\S]*\n## A script\n\nA scene's `script` says what happens in it[\s\S]*\n## The format\n\nA square slides to a side\.\n\n## The actions\n/);
   assert.ok(prompt.includes("- **slide**: The square slides to a side. Channel: `place`; it is fitted. For example: `sq slide to=right`"));
   // The beats, or events, are not taught.
