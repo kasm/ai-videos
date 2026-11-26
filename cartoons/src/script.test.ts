@@ -1,16 +1,16 @@
 // A cartoon written as a script (script.ts), read, checked, compiled and drawn as the video tool does
-// it: hello-script on its frames, in plain numbers, and each frame's picture from those and the
+// it: hello on its frames, in plain numbers, and each frame's picture from those and the
 // library alone; what the check refuses, each with its line and a hint; and the guide's example. The
 // voices are given here as lengths: speaking is the tool's.
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import { NARRATOR, SAY, checkScenario, compile, isBlock, linesIn, pictureOf, plainValues, readScript, shownAt, type Compiled, type Issue, type ScriptItem, type Voiced, type WrittenScript, type WrittenValue } from "ai-videos/plugin";
 import { parse } from "yaml";
 import { scriptStaging } from "./picture.ts";
 import plugin from "./plugin.ts";
-import { MARKS, PACE, readLibrary } from "./scenario.ts";
+import { MARKS, PACE, readLibrary } from "./library.ts";
 import type { Did, Setting, Walk } from "./script.ts";
 
 const root = path.join(import.meta.dirname, "..");
@@ -72,21 +72,21 @@ const issuesOf = async (lines: string[], scene = SCENE) => {
 /** The tool's timing and loudness, and cartoons' 30 frames a second. */
 const TIMING = { lead: 0.6, gap: 0.4, tail: 1 };
 const SETTINGS = { fps: 30, loudness: -14, moves: { slowest: 0.5, fastest: 2 } };
-const HELLO = readFileSync(path.join(root, "videos", "hello-script.yaml"), "utf8");
+const HELLO = readFileSync(path.join(root, "videos", "hello.yaml"), "utf8");
 const AT_ONCE = readFileSync(path.join(root, "videos", "all-at-once.yaml"), "utf8");
 
 /** A voice `duration` seconds long: its mouth opens wide, half and not at all, over and over. */
 const voiced = (file: string, duration: number): Voiced => ({ file, duration, mouth: Array.from({ length: Math.ceil(duration * 30 - 1e-6) }, (_, k) => [1, 0.5, 0][k % 3]!) });
-/** hello-script's two lines, spoken. */
+/** hello's two lines, spoken. */
 const VOICES = [voiced("1f0e3dad99908345f743.wav", 2.2), voiced("b7a56873cd771f2c446d.wav", 1.22)];
 
-test("hello-script compiles: the walk and the words joined to it, on hello's frames, and the next line after both", async () => {
+test("hello compiles: the walk and the words joined to it, and the next line after both", async () => {
   const checked = await check(HELLO);
   assert.ok("scenes" in checked, JSON.stringify(checked));
-  assert.deepEqual(compile(checked.scenes, VOICES, SETTINGS, "../../videos/hello-script.yaml"), {
+  assert.deepEqual(compile(checked.scenes, VOICES, SETTINGS, "../../videos/hello.yaml"), {
     format: "ai-videos-compiled",
     version: 1,
-    made: { by: "ai-videos compile", from: "../../videos/hello-script.yaml" },
+    made: { by: "ai-videos compile", from: "../../videos/hello.yaml" },
     fps: 30,
     frames: 163,
     loudness: -14,
@@ -136,9 +136,11 @@ function leaves(value: unknown, at: string[] = []): [string[], unknown][] {
   return Object.entries(value).flatMap(([key, inner]) => leaves(inner, [...at, key]));
 }
 
-test("a compiled scenario holds nothing but numbers, texts and file names, and the library's and the actions' names", async () => {
+test("every cartoon of videos/ and the guide's example compile to nothing but numbers, texts and file names, and the library's and the actions' names", async () => {
   const example = plugin.script.guide.match(/```yaml\n([\s\S]*?)```/)![1]!;
-  for (const text of [HELLO, AT_ONCE, example]) {
+  const videos = readdirSync(path.join(root, "videos")).filter((file) => file.endsWith(".yaml"));
+  for (const name of ["hello", "meet", "sundown", "the-shy-visitor", "forest1-1", "forest1-2", "forest1-3", "all-at-once"]) assert.ok(videos.includes(`${name}.yaml`), name);
+  for (const text of [...videos.map((file) => readFileSync(path.join(root, "videos", file), "utf8")), example]) {
     const script = written(text);
     const checked = await check(text);
     assert.ok("scenes" in checked);
@@ -199,7 +201,7 @@ function pictures(compiled: Compiled): string[] {
 /** Who stands where, and how, in a frame of a compiled scenario. */
 const stagingOf = (compiled: Compiled, frame: number) => scriptStaging(readLibrary(library), shownAt(pictureOf(compiled), frame));
 
-test("hello-script's frames: Pip off the stage, walking in from frame 18 to 84, and there to the end", async () => {
+test("hello's frames: Pip off the stage, walking in from frame 18 to 84, and there to the end", async () => {
   const compiled = await compiledOf(HELLO, VOICES);
   const x = (frame: number) => stagingOf(compiled, frame).characters.map(({ name, at, facing, arm }) => [name, Math.round(at[0]), facing, arm]);
   assert.deepEqual(x(0), [["pip", -250, 1, 0]]);
@@ -225,27 +227,8 @@ test("hello-script's frames: Pip off the stage, walking in from frame 18 to 84, 
   assert.equal(frames[90], frames[96]);
 });
 
-test("a walk is drawn in a script as it is in a beat: the same way, as far through, at the same time", async () => {
-  const compiled = await compiledOf(HELLO, VOICES);
-  const { use: _use, ...beats } = parse(readFileSync(path.join(root, "videos", "hello.yaml"), "utf8"));
-  const scenario = plugin.check(beats, "hello.yaml", library);
-  const frames = pictures(compiled);
-  for (let frame = 18; frame < 140; frame++) {
-    const moment = { span: 0, progress: Math.min(1, (frame - 18) / 66), time: frame / 30, into: (frame - 18) / 30, mouths: {} };
-    assert.equal(frames[frame], plugin.frame(scenario, moment, size), `frame ${frame}`);
-  }
-});
-
-test("a turn, a wave, a hop, a point, an arm that hangs again and another background are drawn in a script as they are in beats", async () => {
-  const beats = { scenes: [{ background: "meadow", places: { pip: "left", mo: "right" }, faces: { mo: "left" }, beats: [
-    { name: "turns", turn: { who: "pip" } },
-    { name: "waves", takes: 1, pose: { pip: "wave" } },
-    { name: "hops", jump: { who: "pip", times: 2 } },
-    { name: "points", takes: 1, pose: { pip: "point", mo: "wave" }, background: "night" },
-    { name: "stands", takes: 1, pose: { pip: "stand" } },
-  ] }] };
-  const scenario = plugin.check(beats, "beats", library);
-  // The same in a script with no pauses: the beats' moves, each at its own pace, and their poses, after what is left of each second.
+test("a turn, a wave, a hop, a point, an arm that hangs again and another background each take their own time, on whole frames", async () => {
+  // With no pauses: each after what is left of a second from the one before it begins.
   const script = [
     "values: { lead: 0s, pause: 0s, tail: 1s }",
     "scenes:",
@@ -263,16 +246,12 @@ test("a turn, a wave, a hop, a point, an arm that hangs again and another backgr
     "",
   ].join("\n");
   const compiled = await compiledOf(script, []);
-  const frames = pictures(compiled);
-  const spans = [["turns", 0, 15], ["waves", 15, 30], ["hops", 45, 36], ["points", 81, 30], ["stands", 111, 30]] as const;
   assert.deepEqual(compiled.scenes[0]!.lines.map((line) => [line.action, line.from, line.frames]), [["turn", 0, 15], ["wave", 15, 9], ["jump", 45, 36], ["point", 81, 9], ["wave", 81, 9], ["background", 81, 1], ["stand", 111, 9]]);
-  for (const [span, [, from, length]] of spans.entries()) {
-    for (let frame = from; frame < from + length; frame++) {
-      const moves = span === 0 || span === 2;
-      const moment = { span, progress: moves ? (frame - from) / length : 0, time: frame / 30, into: (frame - from) / 30, mouths: {} };
-      assert.equal(frames[frame], plugin.frame(scenario, moment, size), `frame ${frame}`);
-    }
-  }
+  // Each frame of a move is its own picture; and Mo's wave goes on swinging, after Pip's arm hangs again.
+  const frames = pictures(compiled);
+  assert.equal(new Set(frames.slice(0, 15)).size, 15);
+  assert.equal(new Set(frames.slice(45, 81)).size, 36);
+  assert.equal(new Set(frames.slice(121, 135)).size, 14);
 });
 
 /** all-at-once's lines, spoken: each as long as it is in its own voice, in hundredths of a second. */
@@ -737,9 +716,9 @@ test("the check refuses a scene's setting at the scene's line: a name the librar
   assert.deepEqual(await messages("  - background: meadow", "    places: { pip: [300, 880] }"), ["places.pip: a place is a mark (off-left, left, middle, right, off-right), a point (its x, 0 to 1920), or one worked out: left-of(pip, near)"]);
   assert.deepEqual(await messages("  - background: meadow", "    faces: { mo: left }"), ['"mo" faces left, and has no place in this scene']);
   assert.deepEqual(await messages("  - background: meadow", "    faces: { pip: back }", "    places: { pip: left }"), ["faces.pip: it is left or right"]);
-  const beats = await issuesOf(["narrator say: Hello."], scene("  - background: meadow", "    beats: []"));
-  assert.deepEqual(beats, [
-    { line: 2, message: 'Unrecognized key: "beats"', hint: "a scene has background (one of the library's), places (where each of its characters begins), faces (who begins facing left) and script" },
+  const props = await issuesOf(["narrator say: Hello."], scene("  - background: meadow", "    props: []"));
+  assert.deepEqual(props, [
+    { line: 2, message: 'Unrecognized key: "props"', hint: "a scene has background (one of the library's), places (where each of its characters begins), faces (who begins facing left) and script" },
   ]);
 });
 

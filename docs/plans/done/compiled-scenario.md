@@ -320,7 +320,30 @@
   one; which way talkers face is the chat's to get right, and in Sonnet's
   argument Pip's back is to the others; what a refused episode draws goes
   into the library all the same, as before, since a later episode may name it.
-- **Next: step 13, rewrite the seven cartoons.**
+- **Step 13 done 2026-11-26**, the seven watched by the user beside their
+  old videos and accepted that day. The user's picks: the tool lets a
+  plugin with a script leave out the plan's part, and such a plugin's video
+  that is no script is refused by `make`, `check` and `import`; the seven
+  are rewritten beat by beat, the same lines, moves and poses in the same
+  order; `hello` is what `hello-script` was, which goes; the chat's beats
+  reply for `forest1` goes; `docs/workflow.html` has what was false
+  mended, and keeps its walk through a plan as RayCraft's path. Checked:
+  `npm test` and `npm run typecheck` here and in `cartoons/`; RayCraft's
+  media typecheck and `test:libs`, no file of it changed; `make --fit` of
+  RayCraft's three gives requests equal to the baseline, byte for byte, and
+  each makes whole, recorded again: first-shadow twice, with the same
+  frames, which differ from Nov 23's from frame 775 on, as the Chrome that
+  records them updated itself on Nov 24; `git grep -n "beats:" cartoons/`
+  finds nothing; the seven, made with the beats code and without it, draw
+  the same SVG in every frame; an old beats file is refused by `check`;
+  every cartoon of `videos/` compiles in a test. Each is as long as in
+  beats or 1 to 5 s longer, as a move with no line of its own has a pause
+  on each side (164 and 164 frames, 329 and 330, 580 and 634, 1277 and
+  1381, 1629 and 1777, 1732 and 1820, 1231 and 1272).
+- Left by step 13: `docs/workflow.html`'s "Inside make" walks through a
+  plan (`meet` as it was in beats); a rewrite around the compiled scenario
+  waits for the user's yes.
+- **The plan is done.**
 
 
 ## Goal

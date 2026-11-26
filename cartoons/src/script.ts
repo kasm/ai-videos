@@ -6,7 +6,7 @@
 import { NARRATOR, listed, nearest, type Action, type ActionLine, type Issue, type Library as LibraryFile, type SceneActions, type SceneChecked } from "ai-videos/plugin";
 import { z } from "zod";
 import { NEAR, place, stageOf } from "./places.ts";
-import { ARM, GROUND, MARKS, PACE, SCENE, name, readLibrary, type Pose } from "./scenario.ts";
+import { ARM, GROUND, MARKS, PACE, SCENE, name, readLibrary, type Pose } from "./library.ts";
 
 /** An action on the arm: it changes the pose, and takes as long as the arm does. */
 const onArm = (pose: Pose, description: string) => ({ description: `${description} The arm gets there in ${PACE.arm} seconds.`, example: `pip ${pose}`, values: z.strictObject({}), channels: ["arm"] });

@@ -5,7 +5,7 @@
 // walk which others have surely begun before its end.
 import { listed, nearest, shownAs, type ActionLine, type ConstructionOf, type Worked } from "ai-videos/plugin";
 import { z } from "zod";
-import { MARKS, STAGE, type Library, type Mark } from "./scenario.ts";
+import { MARKS, STAGE, type Library, type Mark } from "./library.ts";
 
 /** The gap between two who stand near each other, and how much of one the other may cover: widths of the smaller of the two. */
 export const NEAR = 0.3;

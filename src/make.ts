@@ -159,8 +159,8 @@ export async function startPlugin(plugin: PluginFile, log: (msg: string) => void
     throw new Error(`the plugin did not start: ${"failed" in ready ? ready.failed : "error" in ready ? ready.error : "it said something else"}`);
   }
   const { scene, commands, script } = ready.ready;
-  const actions = script ? `; a script's actions: ${Object.keys(script.actions).join(", ") || "none"}` : "";
-  log(`Plugin: ${scene}, ${plugin.file} (its commands: ${Object.keys(commands).join(", ") || "none"}${actions})`);
+  const said = [...(commands ? [`its commands: ${Object.keys(commands).join(", ") || "none"}`] : []), ...(script ? [`a script's actions: ${Object.keys(script.actions).join(", ") || "none"}`] : [])];
+  log(`Plugin: ${scene}, ${plugin.file} (${said.join("; ")})`);
   const shown = (file: string) => path.relative(plugin.dir, file);
   const withLibrary = (library: Library | undefined) => (library ? { library } : {});
   const ask = async (job: Job) => {

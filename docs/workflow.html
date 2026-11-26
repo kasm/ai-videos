@@ -189,6 +189,10 @@ machine: <code>story</code> hands its prompt to your own web chat, through the c
 fit them. So the plugin is asked twice: once for the plan, the clip's events and texts at its own pace
 with nothing drawn, and once for the picture, at the lengths the tool asks for. Nothing is timed by
 hand.</p>
+<p>This is the path of a plugin with a plan: RayCraft's tutorials are made so, and the cartoons were,
+until they were written as scripts. A cartoon's check now takes the plan's place, and its compiled
+scenario the fit's; the rest is the same (<a href="#script">What happens at once</a>, and
+<code>AGENTS.md</code>, "A script").</p>
 
 <figure>
 <svg viewBox="0 0 1180 376" role="img" aria-label="The six stages of make, and the web page after the third">
@@ -307,16 +311,18 @@ closes it when it is done.</p>
 <pre><span class="c"># cartoons/package.json</span>
 "ai-videos": { "plugin": "./src/plugin.ts", "voice": "af_heart", "fps": 30 }</pre>
 <p>A plugin gives its <code>scene</code> (what a file's <code>use:</code> names: <code>cartoon</code>),
-its <code>stage</code> (1920 by 1080, so a cartoon is landscape), a <code>check</code> of its source, its
-<code>plan</code>, and its picture: <code>frame</code>, an SVG a moment, when it draws, or
-<code>camera</code>, a PNG a moment, when it records. Its <code>guide</code> and <code>commands</code> are
-its part of the prompt for a web chat. <a href="#project">A project of your own</a> has a whole small
+its <code>stage</code> (1920 by 1080, so a cartoon is landscape), and a plan, a script, or both. The
+plan's part is a <code>check</code> of its source, its <code>plan</code>, and its picture:
+<code>frame</code>, an SVG a moment, when it draws, or <code>camera</code>, a PNG a moment, when it
+records; its <code>guide</code> and <code>commands</code> are its part of the prompt for a web chat. A
+script's part is its actions, its check of a script, its guide, and <code>draw</code>, an SVG of what a
+frame shows. The cartoons' plugin has a script alone. <a href="#project">A project of your own</a> has a whole small
 one.</p>
 
 <h3>How the voice and the picture meet</h3>
-<p>Each text of the plan is a line, and a line starts as the picture reaches its event: for a cartoon,
-its beat. This is <code>meet</code>, three beats and five lines, with the numbers of its last
-<code>make</code>:</p>
+<p>Each text of the plan is a line, and a line starts as the picture reaches its event: for a cartoon
+in beats, its beat. This is <code>meet</code> as it was in beats, three of them and five lines, with the
+numbers of its last such <code>make</code>:</p>
 
 <figure>
 <svg viewBox="0 0 1180 336" role="img" aria-label="The plan of meet at its own pace, the request it is drawn to, the voice and the mouths, on one time axis">
@@ -428,8 +434,8 @@ the story has it so. The prompt teaches the chat to write each episode as a scri
 plays when. The real example is <code>the-race</code>: story <code>cartoons/stories/the-race.md</code>, two
 episodes, <code>cartoons/videos/the-race-1.yaml</code> and <code>-2</code>, written by a fresh Claude
 (Sonnet) with no tools, given only the prompt, and taken and made with no edit by hand; its reply is kept as
-<code>the-race.reply.md</code>. <code>forest1</code>'s three episodes were written in beats, before the
-prompt taught scripts.</p>
+<code>the-race.reply.md</code>. <code>forest1</code>'s three episodes were written in beats by a chat, before the
+prompt taught scripts, and rewritten as scripts by hand.</p>
 
 <div class="legend">
   <span class="chip you">you</span><span class="chip ai">an AI</span>
@@ -617,11 +623,11 @@ scenes:
 <svg viewBox="0 0 1180 240" role="img" aria-label="The workflow of a cartoon written by hand">
   <!-- row 1 -->
   <g class="act you" transform="translate(12,30)"><rect width="148" height="56" rx="14"/>
-    <text class="t" x="74" y="24">1 · Write the file</text><text class="s" x="74" y="42">scenes, beats, lines</text></g>
+    <text class="t" x="74" y="24">1 · Write the file</text><text class="s" x="74" y="42">scenes, scripts, lines</text></g>
   <g class="file" transform="translate(180,30)"><rect width="148" height="56" rx="2"/>
     <text class="t" x="74" y="24">&lt;name&gt;.yaml</text><text class="s" x="74" y="42">videos/, in git</text></g>
   <g class="act tool" transform="translate(348,30)"><rect width="148" height="56" rx="14"/>
-    <text class="t" x="74" y="24">2 · make --fit</text><text class="s" x="74" y="42">plan, voices, fit: seconds</text></g>
+    <text class="t" x="74" y="24">2 · make --fit</text><text class="s" x="74" y="42">check, voices, compile</text></g>
   <g class="act tool" transform="translate(516,30)"><rect width="148" height="56" rx="14"/>
     <text class="t" x="74" y="24">3 · make</text><text class="s" x="74" y="42">six stages: meet, 30 s</text></g>
   <g class="file" transform="translate(684,30)"><rect width="148" height="56" rx="2"/>
@@ -656,22 +662,21 @@ it.</figcaption>
 <table>
   <tr><th>#</th><th>Step</th><th>Actor</th><th>Reads (sources)</th><th>Writes (targets)</th></tr>
   <tr><td class="n">1</td><td><b>Write the file</b>: <code>use: cartoon</code>, then its scenes. Each has a
-      background, the marks its characters stand on, and its beats: a move or a pose, and the lines said
-      meanwhile.</td>
+      background, the marks its characters begin on, and its script: a row for each thing that happens, a
+      move, a pose or a line, in the order written, and blocks for what happens at once.</td>
     <td><span class="chip you">you</span></td>
     <td>The names in <code>library.yaml</code></td>
     <td><code>videos/&lt;name&gt;.yaml</code> <span class="tag">git</span></td></tr>
   <tr><td class="n">2</td><td><b>Try the timing</b>: <code>make --fit</code>, a few seconds. It checks the
-      file, says what the plugin mended, speaks the lines, and prints each beat's length at its own pace
-      and in the video. A move much shorter in the video is rushed.</td>
+      file (a mistake with its line and a hint), speaks the lines, and prints when each row begins and how
+      long it lasts. <code>check</code> is the check alone, with nothing spoken.</td>
     <td><span class="chip tool">the tool</span> <span class="chip plugin">the plugin</span>
       <span class="chip voice">Kokoro</span></td>
     <td>The file, <code>library.yaml</code>, <code>package.json</code></td>
-    <td><code>.cache/&lt;name&gt;/plan.json</code>, <code>clips/…request.json</code>
-      <span class="tag">made</span>; the voice cache</td></tr>
-  <tr><td class="n">3</td><td><b>Make</b>: the six stages above. The drawing is the cartoons' plugin: for
-      each frame its moment (which beat, how far through its move, whose mouth is open and how wide), that
-      moment's picture as an SVG.</td>
+    <td><code>.cache/&lt;name&gt;/compiled.json</code> <span class="tag">made</span>; the voice cache</td></tr>
+  <tr><td class="n">3</td><td><b>Make</b>: the six stages above, with the check in place of the plan. The
+      drawing is the cartoons' plugin: for each frame, what it shows (the scene as it began, each action
+      begun by then and how far through it is, whose mouth is open and how wide), as an SVG.</td>
     <td><span class="chip tool">the tool</span> <span class="chip plugin">the plugin</span>
       <span class="chip voice">Kokoro</span> <span class="chip hf">HyperFrames, ffmpeg</span></td>
     <td>As 2, and the plugin's code</td>
@@ -700,29 +705,23 @@ npm run -s video -- make cartoons/videos/meet.yaml
 <span class="c"># hear the voices, and list every name: samples in the tool's out/voice-samples/</span>
 npm run -s video -- voices "Any sentence."
 
-<span class="c"># one frame of a beat, at a time the fit printed</span>
+<span class="c"># one frame, at a time make --fit printed</span>
 ffmpeg -v error -y -ss 6 -i out/meet.mp4 -frames:v 1 meets.png</pre>
 
 <h3>What the files look like</h3>
-<pre><span class="c"># videos/meet.yaml, the whole scenario, in names</span>
+<pre><span class="c"># videos/meet.yaml, the whole cartoon, in names</span>
 use: cartoon
 scenes:
   - background: meadow
     places: { pip: middle, mo: off-right }   <span class="c"># marks: off-left, left, middle, right, off-right</span>
     faces: { mo: left }                      <span class="c"># the others face right</span>
-    beats:
-      - name: waits
-        says:
-          - { who: narrator, text: "Pip is waiting in the meadow." }
-      - name: mo-walks-in
-        walk: { who: mo, to: right }         <span class="c"># or turn, jump; pose, background, takes</span>
-        says:
-          - { who: pip, text: "Oh, someone is coming! Hello! Who are you?" }
-      - name: meets
-        says:
-          - { who: mo, text: "I am Mo. I live behind the hill." }
-          - { who: pip, text: "I am Pip. Shall we play?" }
-          - { who: mo, text: "Yes, let's play!" }</pre>
+    script: |
+      narrator say: Pip is waiting in the meadow.
+      mo walk to=right                       <span class="c"># or turn, jump, look-at; wave, point, stand</span>
+      &amp; pip say: Oh, someone is coming! Hello! Who are you?
+      mo say: I am Mo. I live behind the hill.
+      pip say: I am Pip. Shall we play?
+      mo say: Yes, let's play!</pre>
 <pre><span class="c"># library.yaml: what the cartoons name, each drawn once (shortened)</span>
 characters:
   pip:
@@ -736,22 +735,20 @@ characters:
 backgrounds:
   meadow: { fill: "#bfe3ff" }</pre>
 <p><b>Names only link the stages</b>: <code>use: cartoon</code> names the plugin's scene;
-<code>background: meadow</code> and <code>pip</code> are the library's. A beat's <code>who: pip</code> is
-the plan's speaker <code>pip</code>, the library gives pip's voice, and the request names pip with the
-line's mouth track, so only pip's mouth moves. A cartoon's events are its beats' names. What a beat may
-have is in <code>cartoons/CLAUDE.md</code>, "The scenario".</p>
+<code>background: meadow</code> and <code>pip</code> are the library's. A row's <code>pip</code> is
+its speaker, the library gives pip's voice, and what a frame shows opens pip's mouth with the line's
+track, so only pip's mouth moves. What a row may be is in
+<a href="../cartoons/README.md">cartoons/README.md</a>, "By hand", and <code>cartoons/CLAUDE.md</code>,
+"The script".</p>
 
-<h3 id="script">Or as a script</h3>
-<p>A scene's <code>script:</code> in place of its <code>beats:</code> says what happens a row at a time, and
-what happens at once: a chorus, one who breaks in at a word, talk over a radio, a walk as long as the
+<h3 id="script">What happens at once</h3>
+<p>A script says what happens a row at a time, and what happens at once: a chorus, one who breaks in at a word, talk over a radio, a walk as long as the
 words beside it, two who arrive together or run off together, music under several scenes. The tool
 checks it (<code>check</code>, in a second, with nothing spoken), speaks each line, and lays every row on
 whole frames by its rules of what happens at once: <code>.cache/&lt;name&gt;/compiled.json</code>, in
-place of the plan and the fit, which <code>make --fit</code> prints. The picture, the sound, the captions
-(two who talk at once have one each) and the page are made from that file. The real examples are
-<code>cartoons/videos/hello-script.yaml</code>, <code>hello</code> as a script, and
-<code>all-at-once.yaml</code>, all of it at once; what a row may be is in
-<a href="../cartoons/README.md">cartoons/README.md</a>, "By hand".</p>
+place of a plan and its fit, which <code>make --fit</code> prints. The picture, the sound, the captions
+(two who talk at once have one each) and the page are made from that file. The real example is
+<code>cartoons/videos/all-at-once.yaml</code>, all of it at once.</p>
 <pre><span class="c"># a scene written as a script</span>
   - background: meadow
     places: { pip: left, mo: off-right }
@@ -842,8 +839,8 @@ waits for the voice. The whole video took 23 s to make.</p>
   <tr><th>Name</th><th>What it is</th><th>When it is asked</th></tr>
   <tr><td><code>scene</code>, <code>stage</code></td><td>The name a file's <code>use:</code> gives, and the
     picture's size: the video is landscape or portrait by its shape</td><td>When it starts</td></tr>
-  <tr><td><code>guide</code>, <code>commands</code></td><td>Its part of the prompt: the format, and what a
-    beat may do, each described once, with an example and a schema</td><td><code>prompt</code>,
+  <tr><td><code>guide</code>, <code>commands</code></td><td>Its part of the prompt: the format, and what an
+    event may do, each described once, with an example and a schema</td><td><code>prompt</code>,
     <code>story</code></td></tr>
   <tr><td><code>check</code></td><td>The source made into the plugin's own type, or refused with every
     reason and the file that holds it</td><td>Stages 1 and 4, <code>import</code>, the page</td></tr>
@@ -856,6 +853,11 @@ waits for the voice. The whole video took 23 s to make.</p>
     from: a change to one makes the plan and the drawing again</td><td>Stage 1</td></tr>
   <tr><td><code>frame</code> or <code>camera</code></td><td>A moment's picture: an SVG it draws, or a PNG it
     records. One of the two</td><td>Stage 4, a frame at a time; <code>frame</code> in the page too</td></tr>
+  <tr><td><code>script</code> <span class="tag">optional</span></td><td>Its part of a script: its actions,
+    its names for numbers and its constructions, its guide, its check of a script, and <code>draw</code>,
+    an SVG of what a frame shows. With it, a plugin may have none of the rows above but the first: the
+    cartoons' has none, and its videos are scripts alone</td><td><code>check</code>, <code>make</code>,
+    <code>import</code>, <code>prompt</code>; <code>draw</code> in the drawing and the page</td></tr>
 </table>
 </div>
 
@@ -863,8 +865,8 @@ waits for the voice. The whole video took 23 s to make.</p>
 <h3>A plugin that draws, a plugin that records</h3>
 <div class="scroll">
 <table>
-  <tr><th></th><th>Draws (<code>frame</code>)</th><th>Records (<code>camera</code>)</th></tr>
-  <tr><td>For example</td><td>cartoons: <code>cartoons/src/plugin.ts</code></td>
+  <tr><th></th><th>Draws (<code>frame</code>, or a script's <code>draw</code>)</th><th>Records (<code>camera</code>)</th></tr>
+  <tr><td>For example</td><td>cartoons: <code>cartoons/src/plugin.ts</code>, its script's <code>draw</code></td>
     <td>RayCraft's <code>media/plugin/plugin.ts</code>: a tutorial played by its editor in headless
       Chrome</td></tr>
   <tr><td>A frame</td><td>An SVG, turned into pixels by resvg. It has no fonts: a picture holds no text</td>
@@ -908,19 +910,18 @@ waits for the voice. The whole video took 23 s to make.</p>
     <h4>Sources, in git</h4>
     <ul>
       <li><code>stories/&lt;name&gt;.md</code>: the story</li>
-      <li><code>videos/&lt;name&gt;.yaml</code>: the video, its scenario in names</li>
-      <li><code>library.yaml</code>: the characters, each with its voice, and the backgrounds</li>
+      <li><code>videos/&lt;name&gt;.yaml</code>: the video, its script in names</li>
+      <li><code>library.yaml</code>: the characters, each with its voice, the backgrounds and the sounds</li>
       <li><code>package.json</code>: the plugin, the narrator's voice, the fps</li>
       <li><code>src/</code>: the plugin (<code>plugin.ts</code>, <code>guide.ts</code>,
-        <code>repair.ts</code>, <code>scenario.ts</code>, <code>timeline.ts</code>,
+        <code>library.ts</code>, <code>script.ts</code>, <code>places.ts</code>,
         <code>picture.ts</code>)</li>
     </ul>
     <h4>Targets, made in the project</h4>
     <ul>
-      <li><code>.cache/&lt;name&gt;/</code>: <code>plan.json</code>,
-        <code>clips/&lt;name&gt;-landscape.request.json</code>, <code>.mp4</code>,
-        <code>.mp4.frames</code>, <code>.mp4.svgs</code>, <code>.json</code>, <code>sound.m4a</code>,
-        <code>build/</code>, <code>render.mp4</code>, <code>stages.json</code></li>
+      <li><code>.cache/&lt;name&gt;/</code>: <code>compiled.json</code>,
+        <code>clips/&lt;name&gt;-landscape.mp4</code>, <code>.mp4.frames</code>, <code>.mp4.svgs</code>,
+        <code>sound.m4a</code>, <code>build/</code>, <code>render.mp4</code>, <code>stages.json</code></li>
       <li><code>out/&lt;name&gt;.mp4</code>, the page <code>out/&lt;name&gt;.html</code></li>
     </ul>
   </div>
@@ -967,12 +968,13 @@ them all. A table such as <code>timing</code> merges key by key; a list is repla
 <table>
   <tr><th>Where</th><th>Setting</th><th>What it does</th></tr>
   <tr><td>A line</td>
-    <td>A beat's <code>says</code>, each <code>{ who, text }</code></td>
-    <td>Said in the beat's time, in the order written, and the caption. <code>who</code> is a character,
-      whose voice it is and whose mouth moves, or <code>narrator</code>, the video's voice.</td></tr>
-  <tr><td>A cartoon's beat</td>
-    <td><code>takes</code></td><td>Its length in seconds at its own pace; the tool stretches it when its
-      lines take longer to say.</td></tr>
+    <td>A script's row, <code>who say: text</code></td>
+    <td>Said in its turn, and the caption. <code>who</code> is a character, whose voice it is and whose
+      mouth moves, or <code>narrator</code>, the video's voice.</td></tr>
+  <tr><td>A row, a block, a scene or the file</td>
+    <td><code>takes</code>, <code>speed</code>, <code>volume</code>, <code>pause</code>…</td><td>An
+      action's length or speed, how loud what is said is, the time between rows: set for all in it (the
+      tool's <code>AGENTS.md</code>, "Values").</td></tr>
   <tr><td>A character, in <code>library.yaml</code></td>
     <td><code>voice</code></td><td>Its voice, in every video: every character has one.</td></tr>
   <tr><td rowspan="9">The whole video, or every video in <code>package.json</code>'s
@@ -1048,8 +1050,9 @@ guessed. The paths are left out here.</p>
 </table>
 </div>
 <p>Two messages are not stops. <code>line 2 waits 2.31s for "gone"</code>: the picture is too long for the
-words, so shorten the move or say more. <code>Mended by the plugin</code>: the video has the mended form
-("beat goes-back-turn turns it round first") and your file stays as written.</p>
+words, so shorten the move or say more (a plan's message). <code>Mended by the plugin</code>: a plugin with
+a plan may mend what has one right answer; the video has the mended form, and your file stays as
+written.</p>
 <p>In <code>story</code>, Enter pressed too soon, or an answer copied without its blocks, is said, and it
 waits again. An episode whose file is there already, with other text, is kept: delete the file to take the
 new one.</p>
@@ -1061,11 +1064,10 @@ new one.</p>
   <tr><td><a href="../README.md">README.md</a></td>
     <td>Setting up, the first video, every command</td></tr>
   <tr><td><a href="../cartoons/README.md">cartoons/README.md</a></td>
-    <td>Making a cartoon, from a story or by hand: what a beat may have, what to edit to change
+    <td>Making a cartoon, from a story or by hand: what a row may be, what to edit to change
       something</td></tr>
   <tr><td><a href="../cartoons/CLAUDE.md">cartoons/CLAUDE.md</a></td>
-    <td>The scenario's format, the library, how a cartoon is drawn, the voices, what the plugin
-      mends</td></tr>
+    <td>The script's format, the library, how a cartoon is drawn, the voices</td></tr>
   <tr><td><a href="../AGENTS.md">AGENTS.md</a></td>
     <td>The full reference: the contract with a project (plugins, a video file, settings in layers, the
       cache), <code>make</code>, the fit, the request, the web page, <code>prompt</code>,

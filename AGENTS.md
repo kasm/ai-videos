@@ -61,8 +61,8 @@ between the tool and a project.
 ### Plugins
 
 A project's plugin draws its videos: a module the tool runs in a child process of its own
-(`src/host.ts`). `cartoons/` has one that draws (its `src/plugin.ts`), RayCraft one that records
-(its `media/plugin/plugin.ts`: a tutorial played by the editor in Chrome).
+(`src/host.ts`). `cartoons/` has one whose videos are scripts alone (its `src/plugin.ts`), RayCraft
+one that plans and records (its `media/plugin/plugin.ts`: a tutorial played by the editor in Chrome).
 
 - **Where:** the nearest `package.json` above the video file names it, as a path from that
   folder: `"ai-videos": { "plugin": "./src/plugin.ts" }` (`pluginOf`, `src/make.ts`). The same
@@ -74,11 +74,13 @@ A project's plugin draws its videos: a module the tool runs in a child process o
   Plugin } from "ai-videos/plugin"`), its tests for `moments` (see Moments), and both for a
   script's reading, check, compiling and what a frame of it shows (see A script). It runs nothing
   else, so the project needs none of the tool's packages, and Node 24 runs it as it is written.
-- **What it is:** the module's default export, `Plugin` in `src/plugin.ts`:
+- **What it is:** the module's default export, `Plugin` in `src/plugin.ts`: its `scene` and its
+  `stage`, and the plan's part (from `commands` to its picture, below), its `script`, or both. A
+  plugin with neither, or with some of the plan's part and not all, is refused when it loads.
   - `scene`: the scene it draws (`cartoon`): a video file's `use:` names it.
   - `stage`: the size its picture is drawn at. The video's format is the one of its shape; a stage
     no format has the shape of is refused.
-  - `commands`: what its source's beats may do, by name, each described once: a `description`,
+  - `commands`: what its source's events may do, by name, each described once: a `description`,
     an `example` and a `schema`. A schema is any library's with the Standard Schema and Standard
     JSON Schema interfaces (`~standard.validate`, `~standard.jsonSchema`; standardschema.dev), as
     zod 4's have. A plugin whose example fails its schema, or whose schema writes no JSON Schema,
@@ -109,7 +111,9 @@ A project's plugin draws its videos: a module the tool runs in a child process o
       opaque, the same buffer again for a picture held; `close` is called when the clip is drawn,
       or failed.
   - `script`, optional: its part of a video written as a script (see A script). A plugin without
-    it has no such videos; for a video that is one, none of the functions above is called.
+    it has no such videos; for a video that is one, none of the functions above is called. A plugin
+    with it and none of the plan's part has scripts alone: a video file that is not one is refused,
+    by `make`, `check` and `import` alike.
     - `actions`: what a line may do besides the tool's `say`, `play` and `loop`, by name, each described once: a
       `description`, an `example` (one line of a script that names it: `pip walk to=middle`) and
       `values`, a schema of the values a line gives it. An example that is no such line, or fails
@@ -152,7 +156,7 @@ A project's plugin draws its videos: a module the tool runs in a child process o
   said (`make` lists it, every time, and the file stays as written), with the plan's limits and
   inputs. Step two: the request's spans checked against the plan's events, each moment's picture
   encoded (see Moments), and the data written again: each event at its span, the texts moved
-  with their beats. A drawing plugin's SVG is turned into pixels by resvg (no fonts: a picture
+  with their events. A drawing plugin's SVG is turned into pixels by resvg (no fonts: a picture
   holds no text), and a frame whose SVG is the one before is not drawn again; beside the clip's
   `.frames`, `<clip>.svgs` holds a hash of each frame's SVG (its md5), a line a frame: what the web
   page draws is compared with it. A recording plugin's PNGs are encoded as they come, `.frames`
@@ -203,8 +207,8 @@ scenes: [ … ]
 
 A video may be written as a script: each of its scenes has a `script:`, a block of lines. The tool
 reads and compiles them, and makes the sound, the picture, the captions and the web page from the
-compiled scenario (and the library's drawings and sound files) alone. `docs/plans/compiled-scenario.md` builds this step by step. The beats of
-a cartoon and RayCraft's events go the way the rest of this file describes, as before.
+compiled scenario (and the library's drawings and sound files) alone. `docs/plans/done/compiled-scenario.md` built it step by step.
+RayCraft's events go the way the rest of this file describes, as before.
 
 ```yaml
 use: cartoon
@@ -313,7 +317,7 @@ scenes:
 {
   "format": "ai-videos-compiled",
   "version": 1,
-  "made": { "by": "ai-videos compile", "from": "../../videos/hello-script.yaml" },
+  "made": { "by": "ai-videos compile", "from": "../../videos/hello.yaml" },
   "fps": 30,
   "frames": 164,
   "loudness": -14,
@@ -646,7 +650,7 @@ Then what its outputs turn on (see A video file), or the one `--as` names:
 The host draws the clip a frame at a time, and gives the plugin the moment each frame shows:
 `moments(request)` (`src/moments.ts`) gives one for each of the request's `frames`, in order. It is
 pure, so the web page draws its frames with it too, and `ai-videos/plugin` exports it for a
-plugin's tests (`cartoons`' `src/plugin.test.ts`).
+plugin's tests (RayCraft's `media/plugin/clip.test.ts`).
 
 - `span`: which of the request's spans the frame is in, counted from 0. Each span begins on the
   frame its `at` names; a request whose spans do not follow each other on whole frames is refused.
@@ -858,7 +862,7 @@ schema is `ClipData` in `src/clip.ts`:
 {
   "format": "ai-videos-clip",
   "version": 1,
-  "made": { "by": "the cartoon plugin, src/plugin.ts", "from": "videos/meet.yaml, drawn to meet-landscape.request.json" },
+  "made": { "by": "the square plugin, src/plugin.ts", "from": "videos/slide.yaml, drawn to slide-landscape.request.json" },
   "duration": 13,
   "events": [
     { "name": "start", "at": 0, "span": "hold", "natural": 5 },

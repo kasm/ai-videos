@@ -11,7 +11,7 @@ There is no account, no API key and no cloud service: the network is used only t
 
 ## A video is one file
 
-This is a whole video, [cartoons/videos/hello-script.yaml](cartoons/videos/hello-script.yaml):
+This is a whole video, [cartoons/videos/hello.yaml](cartoons/videos/hello.yaml):
 
 ```yaml
 use: cartoon
@@ -58,18 +58,18 @@ ignore that.
 ## Make your first video
 
 ```
-npm run -s video -- make cartoons/videos/hello-script.yaml
+npm run -s video -- make cartoons/videos/hello.yaml
 ```
 
 The first time takes about half a minute on a desktop PC. Then you have
-`cartoons/out/hello-script.mp4`, the video with its captions, and `cartoons/out/hello-script.html`,
+`cartoons/out/hello.mp4`, the video with its captions, and `cartoons/out/hello.html`,
 its web page, one file that plays in any browser: the file asks for both
 (`outputs: { web: true }`).
 
 Make it again after a change, and only what the change touches is redone. To get only the web page:
 
 ```
-npm run -s video -- make cartoons/videos/hello-script.yaml --as web
+npm run -s video -- make cartoons/videos/hello.yaml --as web
 ```
 
 Next: [make a cartoon of your own](cartoons/README.md), from a story or by hand.
@@ -145,7 +145,7 @@ HyperFrames.
 
 [MIT](LICENSE), the characters and backgrounds in `cartoons/library.yaml` included.
 
-One story is not under it: `cartoons/stories/forest1.md`, its `forest1-reply.md`, and its episodes,
+One story is not under it: `cartoons/stories/forest1.md` and its episodes,
 `cartoons/videos/forest1-1.yaml` to `forest1-3.yaml`. They adapt the first chapter of *The Wind in
 the Willows* (Kenneth Grahame, 1908, public domain). The adaptation is © 2026 Dmytro.R, all rights
 reserved.

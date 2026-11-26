@@ -1,15 +1,13 @@
 # The first cartoon: Pip walks onto a meadow and stops there, while a narrator speaks. The smallest
-# whole one. The format is in CLAUDE.md ("The scenario"); Pip and the meadow are drawn in library.yaml.
+# whole one: the narrator's first line is joined to the walk, so Pip walks as long as it is said. The
+# format is in CLAUDE.md ("The script"); Pip and the meadow are drawn in library.yaml.
 use: cartoon # the plugin that draws it; the voices are library.yaml's, the other settings package.json's "ai-videos"
+outputs: { web: true } # its page too, beside the video
 
 scenes:
   - background: meadow
     places: { pip: off-left }
-    beats:
-      - name: walks-in
-        walk: { who: pip, to: middle }
-        says:
-          - { who: narrator, text: "This is Pip. Pip walks into the meadow." }
-      - name: stops
-        says:
-          - { who: narrator, text: "And here, Pip stops." }
+    script: |
+      pip walk to=middle
+      & narrator say: This is Pip. Pip walks into the meadow.
+      narrator say: And here, Pip stops.

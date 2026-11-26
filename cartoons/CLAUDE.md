@@ -1,7 +1,7 @@
 # Cartoons: notes for AI assistants
 
 Simple 2D cartoons with talking characters. Each cartoon is written as a
-scenario; the video tool (`..`, the root of this repo) turns it into a
+script; the video tool (`..`, the root of this repo) turns it into a
 video with a spoken voice, offline and with no AI. This folder is one of
 the tool's projects, and a session for it is opened in the repo's root.
 
@@ -18,12 +18,11 @@ the tool's projects, and a session for it is opened in the repo's root.
   sounds/make.mjs`, the same bytes every time), under the repo's licence.
   Any other put there is the user's own, licensed for a public repo.
 - `videos/<name>.yaml`: one cartoon, written by hand or by an AI session:
-  `use: cartoon` on top, then its scenario, in names: the library's
-  characters and backgrounds, places as marks, each line written once, in
-  its beat (the tool's `AGENTS.md`, "A video file"). `hello-script.yaml`,
-  `all-at-once.yaml` and a story's new episodes are written as scripts
-  instead (The script, below).
-- `.cache/<name>/`: what the tool makes on the way (the plan, the request,
+  `use: cartoon` on top, then its scenes, each with its script, in names:
+  the library's characters and backgrounds, places as marks or worked out
+  from others, each line written once (The script, below; the tool's
+  `AGENTS.md`, "A script").
+- `.cache/<name>/`: what the tool makes on the way (the compiled scenario,
   the clip, the build); `out/<name>.mp4`: the finished video,
   and `out/<name>.html`, its web page.
   Made, not in git, never edited.
@@ -36,41 +35,35 @@ the tool's projects, and a session for it is opened in the repo's root.
   `library.yaml` without asking (the user's standing yes), and nothing
   already there changes. A sound does not: it is a file, which the user
   adds.
-- `src/`: the cartoon plugin, the module the tool runs to get a cartoon's
-  clip (the tool's `AGENTS.md`, "Plugins"). Its code is part of what the
-  tool's cache keys on: a change to a file here draws the clips again.
-  - `plugin.ts`: the plugin itself: the scene `cartoon`, its stage, its
-    commands, its guide, and the four functions below.
+- `src/`: the cartoon plugin, the module the tool runs to check a
+  cartoon's script and draw its clip (the tool's `AGENTS.md`, "Plugins").
+  Its code is part of what the tool's cache keys on: a change to a file
+  here draws the clips again.
+  - `plugin.ts`: the plugin itself: the scene `cartoon`, its stage and its
+    script, which is all of it: a cartoon is a script alone.
   - `guide.ts`: the plugin's part of the guide to a script (`SCRIPT_GUIDE`),
     which is the format in the tool's prompt for a web chat: what a cartoon
     can show, a whole file as an example, how to tell a story in it, and how
     to draw a new character or background (`DRAWING`). A web chat reads it
     with no other file of this project, so it says all it needs; the tool
     adds how a script is written, the actions, `library.yaml` and the
-    voices. `GUIDE` is the same for a cartoon in beats, which no prompt
-    has now.
-  - `repair.ts`: what the plugin mends in a scenario before the check
-    (Mending, below).
-  - `scenario.ts`: the scenario's schema and the library's, their checks,
-    the marks and a beat's own length (`MARKS`, `PACE`), and the commands
-    a beat may do (`COMMANDS`), each with a description and an example.
-    Checked, a scenario is read as the picture reads it: the library's
-    drawings, each mark a point, each beat's length known.
-  - `script.ts`: a cartoon written as a script (The script, below): the
-    actions a line may name (`ACTIONS`), its names for numbers (`NAMES`),
-    and the script's check, which
-    works each scene and action out in plain numbers (`Setting`, `Did`).
+    voices.
+  - `library.ts`: the library's schema and its check (`readLibrary`), the
+    stage, the marks on the ground and each action's own pace (`MARKS`,
+    `GROUND`, `PACE`).
+  - `script.ts`: the script (The script, below): the actions a line may
+    name (`ACTIONS`), its names for numbers (`NAMES`), and the script's
+    check, which works each scene and action out in plain numbers
+    (`Setting`, `Did`).
   - `places.ts`: where its characters stand: what a place is worked out
     from others by (`CONSTRUCTIONS`), a scene's stage as it begins and walk
     by walk (`stageOf`), how near two may stand (`COVER`), and when.
-  - `timeline.ts`: beats and lines as the clip's events and texts, at the
-    scenario's own pace (the plan).
-  - `picture.ts`: one moment's picture, as an SVG: who stands where, facing
-    which way, with the arm, the eyes and the mouth how. A script's too,
-    from what a frame of it shows (`drawScript`).
-  - The rest is the tool's, the same for every plugin: reading the file,
-    which moment each frame shows, the SVG turned into pixels, the encoder,
-    and the clip's data written.
+  - `picture.ts`: one frame's picture, as an SVG, from what the tool says
+    the frame shows (`drawScript`): who stands where, facing which way,
+    with the arm, the eyes and the mouth how.
+  - The rest is the tool's, the same for every plugin: reading the file and
+    its script, laying its lines in time, what each frame shows, the SVG
+    turned into pixels and the encoder.
 
 ## Running
 
@@ -95,13 +88,12 @@ give the tool the paths from there: `make cartoons/videos/<name>.yaml`):
   chat's answer to the reply's file, and import again (the tool's
   `AGENTS.md`, "import").
 - `npm run -s video -- check videos/<name>.yaml`: checks the file, with
-  nothing spoken or written, and no voice model needed: a script's
-  mistakes each with its line and a hint (The script, below), a cartoon
-  in beats as the plugin checks it.
-- `npm run -s video -- make videos/<name>.yaml --fit`: checks the file
-  (the plugin's checks against the library, and a voice for each
-  speaker), says what the plugin mended in it (Mending, below), speaks the
-  lines and prints how the clip fits them, before anything is drawn.
+  nothing spoken or written, and no voice model needed: its mistakes each
+  with its line and a hint (The script, below).
+- `npm run -s video -- make videos/<name>.yaml --fit`: checks the file,
+  speaks and measures the lines, and writes the compiled scenario
+  (`.cache/<name>/compiled.json`), its timing shown, before anything is
+  drawn.
 - `npm run -s video -- make videos/<name>.yaml`: the whole video, into
   `out/<name>.mp4`. A stage made from what has not changed since is taken
   from `.cache/<name>/`, and the log says "From the cache".
@@ -113,8 +105,8 @@ give the tool the paths from there: `make cartoons/videos/<name>.yaml`):
   too when `"ai-videos"` (or the file) says `outputs: { web: true }`; it is
   off by default (the tool's `AGENTS.md`, "A video file"). It draws each
   frame with this plugin's code, the same SVG as the video's, and plays
-  the video's sound; after the video, it speaks and fits nothing again
-  (the tool's `AGENTS.md`, "The web page").
+  the video's sound; after the video, it speaks nothing again (the tool's
+  `AGENTS.md`, "The web page").
 
 `video` is the tool's command line, found at `..`. The contract between
 the tool and this project is the tool's `AGENTS.md`, "Projects". The tool
@@ -124,17 +116,16 @@ is also a package here, a link to that folder (`"ai-videos": "file:.."`;
 
 ## How a cartoon is drawn
 
-The tool measures the voice and asks for the clip in whole frames: when
-each beat begins, how long it lasts, and how long a move's motion takes
-(the request, `.cache/<name>/clips/<name>-landscape.request.json`). With each spoken
-line it gives the line's speaker and a mouth track, taken from the voice's
-loudness: how open the mouth is in each frame the line sounds in, 0 closed
-to 1 wide. The tool then:
+The tool checks the script, speaks and measures each line, and lays every
+line on whole frames: the compiled scenario,
+`.cache/<name>/compiled.json`. With each spoken line it keeps a mouth
+track, taken from the voice's loudness: how open the mouth is in each
+frame the line sounds in, 0 closed to 1 wide. The tool then:
 
-1. finds each frame's moment: which beat, how far through its move, the
-   time in the clip and in the beat, and whose mouth is open, how wide
-   (its `moments`, a span being a beat);
-2. asks the plugin for that moment's picture as an SVG (`frameSvg`,
+1. works out what each frame shows: the scene as it began, each action
+   begun by then and how far through it is, the time, and whose mouth is
+   open, how wide (its `shownAt`);
+2. asks the plugin for that frame's picture as an SVG (`drawScript`,
    `picture.ts`);
 3. turns the SVG into pixels with resvg, and pipes them to ffmpeg. A frame
    whose SVG is the one before it is not drawn again.
@@ -142,23 +133,21 @@ to 1 wide. The tool then:
 A walk goes from the character's place to its end, slow at both ends, in
 a whole number of steps: the character rises a little in the middle of
 each. Its look is the plugin's (`STEP`, `BOUNCE` in `picture.ts`), not the
-scenario's. So is the look of everything below: the scenario names a
-move or a pose, and `picture.ts` holds its numbers.
+script's. So is the look of everything below: the script names an action,
+and `picture.ts` holds its numbers.
 
 A turn mirrors the character, left to right, like a paper cut-out turned
 round: it gets narrow, is seen edge-on halfway, and widens again facing
-the other way (`THIN`). A look (a script's alone) turns a character so to
-the one it looks at, in a turn's time, and turns it on as that one goes
-past it, by how far past it is (`PASS`): edge-on as it is in front. A jump
-is hops in place, each up and down as a thrown ball goes (`JUMP`), and ends
-on the ground.
+the other way (`THIN`). A look turns a character so to the one it looks
+at, in a turn's time, and turns it on as that one goes past it, by how far
+past it is (`PASS`): edge-on as it is in front. A jump is hops, each up and
+down as a thrown ball goes (`JUMP`), and ends on the ground.
 
 A pose is where the arm is: the part named `arm` turns around the
 character's `shoulder`. It hangs as drawn (`stand`), is held straight
 forward (`point`), or is raised and swings (`wave`): `ARM`, `SWING`,
-`WAVES`. In the beat that changes the pose, the arm takes `PACE.arm`
-seconds to get there; a wave goes on swinging through the beats after it,
-by the clip's time.
+`WAVES`. The arm takes `PACE.arm` seconds to get to a pose; a wave goes on
+swinging through the lines after it, by the video's time.
 
 Eyes blink: the shapes of the part named `eyes` close towards the part's
 middle line for a moment (`BLINK`), every few seconds. When is fixed by
@@ -170,8 +159,8 @@ A mouth moves with its character's voice: the shapes of the part named
 drops), until wide open they are nearly as tall as wide (`MOUTH_OPEN`,
 `picture.ts`). Closed, in a line's pauses and between lines, the mouth is
 as the library draws it. Only the speaker's mouth moves: a line's track
-opens the mouth of the character the request names as its `speaker`, and
-the narrator's line, which names nobody, opens none.
+opens the mouth of the character who says it, and the narrator's opens
+none.
 
 ## Voices
 
@@ -187,11 +176,9 @@ characters:
     parts: …
 ```
 
-- A line's `who` goes through the tool and comes back: the plugin's plan
-  gives a character's text with `speaker: <who>` (the narrator's with
-  none), the tool makes each text a line, cued to its beat, says it in
-  the character's voice, and the request names the speaker with the
-  line's mouth track.
+- A line's `who` is its speaker: the tool says the line in that voice,
+  and what a frame shows opens that character's mouth with the line's
+  track (the narrator's opens none).
 - Every character in the library has a voice: the tool refuses one
   without. A `cast` in `package.json` is refused: a voice has one home. A
   cartoon's own file may give `cast:`, on top beside `use:`, over the
@@ -203,112 +190,30 @@ characters:
   every name. `make` prints the speaker and voice of each character's line.
 - `videos/meet.yaml` has two characters and the narrator, three voices.
 
-The picture depends only on the scenario, the library and the request (a
-script's only on its compiled scenario and the library), so two runs
-draw the same frames. `.cache/<name>/clips/<name>-landscape.mp4.frames`
+The picture depends only on the compiled scenario and the library, so two
+runs draw the same frames. `.cache/<name>/clips/<name>-landscape.mp4.frames`
 holds a hash of each frame's pixels, a line a frame: compare two runs'
 files to see it, or to find the frame where they part.
 
-## The scenario
-
-A cartoon is `videos/<name>.yaml`: `use: cartoon` on top, then its
-scenario, in names. `videos/hello.yaml` is the smallest whole one, and
-`videos/the-shy-visitor.yaml` uses everything: each pose, each move, and
-backgrounds that change. The tool keeps its own keys (`use`, and the
-settings a cartoon may give over the project's: `voice`, `cast`, `speed`,
-`fps`, `loudness`, `timing`, `quality`) and gives the plugin the rest. A
-key the format does not have is refused, and an error names the file and
-the place.
-
-```yaml
-use: cartoon
-
-scenes:
-  - background: meadow
-    places: { pip: off-right }
-    faces: { pip: left }
-    beats:
-      - name: walks-in
-        walk: { who: pip, to: middle }
-        says:
-          - { who: narrator, text: "This is Pip. Pip walks into the meadow." }
-      - name: waves
-        pose: { pip: wave }
-        says:
-          - { who: pip, text: "Hello!" }
-      - name: night-falls
-        takes: 2
-        background: night
-        pose: { pip: stand }
-      - name: jumps
-        jump: { who: pip, times: 2 }
-```
-
-- **A name** is the library's: a scene's `background`, a character in
-  its `places`, the `who` of a move or a line. A name the library lacks is
-  refused, with the names it has. A video draws nothing of its own:
-  `characters:` or `backgrounds:` in it is refused.
-- **A mark** is where a character stands, on the ground (y 880): `left`,
-  `middle` and `right` on the stage (x 480, 960 and 1440), and `off-left`
-  and `off-right` out of sight (x -250 and 2170); `MARKS` in
-  `scenario.ts`. The ground is above the caption (a one-line caption, as
-  measured in `hello`, covers about y 890 to 990; two at once, a script's,
-  y 880 to 1036). Two characters never
-  stand on one mark of the stage, as a scene begins or after a walk; off
-  it, any number wait.
-- **A scene** has the `background` it begins with, the mark each of its
-  characters stands on as it begins (`places`), and its `beats`.
-  `faces: { mo: left }` begins it with Mo mirrored; the others face
-  right, as drawn. Every character begins in the pose `stand`. Scenes
-  follow each other in one clip, and each begins anew: its own places,
-  everyone facing as it says, standing.
-- **A beat** is one moment, and one event of the clip for the tool. Its
-  `name` (lowercase letters, digits and dashes) is unique in the scenario.
-  `takes` is its length in seconds at the scenario's own pace, and may be
-  left out: a move then takes its own time, and a hold its words' (`PACE`
-  in `scenario.ts`: a walk at 320 px a second, a turn 0.5 s, a hop 0.6 s,
-  a word 0.3 s, a hold at least 1 s). The tool stretches a beat when its
-  lines take longer to say, so `takes` is worth writing for a pause with
-  nothing said, or a move slower than its own.
-  - A beat has at most one **move**, by a character the scene places.
-    With one, the beat is a move for the tool; without, a hold.
-    - `walk: { who, to }`: the character goes from where it stands to the
-      mark `to`. A walk turns nobody: to walk back, turn first.
-    - `turn: { who }`: the character turns to face the other way, and
-      stays so.
-    - `jump: { who, times }`: the character hops in place `times` times
-      (1 when left out).
-  - `pose: { pip: wave, mo: stand }` changes poses as the beat begins:
-    `stand`, `wave` or `point`. A pose stays until a later beat of the
-    scene changes it. `wave` and `point` need the character's `arm`.
-    A pose is not a move: a beat with only a pose is a hold, as long as
-    its lines.
-  - `background: night` changes the background as the beat begins, for
-    the rest of the scene or until another beat changes it. Everyone
-    stays where they are.
-  - `says` lists the lines said during the beat, each with `who` (a
-    character's name, or `narrator`, whom nobody draws) and `text`. Several
-    lines share the beat's time equally, in the order written. A
-    character's line is said in its voice and moves its mouth (Voices,
-    above).
-
 ## The script
 
-A cartoon may be written as a script: each scene has a `script:`, a
-block of lines, in place of `beats:`. `videos/hello-script.yaml` is
-`hello` written so, and `videos/all-at-once.yaml` has what can happen at
-once: a chorus, an interruption, words that end with a walk, a radio and a
-murmur lower than the talk over them, its pauses all of one named value, its second
-scene's places worked out from others, and in its third, several who act
-at once, one who walks, waves and talks, two who look at it all the way
-past them, and a background that changes at a word; and a tune under all
-three scenes, a jingle the news waits for and a rustle at a word. The plan
-`docs/plans/compiled-scenario.md` builds this step by step, and the
-seven cartoons stay in beats until its end.
-`make` checks and compiles it (`.cache/<name>/compiled.json`; `--fit`
-stops there), and makes the video and the page from that and the
-library's drawings, as it makes any cartoon's. The tool's `AGENTS.md`,
-"A script", has the form of lines and blocks, the check, the compiled
+A cartoon is `videos/<name>.yaml`: `use: cartoon` on top, then its scenes,
+each with a `script:`, a block of lines. `videos/hello.yaml` is the
+smallest whole one, `videos/sundown.yaml` has every action but a look,
+and `videos/all-at-once.yaml` has what can happen at once: a chorus, an
+interruption, words that end with a walk, a radio and a murmur lower than
+the talk over them, its pauses all of one named value, its second scene's
+places worked out from others, and in its third, several who act at once,
+one who walks, waves and talks, two who look at it all the way past them,
+and a background that changes at a word; and a tune under all three
+scenes, a jingle the news waits for and a rustle at a word. `make` checks
+and compiles it (`.cache/<name>/compiled.json`; `--fit` stops there), and
+makes the video and the page from that and the library's drawings. The
+tool keeps its own keys (`use`, the settings a cartoon may give over the
+project's: `voice`, `cast`, `speed`, `fps`, `loudness`, `timing`,
+`quality`, `outputs`, and a script's `values` and `script`), and every
+other key beside the scenes is refused. The tool's `AGENTS.md`, "A
+script", has the form of lines and blocks, the check, the compiled
 scenario and what a frame of it shows; its "Values" has what may be set,
 where and for whom, and "What happens at once" the laws of time.
 
@@ -324,8 +229,15 @@ scenes:
       narrator say: And here, Pip stops.
 ```
 
-- **A scene** has its `background`, `places` and `faces`, as in beats,
-  its `script`, and the tool's `values`. Every other key is refused.
+- **A name** is the library's: a scene's `background`, a character in its
+  `places`, who does a line. A name the library lacks is refused, with the
+  names it has and the nearest. A video draws nothing of its own.
+- **A scene** has the `background` it begins with, the place each of its
+  characters begins at (`places`), who of them begins facing left
+  (`faces: { mo: left }`; the others face right, as drawn), its `script`,
+  and the tool's `values`. Every other key is refused. Scenes follow each
+  other in one clip, and each begins anew: its own places, everyone facing
+  as it says, every arm hanging.
 - **A line** is the tool's: who, the action, its values, and after a
   colon the words. `say` is the tool's action; `narrator` is nobody on
   the stage, and a name the file's `cast:` gives a voice (a radio) is
@@ -344,9 +256,8 @@ scenes:
 - **The actions** (`ACTIONS`, `script.ts`), each on one channel of its
   character, which does one thing at a time (its voice is the tool's). So
   one character walks, hops, turns, waves and talks at once, each a row of
-  its own; two on one channel that would begin at once are refused. Each
-  but `look-at` is drawn as it is in beats, and all are refused for a
-  character the scene does not place.
+  its own; two on one channel that would begin at once are refused. All
+  are refused for a character the scene does not place.
   - `walk to=<place>`, on `place`: the character goes from where the lines
     above left it to the place, at `PACE.walk`. It is refused to where it
     stands, or to a spot where another stands. A walk turns nobody.
@@ -365,10 +276,10 @@ scenes:
     there, and stays so until another of the three, through the lines after
     it; a scene begins with every arm hanging. `wave` and `point` need the
     character's `arm`.
-- **`scene background to=night`** changes the background, as a beat's
-  `background` does: at once, as its row begins, until another such row of
-  the scene. Everyone stays where they are, and goes on with what they do.
-  Nobody does it, so its row is the scene's (`SCENE`, `scenario.ts`): the
+- **`scene background to=night`** changes the background: at once, as its
+  row begins, until another such row of the scene. Everyone stays where
+  they are, and goes on with what they do.
+  Nobody does it, so its row is the scene's (`SCENE`, `library.ts`): the
   scene does nothing else, and no character of the library is called
   `scene`. It is on a channel of its own, `background`, and is a frame long
   (`AT_ONCE`, `script.ts`), so the next row in order comes a pause after it,
@@ -377,8 +288,12 @@ scenes:
   refused.
 - **A place** (`places.ts`), in `to` and in the scene's `places`, is one
   of these. Everyone stands on the ground, so it is an x alone, in whole px.
-  - A mark. The two off the stage are out of sight, where any number wait;
-    every other place is on the stage, 0 to 1920.
+  - A mark: `left`, `middle` and `right` on the stage (x 480, 960 and
+    1440), and `off-left` and `off-right` out of sight (x -250 and 2170),
+    where any number wait (`MARKS`, `library.ts`). Every other place is on
+    the stage, 0 to 1920. The ground is at y 880 (`GROUND`), above the
+    caption: a one-line caption, as measured in `hello`, covers about y 890
+    to 990, two at once y 880 to 1036.
   - A point, its x. The points a scene comes back to have names, among its
     `values` (`values: { door: 300 }`), and `to=door + 100` is arithmetic.
   - A character's name: where the lines above leave it, in the order
@@ -415,7 +330,7 @@ scenes:
   heard in it (`say.volume` for the words alone, `radio.volume`,
   `tune.volume`); a character's own, and a sound's, is its `volume` in the
   library. `0dB` is the same for every voice and every sound, and the nearest
-  wins (the tool's `AGENTS.md`, "How loud"). A cartoon in beats has none.
+  wins (the tool's `AGENTS.md`, "How loud").
 - **Captions** are the tool's (its `AGENTS.md`, "A script"): two who talk
   at once have one each, in a smaller row below everyone's feet, the one who
   began first above; of three, the quietest has none.
@@ -423,8 +338,7 @@ scenes:
   a line as a voice is, and `tune loop`, again and again to the end of its
   block, each a sound of the library. Those that go on over the scenes, from
   one into the next, are in a `script:` on top of the file. The plugin knows
-  nothing of them: they draw nothing, and no action is fitted to one. A
-  cartoon in beats plays none.
+  nothing of them: they draw nothing, and no action is fitted to one.
 - **How fast:** `walk to=left speed=slow`, `takes=2s` or `arrive=a.end`,
   on the line, or on a block, a scene or the cartoon for all in it
   (`walk.speed=slow`, `pip.speed=slow`). An action given its speed or its
@@ -447,11 +361,11 @@ scenes:
   facing, so they come first: a look goes by where the two are in that
   frame, and, when it is over, by where they were as it ended (an action's
   `into` and `length`). So two may look at each other.
-- **The guide** to a cartoon as a script is `SCRIPT_GUIDE` in `guide.ts`,
-  the plugin's part; the tool adds how a line is written, the actions and
-  the constructions. The prompt for a web chat teaches it, and no beats:
-  a story's episodes are written as scripts (Running, above; the tool's
-  `AGENTS.md`, "prompt"), and `import` checks each as `check` does.
+- **The guide** to a cartoon is `SCRIPT_GUIDE` in `guide.ts`, the
+  plugin's part; the tool adds how a line is written, the actions and the
+  constructions. The prompt for a web chat teaches it (Running, above; the
+  tool's `AGENTS.md`, "prompt"), and `import` checks each episode as
+  `check` does.
 
 ## The library
 
@@ -514,38 +428,20 @@ sounds:
   reads, and a `volume` if it is not as loud as a voice. Its name is no
   character's. Music to be looped ends where it can begin again.
 
-## Mending
-
-Before it checks a scenario, the plugin mends what has one right answer
-(`repair.ts`). The file stays as written; `make` lists what was mended
-every time, from the cache too:
-
-- A beat with two or three moves becomes a beat for each, in the order
-  written. The first keeps the beat's name, its lines, poses, background
-  and `takes`; each move after it is a beat of its own,
-  `<beat>-<move>`.
-- A walk away from where the walker faces (it would go backwards) gets a
-  beat before it, `<beat>-turn`, that turns the walker round.
-
-A name a beat put in would take, if another beat has it, gets a number
-(`-2`). What can't be mended exactly, a name the library lacks or two
-characters on one mark, is refused, with the place and the reason.
-
 ## Rules
 
 - **Names** are lowercase letters, digits and dashes, a letter first.
 - **The video file and the library are the only sources.** The plugin
   keeps no settings of its own, and nothing made is edited by hand.
-- **The plan draws nothing** and gives the same data for the same
-  scenario: the tool asks for it again whenever the file, the library or a
-  file in `src/` has changed.
+- **The check draws nothing**, and gives the same for the same script and
+  library: the tool runs it on every make.
 - **Of the tool's sources, only the module its `package.json` exports
   is imported**: `ai-videos/plugin`, for the plugin's types, for a
   script's words and hints (`NARRATOR`, `nearest`), and in the tests for
-  `moments` and for a script's reading, check, compiling and what a frame
-  of it shows. It needs none of the tool's packages.
+  a script's reading, check, compiling and what a frame of it shows. It
+  needs none of the tool's packages.
 - **The plugin's code is pure**: no Node API (the tool reads the files),
-  and a frame's picture is a function of the scenario, the library and the moment alone:
+  and a frame's picture is a function of what the frame shows and the library alone:
   no clock, no random number, no font of the machine (a picture holds no
   text; captions are the tool's). So the same code draws the web page: the
   tool bundles `src/plugin.ts` and what it imports for a browser.

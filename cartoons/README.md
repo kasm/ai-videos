@@ -116,13 +116,11 @@ A character does one thing at a time with its voice, its place, its facing, its 
 two characters never stand on one spot. The full format is in [CLAUDE.md](CLAUDE.md#the-script) and
 the tool's [AGENTS.md](../AGENTS.md#a-script), and these show it in use:
 
-- [hello-script.yaml](videos/hello-script.yaml): the smallest whole one
+- [hello.yaml](videos/hello.yaml): the smallest whole one
+- [meet.yaml](videos/meet.yaml): two characters who talk, each in a voice of its own
+- [sundown.yaml](videos/sundown.yaml): every action but a look, and a background that changes twice
 - [all-at-once.yaml](videos/all-at-once.yaml): what can happen at once, in three scenes, with music
   and sounds
-
-The older cartoons, such as [meet.yaml](videos/meet.yaml) and
-[the-shy-visitor.yaml](videos/the-shy-visitor.yaml), are written in beats, a moment at a time
-([CLAUDE.md](CLAUDE.md#the-scenario)).
 
 ## To change something
 

@@ -74,7 +74,7 @@ export function promptOf(p: PromptParts): string {
   ];
   const width = Math.max(...lines.map(([code]) => code.length)) + 2;
   const block = ["```yaml", ...lines.map(([code, note]) => (note ? `${code.padEnd(width)}# ${note}` : code)), "```"];
-  const commands = Object.entries(plugin.commands).map(([name, { description, example }]) => `- **${name}**: ${description} For example: \`${written(name, example)}\``);
+  const commands = Object.entries(plugin.commands ?? {}).map(([name, { description, example }]) => `- **${name}**: ${description} For example: \`${written(name, example)}\``);
   return [
     "# Videos from a story",
     "",
@@ -98,10 +98,10 @@ export function promptOf(p: PromptParts): string {
     '- If your reply is cut off, I will say "continue". Then begin again with the block of the episode that was cut off, whole, and go on.',
     "- If I send you what the tool refused, reply with the blocks it names, each whole and mended.",
     "",
-    // A plugin with a script is taught scripts alone: its beats, or events, are not.
+    // A plugin with a script is taught scripts alone: its plan's part, if it has one, is not.
     ...(plugin.script
       ? [guideOf(plugin.script).trim(), ""]
-      : ["## The format", "", plugin.guide.trim(), "", "## The commands", "", ...(commands.length > 0 ? commands : ["The format has no commands."]), ""]),
+      : ["## The format", "", (plugin.guide ?? "").trim(), "", "## The commands", "", ...(commands.length > 0 ? commands : ["The format has no commands."]), ""]),
     ...(lib
       ? [
           "## The library",

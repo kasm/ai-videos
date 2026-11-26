@@ -3,63 +3,38 @@ scenes:
   - background: elm-bower
     places: { mole: left, squirrel: middle, marten: off-right, badger: off-right }
     faces: { squirrel: left, marten: left, badger: left }
-    beats:
-      - name: luncheon-basket
-        says:
-          - { who: narrator, text: "Squirrel swung the car along a ropeway." }
-          - { who: mole, text: "What's inside that fat wicker basket?" }
-      - name: squirrel-menu
-        says:
-          - { who: squirrel, text: "Chestnuts, hazelnuts, honeycomb, berries," }
-          - { who: squirrel, text: "birch-sap, and elderflower wine!" }
-      - name: mole-forest
-        jump: { who: mole, times: 1 }
-        says:
-          - { who: mole, text: "O stop, stop! So this is a Forest!" }
-      - name: squirrel-corrects
-        says:
-          - { who: squirrel, text: "The Forest! My world, and I want no other." }
-      - name: mole-asks-thicket
-        pose: { mole: point }
-        says:
-          - { who: mole, text: "What lies over there in those dark yews?" }
-      - name: squirrel-warns-thicket
-        pose: { mole: stand }
-        turn: { who: squirrel }
-      - name: squirrel-points-thicket
-        pose: { squirrel: point }
-        says:
-          - { who: squirrel, text: "Just the Deep Thicket. Dear Badger lives there." }
-          - { who: squirrel, text: "Never trust the weasels, stoats, or foxes." }
-      - name: squirrel-turns-back
-        pose: { squirrel: stand }
-        turn: { who: squirrel }
-      - name: lunch-begins
-        says:
-          - { who: squirrel, text: "Now, here's our mossy platform for lunch!" }
-          - { who: mole, text: "O my! What a feast!" }
-      - name: marten-arrives
-        walk: { who: marten, to: right }
-        says:
-          - { who: narrator, text: "A sleek Pine Marten hauled onto the bough." }
-          - { who: marten, text: "Greedy beggars! All the world is out today." }
-      - name: badger-peeps
-        says:
-          - { who: squirrel, text: "Come on up, old Badger!" }
-          - { who: badger, text: "H'm! Company." }
-      - name: badger-gone
-        says:
-          - { who: narrator, text: "Badger vanished back into the ferns." }
-          - { who: squirrel, text: "Simply hates Society. Who else is out?" }
-      - name: marten-toad
-        says:
-          - { who: marten, text: "Toad's out in his new gliding-contraption!" }
-          - { who: narrator, text: "A canvas glider flashed wildly overhead." }
-          - { who: marten, text: "He'll be out of that in a minute!" }
-      - name: marten-vanishes
-        turn: { who: marten }
-      - name: marten-bolts
-        walk: { who: marten, to: off-right }
-        says:
-          - { who: narrator, text: "A beetle buzzed past. Snap! Marten vanished." }
-          - { who: narrator, text: "Politely, Mole repacked the lunch basket." }
+    script: |
+      narrator say: Squirrel swung the car along a ropeway.
+      mole say: What's inside that fat wicker basket?
+      squirrel say: Chestnuts, hazelnuts, honeycomb, berries,
+      squirrel say: birch-sap, and elderflower wine!
+      mole jump
+      & mole say: O stop, stop! So this is a Forest!
+      squirrel say: The Forest! My world, and I want no other.
+      mole point
+      & mole say: What lies over there in those dark yews?
+      squirrel turn
+      & mole stand
+      squirrel point
+      & squirrel say: Just the Deep Thicket. Dear Badger lives there.
+      squirrel say: Never trust the weasels, stoats, or foxes.
+      squirrel turn
+      & squirrel stand
+      squirrel say: Now, here's our mossy platform for lunch!
+      mole say: O my! What a feast!
+      marten walk to=right
+      & in order:
+        narrator say: A sleek Pine Marten hauled onto the bough.
+        marten say: Greedy beggars! All the world is out today.
+      squirrel say: Come on up, old Badger!
+      badger say: H'm! Company.
+      narrator say: Badger vanished back into the ferns.
+      squirrel say: Simply hates Society. Who else is out?
+      marten say: Toad's out in his new gliding-contraption!
+      narrator say: A canvas glider flashed wildly overhead.
+      marten say: He'll be out of that in a minute!
+      marten turn
+      marten walk to=off-right
+      & in order:
+        narrator say: A beetle buzzed past. Snap! Marten vanished.
+        narrator say: Politely, Mole repacked the lunch basket.

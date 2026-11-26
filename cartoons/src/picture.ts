@@ -1,15 +1,14 @@
-// One frame's picture: where everything is at a moment of the scenario, and that as an SVG. A pure
-// function of the scenario and the moment, so the same moment is the same text, and the same pixels.
-// The scenario names moves and poses; how each looks (the numbers below) is the plugin's. A cartoon
-// written as a script is drawn the same, from what a frame of its compiled scenario shows.
+// One frame's picture: where everything is in a frame of a compiled scenario, as the tool says the
+// frame shows it, and that as an SVG. A pure function of what the frame shows and the library, so the
+// same frame is the same text, and the same pixels. The script names actions; how each looks (the
+// numbers below) is the plugin's.
 import type { Library as LibraryFile, Shown, ShownAction } from "ai-videos/plugin";
-import { ARM, PACE, STAGE, moveOf, readLibrary, type Library, type Pose, type Scenario } from "./scenario.ts";
+import { ARM, PACE, STAGE, readLibrary, type Library, type Pose } from "./library.ts";
 import type { Did, Setting } from "./script.ts";
-import type { Moment } from "./timeline.ts";
 
 type Point = [number, number];
-type Background = Scenario["backgrounds"][string];
-type Character = Scenario["characters"][string];
+type Background = Library["backgrounds"][string];
+type Character = Library["characters"][string];
 type Shape = Background["shapes"][number];
 
 /** A walk's step: its length along the way, and how high the character rises in the middle of it, px. */
@@ -141,54 +140,6 @@ function armBetween(was: Pose, pose: Pose, p: number, time: number): number {
   return pose === was ? armAt(pose, time) : armAt(was, time) * (1 - reached) + armAt(pose, time) * reached;
 }
 
-/**
- * The scene of the moment's beat: its characters where the beats before left them, facing and posed
- * as those left them, and the moment's own beat part of the way.
- */
-export function stagingAt(scenario: Scenario, moment: Pick<Moment, "beat" | "progress" | "time" | "into">): Staging {
-  let first = 0; // the scene's first beat, counted through the scenario
-  for (const scene of scenario.scenes) {
-    if (moment.beat >= first + scene.beats.length) {
-      first += scene.beats.length;
-      continue;
-    }
-    // `was` is the pose the moment's beat found the character in: its arm goes from there.
-    const cast = new Map(
-      Object.entries(scene.places).map(([who, at]) => [who, { at: [...at] as Point, facing: scene.faces[who] === "left" ? -1 : 1, pose: "stand" as Pose, was: "stand" as Pose }]),
-    );
-    let backdrop = scene.background;
-    for (const [i, beat] of scene.beats.entries()) {
-      if (first + i > moment.beat) break;
-      const now = first + i === moment.beat;
-      if (beat.background !== undefined) backdrop = beat.background;
-      for (const [who, pose] of Object.entries(beat.pose)) {
-        const one = cast.get(who);
-        if (!one) continue;
-        if (!now) one.was = pose;
-        one.pose = pose;
-      }
-      const move = moveOf(beat);
-      const one = move && cast.get(move.who);
-      if (!one) continue;
-      const p = now ? moment.progress : 1;
-      if (beat.walk) {
-        one.at = walkAt(one.at, beat.walk.to, p);
-      } else if (beat.turn) one.facing = turnAt(one.facing, p);
-      else if (beat.jump) one.at = [one.at[0], one.at[1] - hopAt(beat.jump.times, p)];
-    }
-    const background = backgroundOf(scenario, backdrop);
-    const characters = [...cast].map(([name, { at, facing, pose, was }]) => ({
-      name,
-      at,
-      facing,
-      arm: armBetween(was, pose, Math.min(1, moment.into / PACE.arm), moment.time),
-      eyes: eyesAt(name, moment.time),
-    }));
-    return { background, characters };
-  }
-  throw new Error(`the scenario has no beat ${moment.beat}`);
-}
-
 /** A background of the library, by its name. */
 function backgroundOf(library: Pick<Library, "backgrounds">, name: string): Background {
   const background = library.backgrounds[name];
@@ -258,7 +209,7 @@ function shapeSvg(shape: Shape): string {
 
 /**
  * A mouth's shape, `open` from 0 to 1: its top edge stays and the jaw drops, until the shape is
- * MOUTH_OPEN of its width tall. Closed, it is the shape as the scenario writes it; one written
+ * MOUTH_OPEN of its width tall. Closed, it is the shape as the library draws it; one written
  * taller than that stays as it is.
  */
 function openMouth(shape: Shape, open: number): Shape {
@@ -302,9 +253,6 @@ interface Size {
   height: number;
 }
 
-/** The moment's picture as an SVG of the whole stage, `width` by `height` pixels. */
-export const frameSvg = (scenario: Scenario, moment: Moment, size: Size) => svgOf(scenario, stagingAt(scenario, moment), moment.mouths, size);
-
 /** The pictures of a cartoon written as a script: the library read once, and each frame's SVG drawn from what it shows. */
 export function drawScript(file: LibraryFile | undefined): (shown: Shown, size: Size) => string {
   const library = readLibrary(file);
@@ -317,7 +265,7 @@ function svgOf(library: Pick<Library, "characters">, { background, characters }:
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${STAGE.width} ${STAGE.height}" width="${width}" height="${height}">`,
     `<rect width="${STAGE.width}" height="${STAGE.height}" fill="${background.fill}"/>`,
     ...background.shapes.map(shapeSvg),
-    // Only a speaker's mouth moves: the others keep theirs closed, as the scenario writes it.
+    // Only a speaker's mouth moves: the others keep theirs closed, as the library draws them.
     ...characters.map((actor) => characterSvg(library.characters[actor.name]!, actor, mouths[actor.name] ?? 0)),
     "</svg>",
   ].join("\n");

@@ -23,7 +23,7 @@ const scratch = await mkdtemp(path.join(os.tmpdir(), "ai-videos-host-"));
 after(() => rm(scratch, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
 const quiet = () => {};
 
-/** A square that waits, then slides: its source names its colour and the two beats' lengths. */
+/** A square that waits, then slides: its source names its colour and the two spans' lengths. */
 const PLUGIN = `
 const text = (what) => ({
   "~standard": {
@@ -111,7 +111,7 @@ test("the plugin's host writes the plan as the clip's data, then draws the clip 
     assert.equal(host.picture, "drawn");
     assert.deepEqual(host.stage, { width: 160, height: 90 });
     // Its part of the prompt comes with it: the guide, and each command's description and example.
-    assert.match(host.guide, /^A square waits, then slides/);
+    assert.match(host.guide!, /^A square waits, then slides/);
     assert.deepEqual(host.commands, { colour: { description: "The square's colour.", example: "#d04040" } });
     const data = { step: "data", name: "sq", format: "landscape", data: files.data } as const;
     await host.run({ call: data, file: video, source: SOURCE }, (m) => said.push(m));
@@ -142,7 +142,7 @@ test("the plugin's host writes the plan as the clip's data, then draws the clip 
     // Beside them, each frame's SVG, hashed: one line a frame, the same where the picture is.
     const svgs = (await readFile(`${files.clip}.svgs`, "utf8")).trim().split("\n");
     assert.deepEqual(svgs.map((s) => svgs.indexOf(s)), frames.map((f) => frames.indexOf(f)));
-    // The data again, as the request times it: each event at its span, the texts moved with their beats.
+    // The data again, as the request times it: each event at its span, the texts moved with their events.
     const drawn = await json(files.data);
     assert.equal(drawn.made.from, "videos/sq.yaml, drawn to sq-landscape.request.json");
     assert.equal(drawn.duration, 1);
@@ -194,7 +194,7 @@ test("each command's example passes its schema, and the schema writes itself as 
   await assert.rejects(loadPlugin(path.join(noJson, "src", "plugin.mjs")), /"colour" has a schema that does not write itself as JSON Schema: not here/);
 });
 
-test("a format the stage does not fill, a source its check refuses and a request of other beats are refused", async () => {
+test("a format the stage does not fill, a source its check refuses and a request of other events are refused", async () => {
   const root = await project("refused");
   const file = path.join(root, "src", "plugin.mjs");
   const plugin = await loadPlugin(file);
@@ -207,7 +207,7 @@ test("a format the stage does not fill, a source its check refuses and a request
   await mkdir(path.dirname(files.request), { recursive: true });
   await writeFile(files.request, JSON.stringify(other));
   const draw = { step: "draw", name: "sq", format: "landscape", width: 160, height: 90, ...files } as const;
-  await assert.rejects(runJob(plugin, file, { call: draw, file: video, source: SOURCE }), /the request's spans \(waits \(hold\), slide \(move\)\) are not the source's beats \(start \(hold\), slide \(move\)\): make the video again/);
+  await assert.rejects(runJob(plugin, file, { call: draw, file: video, source: SOURCE }), /the request's spans \(waits \(hold\), slide \(move\)\) are not the source's events \(start \(hold\), slide \(move\)\): make the video again/);
 });
 
 test("the plugin is the nearest package.json's: none there, none named, or a missing file", async () => {
@@ -507,6 +507,33 @@ test("a script's clip is drawn from its compiled scenario and the library, with 
   await assert.rejects(runJob(unscripted, "plugin.mjs", { call: { step: "play", ...call }, library }), /the square plugin draws no script: it has no script/);
   const undrawn = await project("undrawn", () => SCRIPTED.replace("draw(library)", "drawing(library)"));
   await assert.rejects(loadPlugin(path.join(undrawn, "src", "plugin.mjs")), /is not a plugin[\s\S]*script\.draw/);
+});
+
+/** The square with a script alone: its scene, its stage and its script, and none of the plan's part. */
+const SCRIPT_ALONE = SCRIPTED.replace(/\n {2}commands:[\s\S]*\n\};\n$/, "\n};\n");
+
+test("a plugin with a script alone has none of the plan's part: it says so when ready, and a video that is no script is refused", async () => {
+  assert.doesNotMatch(SCRIPT_ALONE, /commands|guide: "A square waits|plan:|frame:/);
+  const root = await project("script-alone", () => SCRIPT_ALONE);
+  const video = path.join(root, "videos", "sq.yaml");
+  const said: string[] = [];
+  const host = await startPlugin((await pluginOf(video))!, (m) => said.push(m));
+  try {
+    assert.match(said[0]!, /^Plugin: square, .*plugin\.mjs \(a script's actions: slide\)$/);
+    assert.deepEqual([host.scene, host.picture, host.guide, host.commands, host.script!.guide], ["square", "drawn", undefined, undefined, "A square slides to a side, and speaks."]);
+    // Its videos/sq.yaml is no script: checked as import and check do, or planned as make does, it is refused.
+    const why = /sq\.yaml is not written as a script, and the square plugin's videos are scripts alone: give each scene a script: \(AGENTS\.md, "A script"\)/;
+    await assert.rejects(host.check(video, SOURCE, undefined), why);
+    await assert.rejects(host.run({ call: { step: "data", name: "sq", format: "landscape", data: filesOf(root).data }, file: video, source: SOURCE }, quiet), why);
+    assert.equal(existsSync(filesOf(root).data), false, "nothing is written");
+  } finally {
+    host.close();
+  }
+  // The plan's part is all there, or none of it, and a plugin has it or a script.
+  const loaded = async (name: string, text: string) => loadPlugin(path.join(await project(name, () => text), "src", "plugin.mjs"));
+  await assert.rejects(loaded("no-plan", PLUGIN.replace("plan: (s) =>", "planned: (s) =>")), /is not a plugin[\s\S]*the plan's part has plan too: give it, or none of the plan's part and a script[\s\S]*plan/);
+  await assert.rejects(loaded("a-guide", SCRIPT_ALONE.replace('scene: "square",', 'scene: "square", guide: "A square.",')), /the plan's part has commands too[\s\S]*the plan's part has check too[\s\S]*the plan's part has plan too[\s\S]*give frame/);
+  await assert.rejects(loaded("nothing", SCRIPT_ALONE.replace("script: {", "notScript: {")), /is not a plugin[\s\S]*give the plan's part \(commands, guide, check, plan, and frame or camera\), or a script, or both/);
 });
 
 test("a plugin with no script takes none; an action's example is a line that names it and passes its schema", async () => {
