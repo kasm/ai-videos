@@ -11,26 +11,25 @@ There is no account, no API key and no cloud service: the network is used only t
 
 ## A video is one file
 
-This is a whole video, [cartoons/videos/hello.yaml](cartoons/videos/hello.yaml):
+This is a whole video, [cartoons/videos/hello-script.yaml](cartoons/videos/hello-script.yaml):
 
 ```yaml
 use: cartoon
+outputs: { web: true } # its web page too, beside the video
 
 scenes:
   - background: meadow
     places: { pip: off-left }
-    beats:
-      - name: walks-in
-        walk: { who: pip, to: middle }
-        says:
-          - { who: narrator, text: "This is Pip. Pip walks into the meadow." }
-      - name: stops
-        says:
-          - { who: narrator, text: "And here, Pip stops." }
+    script: |
+      pip walk to=middle
+      & narrator say: This is Pip. Pip walks into the meadow.
+      narrator say: And here, Pip stops.
 ```
 
-You time nothing by hand. Each line is spoken and measured, and the walk is drawn to fit its words.
-Change a sentence, and everything after it moves.
+You time nothing by hand. Each line is spoken and measured, and the walk, joined to its words by
+`&`, lasts as long as they do. Change a sentence, and everything after it moves. A script says what
+happens at once too: two who talk over each other, one who breaks in at a word, talk over a radio,
+music under it all ([all-at-once.yaml](cartoons/videos/all-at-once.yaml)).
 
 ## What you need
 
@@ -59,17 +58,18 @@ ignore that.
 ## Make your first video
 
 ```
-npm run -s video -- make cartoons/videos/hello.yaml
+npm run -s video -- make cartoons/videos/hello-script.yaml
 ```
 
 The first time takes about half a minute on a desktop PC. Then you have
-`cartoons/out/hello.mp4`, the video with its captions.
+`cartoons/out/hello-script.mp4`, the video with its captions, and `cartoons/out/hello-script.html`,
+its web page, one file that plays in any browser: the file asks for both
+(`outputs: { web: true }`).
 
-Make it again after a change, and only what the change touches is redone. To get the web page
-instead, `cartoons/out/hello.html`, one file that plays in any browser:
+Make it again after a change, and only what the change touches is redone. To get only the web page:
 
 ```
-npm run -s video -- make cartoons/videos/hello.yaml --as web
+npm run -s video -- make cartoons/videos/hello-script.yaml --as web
 ```
 
 Next: [make a cartoon of your own](cartoons/README.md), from a story or by hand.
@@ -93,10 +93,12 @@ Each is typed after `npm run -s video --`. Paths are relative to the folder you 
 
 ## What `make` does
 
-1. **The plan:** the plugin checks the file and lists its moments and lines.
-2. **The voices and the fit:** each line is spoken
+1. **The plan:** the file is checked, a script by the tool and the plugin, any other file by the
+   plugin, which lists its moments and lines.
+2. **The voices and the timing:** each line is spoken
    ([Kokoro](https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX), in English)
-   and measured, and the moments are stretched or shortened to match.
+   and measured. A script's lines are then given their frames, what goes on at once laid by the
+   tool's rules; a plugin's moments are stretched or shortened to match.
 3. **The sound:** the lines are mixed into one track at the video's loudness.
 4. **The drawing:** the plugin draws each frame, and ffmpeg encodes them into a clip.
 5. **The check:** HyperFrames checks the clip with its captions.

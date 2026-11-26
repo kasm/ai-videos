@@ -300,7 +300,27 @@
 - Left by step 11: a row does not say whose it is; a third line at once has
   no caption, even where it outlasts the other two; a player's bar, while it
   shows, covers part of the lower row.
-- **Next: step 12, teach it to a web chat.**
+- **Step 12 done 2026-11-26**, `the-race` accepted by the user that day. The
+  user's picks: a plugin with a script is taught scripts alone, with nothing of
+  its beats; the story is new, `stories/the-race.md`, with Pip, Mo and Tuk and a
+  hedgehog the chat draws; Sonnet's run is kept in the repo, its reply, its two
+  episodes and its Bramble in the library. A refused script is told its
+  mistakes at the lines of the chat's block. Checked: `npm test` and
+  `npm run typecheck` here and in `cartoons/`; RayCraft's media typecheck and
+  `test:libs`, no file of it changed; `make --fit` of the ten gives requests
+  equal to the baseline, byte for byte, and the beats guide is the same bytes;
+  two fresh `claude -p` with no tools, Sonnet's and the default model's, given
+  only the prompt for `the-race`, each gave episodes (two, and three) that
+  imported and made on the first try, with no edit by hand, with voices at
+  once, actions at once, sounds and named values (Sonnet's own `values:`, the
+  default model's the plugin's names and a block's `pause`); Sonnet's, made in
+  `cartoons/`, draw the same `.svgs` as in a copy; a block broken on purpose was
+  refused with `check`'s messages at its lines, one pass after another.
+- Left by step 12: the prompt is about 46,000 characters, twice the beats
+  one; which way talkers face is the chat's to get right, and in Sonnet's
+  argument Pip's back is to the others; what a refused episode draws goes
+  into the library all the same, as before, since a later episode may name it.
+- **Next: step 13, rewrite the seven cartoons.**
 
 
 ## Goal

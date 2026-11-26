@@ -9,12 +9,14 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { isMap, isScalar, parseDocument, stringify, type Pair } from "yaml";
+import { checkScript } from "./check.ts";
 import { pluginOf, startPlugin } from "./make.ts";
 import { listed } from "./names.ts";
 import { ALL_WRITTEN } from "./prompt.ts";
+import { issueItems, type Issue } from "./scenario.ts";
 import { slug, voiceOf } from "./script.ts";
 import { kokoroVoices } from "./tts.ts";
-import { LIBRARY_FILE, libraryOf, readProject, scriptOf, videoFileOf, type Project } from "./video-file.ts";
+import { LIBRARY_FILE, libraryOf, readProject, scriptOf, videoFileOf, writtenScript, type Project } from "./video-file.ts";
 
 /** A whole YAML block of the reply: its text, and the line its fence is on, from 1. */
 export interface Block {
@@ -84,9 +86,13 @@ export interface Entry {
 export interface Episode {
   name: string;
   line: number;
+  /** The block, as written. */
+  text: string;
   entries: Entry[];
   /** The video file: the block but its episode: and library:, as written. */
   file: string;
+  /** Where each line of the file is in the block, from 1: `lines[0]` is the block's line that is the file's first. */
+  lines: number[];
   /** The video file, parsed. */
   raw: Record<string, unknown>;
 }
@@ -155,11 +161,20 @@ export function episodeOf(block: Block): Episode {
     }
   }
 
-  // The video file is the block without its episode: and library:, the rest as the chat wrote it.
+  // The video file is the block without its episode: and library:, the rest as the chat wrote it,
+  // but the empty lines it would begin with.
   let file = block.text;
   const drop = [pairOf(top, "episode"), lib].filter((p) => p !== undefined).map((p) => pairLines(block.text, p));
   for (const [start, end] of drop.toSorted((a, b) => b[0] - a[0])) file = file.slice(0, start) + file.slice(end);
-  return { name: name.data, line: block.line, entries, file: `${file.replace(/^\s*\n/, "").trimEnd()}\n`, raw };
+  // Where each line of the file was in the block: the lines of neither pair, from the first that is not empty.
+  let at = 0;
+  const kept = block.text.split("\n").flatMap((text, i) => {
+    const start = at;
+    at += text.length + 1;
+    return drop.some(([from, to]) => start >= from && start < to) ? [] : [{ line: i + 1, empty: text.trim() === "" }];
+  });
+  const lines = kept.slice(kept.findIndex((line) => !line.empty)).map(({ line }) => line);
+  return { name: name.data, line: block.line, text: block.text, entries, file: `${file.replace(/^\s*\n/, "").trimEnd()}\n`, lines, raw };
 }
 
 /**
@@ -198,6 +213,14 @@ export function addEntries(text: string | undefined, entries: Entry[]): string {
 }
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/** A script episode's mistakes, as `check` tells them, each at its line of the episode's block, as the chat wrote it. */
+function mistakesIn(episode: Episode, issues: Issue[]): string {
+  const inBlock = (line: number) => episode.lines[line - 1] ?? line;
+  const moved = issues.map((issue) => ({ ...issue, line: inBlock(issue.line), ...(issue.also ? { also: issue.also.map(inBlock) } : {}) }));
+  const many = issues.length === 1 ? "a mistake, at its line" : `${issues.length} mistakes, each at its line`;
+  return `${many} of the block (the one after its fence is line 1):\n\n${issueItems(episode.text, moved, (line) => `line ${line}`)}`;
+}
 
 /** The message for the chat: each refused episode with why, those refused for one reason together. */
 export function refusedMessage(refused: Map<string, string>): string {
@@ -315,8 +338,16 @@ export async function importReply(file: string, log: (msg: string) => void): Pro
       for (const episode of episodes.values()) {
         const target = path.join(plugin.dir, "videos", `${episode.name}.yaml`);
         try {
-          const video = videoFileOf(withAdded, target, episode.raw);
+          const written = writtenScript(episode.file);
+          const video = { ...videoFileOf(withAdded, target, episode.raw), text: episode.file, ...(written ? { script: written } : {}) };
           if (video.use !== host!.scene) throw new Error(`it says use: ${video.use}, and the plugin draws ${host!.scene}: write use: ${host!.scene}`);
+          if (video.script) {
+            // A script is checked as check and make check it, and its mistakes are told as check tells them, at the block's lines.
+            const checked = await checkScript(video, host!);
+            if ("issues" in checked) throw new Error(mistakesIn(episode, checked.issues));
+            accepted.push({ episode, target, repaired: [] });
+            continue;
+          }
           const { repaired, plan } = await host!.check(episode.name, video.source, withAdded.library);
           const script = scriptOf(video, plan, plan.limits);
           const unspoken = script.scenes.flatMap((s) => s.narration).find((line) => !voices.has(voiceOf(script, line)));

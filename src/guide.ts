@@ -93,6 +93,16 @@ narrator ${SAY}: They had both heard it.
 
 An action that is fitted (the actions below say which are), joined to words or in a \`together:\` with words, is hurried or slowed to end when they do, so somebody goes somewhere while somebody talks. Any other action keeps its own pace, whatever is said beside it.
 
+So two who go somewhere at once, in a \`together:\` with words, arrive together as the words end, each from where it was:
+
+\`\`\`script
+together:
+  ann go to=gate
+  ben go to=well
+  narrator ${SAY}: And so they came, from both ways at once.
+ann ${SAY}: Good morning, Ben.
+\`\`\`
+
 An action that is open (the actions below say which are) has no length: it goes on to the end of the block it is in, and nothing waits for it. So join it to what it goes with, and it ends where that does. Here \`watch\` is open, and Ben watches as long as the cat is on its way and the narrator talks:
 
 \`\`\`script

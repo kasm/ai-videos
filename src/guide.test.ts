@@ -55,7 +55,7 @@ async function compiled(example: string): Promise<(CompiledLine & { end: number 
 const example = (said: string) => EXAMPLES.find((text) => text.includes(said))!;
 
 test("the tool's part shows scripts the tool takes, with no action but its own and three made up, and they compile", async () => {
-  assert.equal(EXAMPLES.length, 12);
+  assert.equal(EXAMPLES.length, 13);
   for (const text of EXAMPLES) {
     assert.ok((await compiled(text)).length > 0);
     assert.deepEqual(new Set(linesIn(readScript(text).items).map(({ action }) => action)), new Set(["say", ...["go", "nod", "watch", "play", "loop"].filter((action) => text.includes(` ${action} `) || text.includes(` ${action}\n`))]));
@@ -106,6 +106,14 @@ test("ending together: the words end as somebody arrives, at their own pace, and
   assert.equal(narrator!.end, cat!.end);
   assert.ok(narrator!.from > cat!.from + 20, "the words wait");
   assert.equal(ann!.from, cat!.end + 12);
+});
+
+test("two who arrive together: each fitted to the words they go with, and both end with them", async () => {
+  const [ann, ben, narrator, hello] = await compiled(example("from both ways"));
+  assert.deepEqual([ann!.from, ben!.from, narrator!.from], [18, 18, 18]);
+  assert.deepEqual([ann!.end, ben!.end], [narrator!.end, narrator!.end]);
+  assert.notEqual(ann!.frames, 60, "not the 2 seconds of its own");
+  assert.equal(hello!.from, narrator!.end + 12);
 });
 
 test("an open action: one watches for as long as another is on its way and the narrator talks, and the next line waits for those", async () => {

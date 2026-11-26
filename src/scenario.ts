@@ -247,12 +247,17 @@ export interface Timing {
  * it is between, and the hint.
  */
 export function issuesText(file: string, text: string | undefined, issues: Issue[]): string {
+  return `${issues.length} ${issues.length === 1 ? "mistake" : "mistakes"} in ${file}:\n\n${issueItems(text, issues, (line) => `${file}:${line}`)}`;
+}
+
+/** The mistakes of `issuesText`, each line named by `at` (`file:12`), a blank line between one and the next. */
+export function issueItems(text: string | undefined, issues: Issue[], at: (line: number) => string): string {
   const lines = text?.split(/\r?\n/);
-  const shown = (line: number) => `${file}:${line}:${lines?.[line - 1] ? ` ${lines[line - 1]!.trim()}` : ""}`;
-  const items = issues
+  const shown = (line: number) => `${at(line)}:${lines?.[line - 1] ? ` ${lines[line - 1]!.trim()}` : ""}`;
+  return issues
     .toSorted((a, b) => a.line - b.line)
-    .map(({ line, also = [], message, hint }) => [shown(line), `  ${message}`, ...also.map((other) => `  ${shown(other)}`), `  Hint: ${hint}`].join("\n"));
-  return `${issues.length} ${issues.length === 1 ? "mistake" : "mistakes"} in ${file}:\n\n${items.join("\n\n")}`;
+    .map(({ line, also = [], message, hint }) => [shown(line), `  ${message}`, ...also.map((other) => `  ${shown(other)}`), `  Hint: ${hint}`].join("\n"))
+    .join("\n\n");
 }
 
 /** Whether `value` is plain: a finite number, a string, or a list or a table of such. */

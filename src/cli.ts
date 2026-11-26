@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile, copyFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
+import { checkScript, checkedLines, type CheckedScript } from "./check.ts";
 import { loadClip, loadDrawn, madeFiles, readClipData, type SceneClip } from "./clip.ts";
 import { compile, compiledText, type Compiled, type Voiced } from "./compile.ts";
 import { compose, composeCompiled } from "./compose.ts";
@@ -16,16 +17,16 @@ import { promptFor } from "./prompt.ts";
 import { compiledPage, writePage, pageVideo, type PagePicture, type PageVideo } from "./page.ts";
 import { LOOP } from "./read.ts";
 import { hyperframes, muxSound, renderProject } from "./render.ts";
-import { NARRATOR, issuesText, linesIn, type Checked, type CheckedLine, type Default, type Issue } from "./scenario.ts";
+import { NARRATOR, issuesText, linesIn, type Default } from "./scenario.ts";
 import { FORMATS, voiceOf, type EventLimitsScript, type FormatName, type LoadedVideo } from "./script.ts";
 import { cachePaths, cacheRoot, ready, setup } from "./setup.ts";
 import { pictureOf } from "./shown.ts";
-import { compiledSounds, compiledVoices, measureSound, mixKey, writeMix, writeSound } from "./sound.ts";
+import { compiledSounds, compiledVoices, mixKey, writeMix, writeSound } from "./sound.ts";
 import { PLAYING, codeKey, folderKey, inputsKey, keyOf, stagesIn, type Stages } from "./stages.ts";
 import { runStory, windowsIO } from "./story.ts";
 import { buildTimeline, narrate } from "./timeline.ts";
 import { KokoroProvider, kokoroVoices, readWav, speak } from "./tts.ts";
-import { LIBRARY_FILE, PROFILES, formatOf, readProject, readVideoFile, scriptOf, type VideoFile } from "./video-file.ts";
+import { PROFILES, formatOf, readProject, readVideoFile, scriptOf, type VideoFile } from "./video-file.ts";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 // npm runs scripts in the package folder; paths on the command line are relative to where it was typed.
@@ -105,55 +106,12 @@ function sameScene(video: VideoFile, host: PluginHost): void {
   if (host.scene !== video.use) throw new Error(`${video.file} says use: ${video.use}, and the plugin ${video.plugin.file} draws ${host.scene}`);
 }
 
-/** A script checked: the scenario worked out, the defaults it takes, and how long each sound it plays lasts, seconds, by its file. */
-type CheckedScript = Extract<Checked, { scenes: unknown }> & { lengths: Record<string, number> };
-
-/** The lines of a checked script, the cartoon's own first. */
-const checkedLines = ({ over, scenes }: Pick<CheckedScript, "over" | "scenes">): CheckedLine[] => [...(over ? [over] : []), ...scenes].flatMap(({ items }) => linesIn(items));
-
-/** The sounds that lines play, each file measured once: how long it lasts, seconds, or a mistake of the lines that play it. */
-async function measured(lines: CheckedLine[], dir: string): Promise<{ lengths: Record<string, number>; issues: Issue[] }> {
-  const played = Map.groupBy(
-    lines.filter((line) => "sound" in line),
-    ({ sound }) => sound,
-  );
-  const lengths: Record<string, number> = {};
-  const issues: Issue[] = [];
-  for (const [sound, [first, ...others]] of played) {
-    const length = await measureSound(path.resolve(dir, sound));
-    if (typeof length === "number") lengths[sound] = length;
-    else {
-      const { line, who } = first!;
-      const also = others.length > 0 ? { also: others.map((one) => one.line) } : {};
-      const message = length === "missing" ? `there is no file ${sound}, which ${LIBRARY_FILE} has for ${who}` : `${sound}, which ${LIBRARY_FILE} has for ${who}, holds no sound that ffmpeg reads`;
-      issues.push({ line, ...also, message, hint: `${length === "missing" ? "put it there" : "put a sound there"}, a path from the folder of ${LIBRARY_FILE}, or give ${who} another file` });
-    }
-  }
-  return { lengths, issues };
-}
-
-/**
- * The check of a video written as a script (AGENTS.md, "A script"), the only pass that refuses:
- * the tool's and the plugin's (scenario.ts), then each speaker's voice one the tool speaks in, known
- * with no model on the disk, and each sound that is played a file that ffmpeg reads. It gives the scenario
- * worked out, with the defaults it takes, or throws every mistake with its line and a hint.
- */
-async function checkScript(video: VideoFile, host: PluginHost): Promise<CheckedScript> {
+/** A video file written as a script, checked (check.ts), or every mistake with its line and a hint, thrown. */
+async function checkedScript(video: VideoFile, host: PluginHost): Promise<CheckedScript> {
   sameScene(video, host);
-  const refused = (issues: Issue[]) => new Error(issuesText(path.relative(CALLER, video.file), video.text, issues));
-  const checked = await host.checkScript(video.file, video.script!, video.library, Object.keys(video.settings.cast), video.settings.timing, video.volumes, video.sounds);
-  if ("issues" in checked) throw refused(checked.issues);
-  const voices = new Set((await kokoroVoices()).map((voice) => voice.name));
-  const unspoken = checked.scenes.flatMap((scene) => linesIn(scene.items)).flatMap((line): Issue[] => {
-    if (!("text" in line)) return [];
-    const voice = voiceOf(video.settings, line.who === NARRATOR ? {} : { speaker: line.who });
-    if (voices.has(voice)) return [];
-    const home = line.who === NARRATOR ? `the ${NARRATOR}'s voice is the video's, voice:` : `${line.who}'s voice is in ${LIBRARY_FILE}, or the file's cast:`;
-    return [{ line: line.line, message: `${line.who} speaks in ${voice}, which is not one of the tool's voices`, hint: `${home} give one that npm run -s video -- voices lists` }];
-  });
-  const { lengths, issues } = await measured(checkedLines(checked), video.plugin.dir);
-  if (unspoken.length + issues.length > 0) throw refused([...unspoken, ...issues]);
-  return { ...checked, lengths };
+  const checked = await checkScript(video, host);
+  if ("issues" in checked) throw new Error(issuesText(path.relative(CALLER, video.file), video.text, checked.issues));
+  return checked;
 }
 
 /** The defaults a script takes, a row for each value that nothing sets: what it is then, and the lines that take it. */
@@ -173,7 +131,7 @@ async function checkFile(file: string): Promise<void> {
   const host = await startPlugin(video.plugin, () => {});
   try {
     if (video.script) {
-      const checked = await checkScript(video, host);
+      const checked = await checkedScript(video, host);
       const lines = checkedLines(checked);
       const said = lines.filter((line) => "text" in line).length;
       const played = lines.filter((line) => "sound" in line).length;
@@ -235,7 +193,7 @@ async function playScript(video: VideoFile, fit: boolean, plugin: () => Promise<
   begin("the script's check");
   const host = await plugin();
   const format = formatOf(host.scene, host.stage);
-  const checked = await checkScript(video, host);
+  const checked = await checkedScript(video, host);
   const { scenes, over, lengths } = checked;
   const lines = checkedLines(checked);
   log(`${count(scenes.length, "scene")}, ${count(lines.length, "line")}`);

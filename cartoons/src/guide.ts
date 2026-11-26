@@ -1,9 +1,32 @@
-// The plugin's part of the video tool's prompt (the tool's AGENTS.md, "prompt"): what a cartoon can
-// show, the format of a cartoon's file with an example, how to turn a story into it, and how to draw
-// a new character or background for the library. A web chat reads it with no file of this project:
-// the tool adds the commands (scenario.ts, COMMANDS), library.yaml and the voices. The example
-// passes the plugin's checks against library.yaml (plugin.test.ts).
+// The plugin's parts of the video tool's guides (the tool's AGENTS.md, "prompt" and "A script"): what
+// a cartoon can show, the format of a cartoon's file with an example, how to turn a story into it, and
+// how to draw a new character or background for the library. A web chat reads them with no file of
+// this project: the tool adds the commands or the actions, library.yaml and the voices.
 
+/** How to draw what the library lacks: both guides' last part. */
+const DRAWING = `### Drawing a new character
+
+A character the library lacks is drawn under library: characters:, in the library's format.
+
+- It has its voice and its parts, each part a list of shapes, drawn in the order written. A shape is a rect or an ellipse: at is its centre, size its width and height, fill its colour as #rrggbb. A rect may have round, its corners' radius.
+- Its shapes are measured from the point between its feet: x goes right and y goes down, so [0, -170] is 170 pixels above the ground. Draw it facing right: a turn mirrors it.
+- Give it the four parts the others have, so that it can do all they do:
+  - body comes first. Ears, a snout, a tail or a hat are more shapes in it, or parts of their own before the arm.
+  - arm hangs straight down on its front side (its right), after the body, so it is drawn over it. With an arm, the character has shoulder: [x, y] beside its parts: the middle of the arm's upper end, which the arm turns around.
+  - eyes blink. Put the pupils nearer the right side of each eye, the way it faces.
+  - mouth is drawn closed, as a flat shape inside the body, with room under it for the jaw to drop, about 0.9 of its width: it opens as the character talks.
+- Make it easy to tell from the others: its own colour and its own size. Pip is 220 by 340 pixels, Mo 190 by 430, Tuk 170 by 240. Keep it at most 400 wide, so it stays clear of a neighbour on the next mark, and at most 700 tall. Say in a comment what it is.
+
+### Drawing a new background
+
+A background the library lacks is drawn under library: backgrounds:, when no background of the library is the story's place. Its fill is the sky's colour; its shapes are drawn over it in the order written, in the stage's points: x from 0 at the left to 1920, y from 0 at the top to 1080. Keep the ground from y 820 down to the bottom, as in the library's: the characters stand at y 880. Draw it plainly, in big shapes that stay clear of the characters: the sun, hills, a house, a river along the ground.
+`;
+
+/**
+ * The guide to a cartoon in beats (`guide`): the tool's prompt has it for a plugin with no script,
+ * and so no longer for this one. Its example passes the plugin's checks against library.yaml
+ * (plugin.test.ts).
+ */
 export const GUIDE = `
 A cartoon is drawn on one stage, 1920 by 1080 pixels, with characters made of flat rectangles and ellipses. They stand on the ground in front of a background; they walk, turn round, hop, wave and point, blink and talk; and the background can change, as a cut. A cartoon has no props, no faces that change, no two moves at once, and nobody who sits, lies down, climbs, flies or swims. What the story has and a cartoon cannot show, the narrator says in a few words, or it is left out. Never invent a key, a pose or a mark: the tool refuses it.
 
@@ -82,30 +105,14 @@ scenes:
 - The narrator says what nobody says and the picture cannot show: where we are, who somebody is, what somebody feels, time passing. The narrator does not repeat what the picture shows.
 - Write for the ear: plain words, no brackets, no stage directions. The line is also the caption.
 
-### Drawing a new character
-
-A character the library lacks is drawn under library: characters:, in the library's format.
-
-- It has its voice and its parts, each part a list of shapes, drawn in the order written. A shape is a rect or an ellipse: at is its centre, size its width and height, fill its colour as #rrggbb. A rect may have round, its corners' radius.
-- Its shapes are measured from the point between its feet: x goes right and y goes down, so [0, -170] is 170 pixels above the ground. Draw it facing right: a turn mirrors it.
-- Give it the four parts the others have, so that it can do all they do:
-  - body comes first. Ears, a snout, a tail or a hat are more shapes in it, or parts of their own before the arm.
-  - arm hangs straight down on its front side (its right), after the body, so it is drawn over it. With an arm, the character has shoulder: [x, y] beside its parts: the middle of the arm's upper end, which the arm turns around.
-  - eyes blink. Put the pupils nearer the right side of each eye, the way it faces.
-  - mouth is drawn closed, as a flat shape inside the body, with room under it for the jaw to drop, about 0.9 of its width: it opens as the character talks.
-- Make it easy to tell from the others: its own colour and its own size. Pip is 220 by 340 pixels, Mo 190 by 430, Tuk 170 by 240. Keep it at most 400 wide, so it stays clear of a neighbour on the next mark, and at most 700 tall. Say in a comment what it is.
-
-### Drawing a new background
-
-A background the library lacks is drawn under library: backgrounds:, when no background of the library is the story's place. Its fill is the sky's colour; its shapes are drawn over it in the order written, in the stage's points: x from 0 at the left to 1920, y from 0 at the top to 1080. Keep the ground from y 820 down to the bottom, as in the library's: the characters stand at y 880. Draw it plainly, in big shapes that stay clear of the characters: the sun, hills, a house, a river along the ground.
-`;
+${DRAWING}`;
 
 /**
  * The plugin's part of the guide to a cartoon written as a script (the tool's AGENTS.md, "A
- * script"): what such a cartoon can show, a whole file as an example, and a scene's own keys. The
- * tool adds how a script's lines are written, and the actions (script.ts, ACTIONS). The example
- * compiles against library.yaml (script.test.ts). It teaches what a script has so far, and grows
- * with it.
+ * script"), which the tool's prompt for a web chat has: what such a cartoon can show, a whole file
+ * as an example, a scene's own keys, how a story is told in it, and how to draw what the library
+ * lacks. The tool adds how a script's lines are written, and the actions (script.ts, ACTIONS). The
+ * example compiles against library.yaml (script.test.ts).
  */
 export const SCRIPT_GUIDE = `
 A cartoon is drawn on one stage, 1920 by 1080 pixels, with characters made of flat rectangles and ellipses. They stand on the ground in front of a background, which can change, as a cut; they walk, turn round, look at one another, hop, wave, point, blink and talk, several of them at once where the story has it so, and one of them several things at once. A cartoon has no props, no faces that change, and nobody who sits, lies down, climbs, flies or swims: what the story has besides, the narrator says in a few words, or it is left out. Never invent a key, a mark or an action: the tool refuses it.
@@ -187,13 +194,16 @@ scenes:
 - Who watches somebody walk past, or turns to whoever comes, has a look: mo look-at target=pip. It is open, so join it to the walk it watches, or put it in that walk's together. On a row of its own, not joined, it goes on to the end of the scene, or of the block it is in. All that while its character neither turns nor looks at anybody else.
 - A look is for one who stands: somebody who walks away from the one it looks at would go backwards. It is at a character of the scene, and not at a place.
 - Two who go somewhere together are two walks, joined: mo walk to=right, and below it & pip walk to=left-of(mo, near). Pip keeps beside Mo all the way, if it stands there as they set out.
+- Two who run off together, out of the scene, are two walks to off-right, or off-left, joined and given one speed: pip walk to=off-right speed=fast, and below it & mo walk to=off-right speed=fast. So they keep their gap. Fitted to the words beside them, the one behind would hurry, and run into the other.
 
 ### Lines
 
+- What the story tells in one sentence is often several rows: she stops, says hello, turns away.
 - A line is a sentence or two, said by one character or by the narrator. A longer speech is several lines, one under another.
 - Keep a line to about 45 characters: a longer one is a caption of two rows, and its upper row covers the characters' feet.
 - What a character says in the story, it says: write reported speech as the words themselves.
 - People who talk over each other are drawn so, and heard so, and two of them have a caption each at once. Keep it for what the story has at once: a chorus, someone breaking in, talk over a radio, a crowd under two who talk.
 - The narrator says what nobody says and the picture cannot show: where we are, who somebody is, what somebody feels, time passing.
 - Write for the ear: plain words, no brackets, no stage directions. The line is also the caption.
-`;
+
+${DRAWING}`;

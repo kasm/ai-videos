@@ -42,7 +42,7 @@ the voice model always stay in this tool.
 | Path | What it is |
 | --- | --- |
 | `scenes/clip/scene.html` | The scene template (a HyperFrames sub-composition with `{{placeholders}}`): the plugin's clip, muted, with the captions over it. |
-| `src/` | The pipeline: `video-file` (the file, its settings in layers, and the `script` the pipeline reads) → the plugin in its process (`plugin`, `make`, `host`): its plan → `tts` → `timeline` (and `fit` with `mouth`) → `sound` → the drawing (`moments`, `frames`, `clip`) → `compose` (with `bundle` and `captions`) → `render`; `page`, the web page; `stages` and `lock`, a make's cache and its lock (see The cache); `setup`, what the commands need on the disk; `prompt` and `import`, a story's prompt for a web chat and its reply taken in, and `story`, the two by the clipboard and the episodes made (see prompt, import, story); `loudness`, how loud a voice or a sound is (see How loud); `read`, `scenario` with `names` and `labels`, `values` with `formula`, `plan` with `times` and `words`, `compile`, `shown` and `guide`, a video written as a script: its lines and blocks read and checked, what its values come to, when each begins and ends, compiled, what each frame of it shows, and how it is taught (see A script, Values, What happens at once); `random`, what every random test draws from, to say how many different scripts or plans it tried. |
+| `src/` | The pipeline: `video-file` (the file, its settings in layers, and the `script` the pipeline reads) → the plugin in its process (`plugin`, `make`, `host`): its plan → `tts` → `timeline` (and `fit` with `mouth`) → `sound` → the drawing (`moments`, `frames`, `clip`) → `compose` (with `bundle` and `captions`) → `render`; `page`, the web page; `stages` and `lock`, a make's cache and its lock (see The cache); `setup`, what the commands need on the disk; `prompt` and `import`, a story's prompt for a web chat and its reply taken in, and `story`, the two by the clipboard and the episodes made (see prompt, import, story); `loudness`, how loud a voice or a sound is (see How loud); `read`, `scenario` with `names` and `labels`, `values` with `formula`, `plan` with `times` and `words`, `compile`, `shown` and `guide`, a video written as a script: its lines and blocks read and checked, what its values come to, when each begins and ends, compiled, what each frame of it shows, and how it is taught (see A script, Values, What happens at once), and `check`, the check of a script as `check`, `make` and `import` run it; `random`, what every random test draws from, to say how many different scripts or plans it tried. |
 | `cartoons/` | A project of the tool's, in this repo: the cartoon plugin (`cartoons/src/plugin.ts`), its library, videos and stories, and its notes, `cartoons/CLAUDE.md`. Its `episode` skill is the repo's, `.claude/skills/episode/`. |
 | `out/voice-samples/` | What `voices` writes. |
 | `.cache/tts/` | Narration audio, keyed by text, voice and speed. |
@@ -346,8 +346,8 @@ scenes:
   the picture either: what is played, when and how loud, draws nothing.
 - **The guide** to writing a script (`guideOf`, `src/guide.ts`) is the tool's part (a line's form,
   `say`, blocks, joining, channels, anchors, values, sounds, what is refused), the plugin's `script.guide`, the actions
-  and the constructions, each with its description and example, an action with its channels and whether it is fitted or open, and the plugin's names for numbers. Each part's examples are compiled by a test. The prompt for
-  a web chat does not teach scripts yet.
+  and the constructions, each with its description and example, an action with its channels and whether it is fitted or open, and the plugin's names for numbers. Each part's examples are compiled by a test. It is
+  the format in the prompt for a web chat (see `prompt`).
 
 `src/read.test.ts`, `src/formula.test.ts`, `src/values.test.ts`, `src/scenario.test.ts`,
 `src/plan.test.ts`, `src/words.test.ts`,
@@ -696,14 +696,16 @@ again.
 `npm run -s video -- prompt stories/<name>.md` writes the prompt for a story (a book's chapter) to
 stdout, for any web chat to answer with no tools and no files of its own (`src/prompt.ts`). The
 story's project is the nearest `package.json` above it with a plugin, which is started for its
-guide and commands, then closed. What it reads goes to stderr. In order:
+guides and commands, then closed. What it reads goes to stderr. In order:
 
 1. The tool's part: the task, and what a reply is: one YAML block per episode, its name on top
    (`episode: <name>-1`, `<name>-2`…, or `<name>` for a story of one episode), then `library:` with
    only what the library lacks (each new character with its `voice`), then the video file. A reply
    ends with the line `All episodes written.`; one cut off is told "continue", and begins the
    block that was cut off again, whole.
-2. The plugin's `guide`, then its commands, each with its description and its example as written.
+2. The format. For a plugin with a `script`, the guide to writing a script (see A script), and
+   nothing of its `guide` and commands: its videos are written as scripts. For any other, its
+   `guide`, then its commands, each with its description and its example as written.
 3. `library.yaml` as written, when the project has one.
 4. The voices: the narrator's (the project's `voice`), the library's characters', and the rest of
    kokoro-js's, which nobody has, grouped by English and gender, best first (Kokoro's grades).
@@ -729,14 +731,18 @@ nearest `package.json` above the file with a plugin (`src/import.ts`).
   reply adds, before anything is written: a new character's voice is one of the tool's, no sound is new (a sound is a file, and
   no chat has one: an episode that adds one is refused), the file's
   `use:` and settings are valid, the plugin mends and checks its source and plans it, and each line
-  has a voice the tool speaks in. The plugin runs in its host, for this one call (see Plugins).
+  has a voice the tool speaks in. An episode written as a script has the check of A script in place
+  of the plugin's mending, check and plan (`checkScript`, `src/check.ts`, which `check` and `make` run too): its sounds'
+  files are measured, so ffmpeg is on the PATH. The plugin runs in its host, for this one call (see Plugins).
 - **What it writes:** `videos/<name>.yaml` for each episode it takes, and the entries the library
   lacks into `library.yaml`, each at the end of its section as the block wrote it, the rest of the
   file as it was (a section it lacks goes at the end). The library is written only when an episode
   is taken. Nothing is written over: a video file already there is said to be the same, or kept,
   and a character or background the library has is kept as it is.
 - **What it refused** comes out as a message to paste back into the chat, each episode with why,
-  and the command exits with 1. Pasted, the chat answers with those blocks mended: added to the
+  and the command exits with 1. A script's why is every mistake of the check's first pass that has
+  one, as `check` says them, each at its line of the episode's block, the one after its fence being
+  line 1. Pasted, the chat answers with those blocks mended: added to the
   reply's file, they are imported with the rest, and the episodes already written are the same.
 
 Like `prompt`, it needs nothing from `setup`. `src/import.test.ts` shows each case.

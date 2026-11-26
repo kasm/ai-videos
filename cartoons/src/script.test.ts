@@ -495,7 +495,7 @@ test("the check refuses an unknown action, a wrong value and an unknown name, ea
   assert.match((await issuesOf(["pip walk to=middle steps=3"]))[0]!.message, /^walk: Unrecognized key: "steps"$/);
   const pop = await issuesOf(["pop walk to=middle"]);
   assert.deepEqual(pop.map((i) => [i.line, i.message]), [[6, 'no character is named "pop"']]);
-  assert.match(pop[0]!.hint, /^the library has the characters pip, mo, tuk, .* and badger: did you mean pip\?$/);
+  assert.match(pop[0]!.hint, /^the library has the characters pip, mo, tuk, .* and [a-z-]+: did you mean pip\?$/);
   assert.deepEqual(await issuesOf(["pop say: Hello."]), [
     { line: 6, message: '"pop" is neither the narrator nor a character with a voice', hint: `the characters with a voice are ${speakers.slice(0, -1).join(", ")} and ${speakers.at(-1)}: did you mean pip?` },
   ]);

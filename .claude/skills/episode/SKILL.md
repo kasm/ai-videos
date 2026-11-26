@@ -47,15 +47,16 @@ It writes each episode it takes as `cartoons/videos/<episode>.yaml`, and what yo
 ## 4. Make and look
 
 1. `npm run -s video -- make cartoons/videos/<episode>.yaml` makes each video, into
-   `cartoons/out/<episode>.mp4`. The first time it can take a few minutes. It lists what the plugin
-   mended (`cartoons/CLAUDE.md`, "Mending").
-2. Look at it. From the fit's `at` times (`make cartoons/videos/<episode>.yaml --fit` prints them)
-   take a frame from the middle of each beat that changes the picture, into a temporary folder
-   outside the repo, and read each as an image:
-   `ffmpeg -v error -y -ss <seconds> -i cartoons/out/<episode>.mp4 -frames:v 1 <folder>/<beat>.png`
-   Check that everyone who should be seen is, apart from the others and above the caption; that
-   talkers face each other; that a new character reads as one (eyes and mouth on the body, the arm
-   at its side, raised in a wave, straight ahead in a point).
+   `cartoons/out/<episode>.mp4`. The first time it can take a few minutes. It prints when each
+   line of the script begins and how long it lasts.
+2. Look at it. From those times (`make cartoons/videos/<episode>.yaml --fit` prints them again)
+   take a frame from the middle of each line that changes the picture, and of each stretch where
+   two talk or act at once, into a temporary folder outside the repo, and read each as an image:
+   `ffmpeg -v error -y -ss <seconds> -i cartoons/out/<episode>.mp4 -frames:v 1 <folder>/<line>.png`
+   Check that everyone who should be seen is, apart from the others and above the captions; that
+   talkers face each other; that two who talk at once have a caption each; that a new character
+   reads as one (eyes and mouth on the body, the arm at its side, raised in a wave, straight ahead
+   in a point).
 3. What you could not get right in a picture, change in the video file itself, and make again:
    `make` redoes only the stages a change goes into.
 

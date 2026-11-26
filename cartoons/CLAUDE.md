@@ -20,9 +20,9 @@ the tool's projects, and a session for it is opened in the repo's root.
 - `videos/<name>.yaml`: one cartoon, written by hand or by an AI session:
   `use: cartoon` on top, then its scenario, in names: the library's
   characters and backgrounds, places as marks, each line written once, in
-  its beat (the tool's `AGENTS.md`, "A video file"). `hello-script.yaml`
-  and `all-at-once.yaml` are written as scripts instead (The script,
-  below).
+  its beat (the tool's `AGENTS.md`, "A video file"). `hello-script.yaml`,
+  `all-at-once.yaml` and a story's new episodes are written as scripts
+  instead (The script, below).
 - `.cache/<name>/`: what the tool makes on the way (the plan, the request,
   the clip, the build); `out/<name>.mp4`: the finished video,
   and `out/<name>.html`, its web page.
@@ -41,11 +41,14 @@ the tool's projects, and a session for it is opened in the repo's root.
   tool's cache keys on: a change to a file here draws the clips again.
   - `plugin.ts`: the plugin itself: the scene `cartoon`, its stage, its
     commands, its guide, and the four functions below.
-  - `guide.ts`: the plugin's part of the tool's prompt (`GUIDE`): what a
-    cartoon can show, the format with an example, how to turn a story into
-    beats and lines, and how to draw a new character or background. A web
-    chat reads it with no other file of this project, so it says all it
-    needs; the tool adds the commands, `library.yaml` and the voices.
+  - `guide.ts`: the plugin's part of the guide to a script (`SCRIPT_GUIDE`),
+    which is the format in the tool's prompt for a web chat: what a cartoon
+    can show, a whole file as an example, how to tell a story in it, and how
+    to draw a new character or background (`DRAWING`). A web chat reads it
+    with no other file of this project, so it says all it needs; the tool
+    adds how a script is written, the actions, `library.yaml` and the
+    voices. `GUIDE` is the same for a cartoon in beats, which no prompt
+    has now.
   - `repair.ts`: what the plugin mends in a scenario before the check
     (Mending, below).
   - `scenario.ts`: the scenario's schema and the library's, their checks,
@@ -446,8 +449,9 @@ scenes:
   `into` and `length`). So two may look at each other.
 - **The guide** to a cartoon as a script is `SCRIPT_GUIDE` in `guide.ts`,
   the plugin's part; the tool adds how a line is written, the actions and
-  the constructions. It teaches what a script has so far. `GUIDE`, the prompt's,
-  still teaches beats.
+  the constructions. The prompt for a web chat teaches it, and no beats:
+  a story's episodes are written as scripts (Running, above; the tool's
+  `AGENTS.md`, "prompt"), and `import` checks each as `check` does.
 
 ## The library
 

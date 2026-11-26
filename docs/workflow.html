@@ -422,10 +422,14 @@ lines spoken in 3 s of it:</p>
 one runs, is refused. Two different videos make at once.</p>
 
 <h2 id="story">A cartoon from a story</h2>
-<p>From a story in prose to 2D cartoons whose characters talk in their own voices. The real example is
-<code>forest1</code>: story <code>cartoons/stories/forest1.md</code>, three episodes,
-<code>cartoons/videos/forest1-1.yaml</code> to <code>-3</code>, written by a web chat, whose reply is kept
-as <code>forest1-reply.md</code>.</p>
+<p>From a story in prose to 2D cartoons whose characters talk in their own voices, several at once where
+the story has it so. The prompt teaches the chat to write each episode as a script (see
+<a href="#script">Or as a script</a>): who talks over whom, who walks while somebody talks, which sound
+plays when. The real example is <code>the-race</code>: story <code>cartoons/stories/the-race.md</code>, two
+episodes, <code>cartoons/videos/the-race-1.yaml</code> and <code>-2</code>, written by a fresh Claude
+(Sonnet) with no tools, given only the prompt, and taken and made with no edit by hand; its reply is kept as
+<code>the-race.reply.md</code>. <code>forest1</code>'s three episodes were written in beats, before the
+prompt taught scripts.</p>
 
 <div class="legend">
   <span class="chip you">you</span><span class="chip ai">an AI</span>
@@ -493,22 +497,25 @@ frames before you do. The same commands can be typed one by one.</figcaption>
       lowercase letters, digits and dashes: it names the episodes.</td>
     <td><span class="chip you">you</span></td><td>—</td>
     <td><code>stories/&lt;name&gt;.md</code> <span class="tag">git</span></td></tr>
-  <tr><td class="n">2</td><td><b>The prompt</b>: the task, the plugin's guide and commands, the library as
-      written, the voices and the story; for <code>the-shy-visitor</code>, about 23,000 characters.
+  <tr><td class="n">2</td><td><b>The prompt</b>: the task, the guide to a script (the tool's part, the
+      plugin's, its actions and constructions), the library as written, the voices and the story; for
+      <code>the-race</code>, about 46,000 characters.
       <code>story</code> puts it on the clipboard; <code>prompt</code> prints it.</td>
     <td><span class="chip tool">the tool</span> <span class="chip plugin">the plugin</span></td>
     <td>The story, <code>library.yaml</code></td>
     <td>The clipboard</td></tr>
   <tr><td class="n">3</td><td><b>The episodes</b>: you paste the prompt into a new chat, copy its whole
       answer, and press Enter. It is a YAML block an episode: its name, what the library lacks (a new
-      character with its voice, a background), and its video file in names.</td>
+      character with its voice, a background), and its video file in names, written as a script.</td>
     <td><span class="chip you">you</span> <span class="chip ai">a web chat</span>; or <span class="chip
       ai">Claude Code</span>, with the <code>episode</code> skill</td>
     <td>The prompt alone</td>
     <td>The clipboard (the skill: <code>stories/&lt;name&gt;.reply.md</code>)</td></tr>
   <tr><td class="n">4</td><td><b>Import, which is also the check</b>: the answer added to the reply's file,
-      and each episode checked as <code>make</code> checks it (the plugin mends, checks and plans it
-      against the library; each line has a voice). Nothing already there is written over.</td>
+      and each episode checked as <code>make</code> checks it, against the library: a script by the
+      tool's check and the plugin's, each line with a voice, each sound's file there. A wrong one is
+      answered with what <code>check</code> says, each mistake at its line of the chat's block. Nothing
+      already there is written over.</td>
     <td><span class="chip tool">the tool</span> <span class="chip plugin">the plugin</span></td>
     <td>The clipboard, <code>library.yaml</code></td>
     <td><code>stories/&lt;name&gt;.reply.md</code>; <code>videos/&lt;episode&gt;.yaml</code>
@@ -527,9 +534,9 @@ frames before you do. The same commands can be typed one by one.</figcaption>
     <td><code>videos/&lt;episode&gt;.yaml</code>, <code>library.yaml</code>, <code>package.json</code></td>
     <td><code>.cache/&lt;episode&gt;/</code>, <code>out/&lt;episode&gt;.mp4</code>
       <span class="tag">made</span></td></tr>
-  <tr><td class="n">6</td><td><b>Watch.</b> Is everyone seen, apart from the others, above the caption? Do
-      talkers face each other? With the skill, Claude Code has looked at a frame of each beat that changes
-      the picture.</td>
+  <tr><td class="n">6</td><td><b>Watch.</b> Is everyone seen, apart from the others, above the captions? Do
+      talkers face each other? Have two who talk at once a caption each? With the skill, Claude Code has
+      looked at a frame of each line that changes the picture.</td>
     <td><span class="chip you">you</span></td><td>The mp4</td><td>—</td></tr>
   <tr><td class="n">7</td><td><b>Change and go round again</b>: places, moves, poses, lines in the
       episode's file; a look or a voice in the library. Then <code>make</code>: it redoes only the stages
@@ -575,16 +582,32 @@ npm run -s video -- make videos/my-story-1.yaml
 <span class="c"># or ask Claude Code, opened in the repo's root: "write an episode from stories/my-story.md"</span></pre>
 
 <h3>What the reply looks like</h3>
-<pre><span class="c"># stories/forest1-reply.md: one block of three (shortened). After the last one: All episodes written.</span>
-episode: forest1-1           <span class="c"># its name: videos/forest1-1.yaml</span>
+<pre><span class="c"># stories/the-race.reply.md: one block of two (shortened). After the last one: All episodes written.</span>
+episode: the-race-1          <span class="c"># its name: videos/the-race-1.yaml</span>
 library:                     <span class="c"># only what library.yaml lacks</span>
   characters:
-    mole:
-      voice: am_liam         <span class="c"># a voice nobody has yet, from the prompt's list</span>
-      shoulder: [95, -160]
+    bramble:
+      voice: bf_isabella     <span class="c"># a voice nobody has yet, from the prompt's list</span>
+      shoulder: [75, -94]
       parts: …
 use: cartoon                 <span class="c"># from here on, the video file as import writes it</span>
-scenes: …</pre>
+cast: { radio: am_michael }  <span class="c"># a voice nobody is drawn for</span>
+values: { pause: 0.4s }      <span class="c"># for the whole episode</span>
+scenes:
+  - background: morning
+    places: { mo: off-left, pip: off-right, bramble: off-left, tuk: off-right }
+    faces: { pip: left, tuk: left }
+    script: |
+      …
+      jingle play
+      radio say: Good morning. Today at noon there is a race
+      …
+      together:
+        pip say volume=4dB: A race!
+        mo say volume=4dB: A race!
+        pip jump
+        mo jump
+      …</pre>
 
 <h2 id="hand">A cartoon by hand</h2>
 <p>The same file, written by you. The real example is <code>meet</code>:
@@ -716,7 +739,33 @@ backgrounds:
 <code>background: meadow</code> and <code>pip</code> are the library's. A beat's <code>who: pip</code> is
 the plan's speaker <code>pip</code>, the library gives pip's voice, and the request names pip with the
 line's mouth track, so only pip's mouth moves. A cartoon's events are its beats' names. What a beat may
-have is in <a href="../cartoons/README.md">cartoons/README.md</a>, "By hand".</p>
+have is in <code>cartoons/CLAUDE.md</code>, "The scenario".</p>
+
+<h3 id="script">Or as a script</h3>
+<p>A scene's <code>script:</code> in place of its <code>beats:</code> says what happens a row at a time, and
+what happens at once: a chorus, one who breaks in at a word, talk over a radio, a walk as long as the
+words beside it, two who arrive together or run off together, music under several scenes. The tool
+checks it (<code>check</code>, in a second, with nothing spoken), speaks each line, and lays every row on
+whole frames by its rules of what happens at once: <code>.cache/&lt;name&gt;/compiled.json</code>, in
+place of the plan and the fit, which <code>make --fit</code> prints. The picture, the sound, the captions
+(two who talk at once have one each) and the page are made from that file. The real examples are
+<code>cartoons/videos/hello-script.yaml</code>, <code>hello</code> as a script, and
+<code>all-at-once.yaml</code>, all of it at once; what a row may be is in
+<a href="../cartoons/README.md">cartoons/README.md</a>, "By hand".</p>
+<pre><span class="c"># a scene written as a script</span>
+  - background: meadow
+    places: { pip: left, mo: off-right }
+    faces: { mo: left }
+    script: |
+      tune loop                            <span class="c"># a sound of the library, under the whole scene</span>
+      mo walk to=right
+      &amp; narrator say: Here comes Mo.       <span class="c"># &amp;: at once with the row above; the walk lasts as long</span>
+      [fine] mo say: Hello, Pip! What a fine day for a jump.
+      pip say @ fine.word(jump): A jump?   <span class="c"># Pip breaks in at Mo's word</span>
+      together:                            <span class="c"># all three begin at once</span>
+        pip jump times=2
+        mo jump times=2
+        narrator say: And so they jump, both at once.</pre>
 
 <h2 id="project">A project of your own</h2>
 <p>A folder anywhere on the disk, with a plugin that draws something else. This one is whole: a dot that
