@@ -6,8 +6,9 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import type { Described, Job, Reply } from "./host.ts";
+import type { Described, Job, PlayCall, Reply } from "./host.ts";
 import type { EventLimits, Library, Plan } from "./plugin.ts";
+import type { Checked, Timing, WrittenScript } from "./scenario.ts";
 import { FORMATS, slug, type FormatName } from "./script.ts";
 
 /** The host runs in the project's folder, not the tool's, so every file is named in full. */
@@ -130,9 +131,21 @@ export interface PluginHost extends Described {
    * library, its progress logged; throws why it failed. A plan's call gives what the plugin mended
    * in the source, the plan's limits on the fit, and the files it is made from (plugin.ts, inputs).
    */
-  run(job: Job & { call: Call }, log: (msg: string) => void): Promise<{ repaired: string[]; limits: Record<string, EventLimits>; inputs: string[] }>;
+  run(
+    job: { call: Call; file: string; source: unknown; library?: Library | undefined },
+    log: (msg: string) => void,
+  ): Promise<{ repaired: string[]; limits: Record<string, EventLimits>; inputs: string[] }>;
   /** Mends, checks and plans a video's source, writing nothing: what was mended, and the plan. Throws why it was refused. */
   check(file: string, source: unknown, library: Library | undefined): Promise<{ repaired: string[]; plan: Plan }>;
+  /**
+   * Checks a video written as a script (scenario.ts), writing nothing: the scenario worked out, or
+   * every mistake in it. `speakers` are the names with a voice, `timing` the video's pauses,
+   * `volumes` the library's, dB, by whose they are, and `sounds` the library's, each with its file.
+   * Throws when the plugin takes no script, or its library does not read.
+   */
+  checkScript(file: string, script: WrittenScript, library: Library | undefined, speakers: string[], timing: Timing, volumes: Record<string, number>, sounds: Record<string, string>): Promise<Checked>;
+  /** Draws a compiled scenario's clip (compile.ts) from its file and the library, its progress logged; throws why it failed. */
+  play(call: Omit<PlayCall, "step">, library: Library | undefined, log: (msg: string) => void): Promise<void>;
   /** Ends its process. */
   close(): void;
 }
@@ -145,22 +158,33 @@ export async function startPlugin(plugin: PluginFile, log: (msg: string) => void
     host.close();
     throw new Error(`the plugin did not start: ${"failed" in ready ? ready.failed : "error" in ready ? ready.error : "it said something else"}`);
   }
-  const { scene, commands } = ready.ready;
-  log(`Plugin: ${scene}, ${plugin.file} (its commands: ${Object.keys(commands).join(", ") || "none"})`);
+  const { scene, commands, script } = ready.ready;
+  const said = [...(commands ? [`its commands: ${Object.keys(commands).join(", ") || "none"}`] : []), ...(script ? [`a script's actions: ${Object.keys(script.actions).join(", ") || "none"}`] : [])];
+  log(`Plugin: ${scene}, ${plugin.file} (${said.join("; ")})`);
   const shown = (file: string) => path.relative(plugin.dir, file);
+  const withLibrary = (library: Library | undefined) => (library ? { library } : {});
+  const ask = async (job: Job) => {
+    const reply = await host.send(job);
+    if (!("done" in reply)) throw new Error("error" in reply ? reply.error : "it did not answer");
+    return reply.done;
+  };
   return {
     ...ready.ready,
     async check(file, source, library) {
-      const reply = await host.send({ call: { step: "check" }, file, source, ...(library ? { library } : {}) });
-      if (!("done" in reply)) throw new Error("error" in reply ? reply.error : "it did not answer");
-      return { repaired: reply.done.repaired ?? [], plan: reply.done.plan! };
+      const done = await ask({ call: { step: "check" }, file, source, ...withLibrary(library) });
+      return { repaired: done.repaired ?? [], plan: done.plan! };
     },
-    async run(job, log) {
-      const { call } = job;
+    async checkScript(file, script, library, speakers, { lead, gap, tail }, volumes, sounds) {
+      return (await ask({ call: { step: "script", script, speakers, timing: { lead, gap, tail }, volumes, sounds }, file, source: undefined, ...withLibrary(library) })).script!;
+    },
+    async play(call, library, log) {
+      log(`${scene}: ${shown(call.clip)}, drawn from ${path.basename(call.compiled)} (${call.format})`);
+      const { frames, drawn, seconds } = await ask({ call: { step: "play", ...call }, ...withLibrary(library) });
+      log(`  ${frames} frames (${drawn} drawn) in ${seconds?.toFixed(1)} s`);
+    },
+    async run({ call, file, source, library }, log) {
       log(`${scene}: ${call.step === "data" ? `the plan of ${call.name}` : `${call.name}, drawn to ${path.basename(call.request)}`} (${call.format})`);
-      const reply = await host.send(job);
-      if (!("done" in reply)) throw new Error("error" in reply ? reply.error : "it did not answer");
-      const { frames, drawn, seconds, repaired = [], limits = {}, inputs = [] } = reply.done;
+      const { frames, drawn, seconds, repaired = [], limits = {}, inputs = [] } = await ask({ call, file, source, ...withLibrary(library) });
       if (call.step === "data") log(`  ${shown(call.data)}`);
       else log(`  ${shown(call.clip)}: ${frames} frames (${drawn} ${ready.ready.picture}) in ${seconds?.toFixed(1)} s; and its JSON`);
       return { repaired, limits, inputs };

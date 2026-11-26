@@ -2,7 +2,8 @@
   clip: a video file played at its own speed, with the narration as captions over it.
   Placeholders are filled by src/compose.ts. The clip is muted (the narration is the sound); when
   the voice runs on past the clip, a still of its last frame holds until the scene ends. Captions
-  are the narration lines, long ones split, each a timed element shown while it is said.
+  are the narration lines, long ones split, each a timed element shown while it is said; two of a
+  script's lines that sound at once are in two small rows.
 -->
 <template>
   <style>
@@ -15,6 +16,11 @@
       --cl-left: 120px; /* caption area: the clear part of the frame */
       --cl-right: 120px;
       --cl-bottom: 96px;
+      /* Two at once: a row each, the upper one below y 880, the ground a cartoon's characters stand on. */
+      --cl-row-font: 44px;
+      --cl-row-bottom: 44px; /* the lower one's */
+      --cl-row-rise: 82px; /* from the lower one to the upper */
+      --cl-row-wrap: nowrap;
     }
     /* 9:16: apps cover the top 168 px, the right-hand rail and everything below about 1250 px,
        so captions stay between x 120 and 888 and end above y 1248. */
@@ -24,6 +30,11 @@
       --cl-left: 120px;
       --cl-right: 192px;
       --cl-bottom: 680px;
+      /* Two at once: what fits a row of a landscape stage takes two here, so each has room for two. */
+      --cl-row-font: 40px;
+      --cl-row-bottom: 680px;
+      --cl-row-rise: 126px;
+      --cl-row-wrap: normal;
     }
     .cl-bg {
       position: absolute;
@@ -59,6 +70,17 @@
       line-height: 1.25;
       text-align: center;
       text-wrap: balance;
+    }
+    .cl-row {
+      padding-bottom: var(--cl-row-bottom);
+    }
+    .cl-row-1 {
+      padding-bottom: calc(var(--cl-row-bottom) + var(--cl-row-rise));
+    }
+    .cl-row p {
+      max-width: none;
+      font-size: var(--cl-row-font);
+      white-space: var(--cl-row-wrap);
     }
   </style>
 

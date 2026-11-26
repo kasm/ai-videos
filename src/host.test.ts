@@ -9,18 +9,21 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
+import { loadDrawn } from "./clip.ts";
+import { compile, compiledText } from "./compile.ts";
 import { moments } from "./frames.ts";
 import { loadPlugin, runJob } from "./host.ts";
 import { pluginOf, startPlugin } from "./make.ts";
 import type { RecordingPlugin } from "./plugin.ts";
 import { run } from "./render.ts";
+import type { ScriptLine } from "./scenario.ts";
 
 const scratch = await mkdtemp(path.join(os.tmpdir(), "ai-videos-host-"));
 // A host that failed may still be ending in its folder: Windows keeps the folder until it has.
 after(() => rm(scratch, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
 const quiet = () => {};
 
-/** A square that waits, then slides: its source names its colour and the two beats' lengths. */
+/** A square that waits, then slides: its source names its colour and the two spans' lengths. */
 const PLUGIN = `
 const text = (what) => ({
   "~standard": {
@@ -108,7 +111,7 @@ test("the plugin's host writes the plan as the clip's data, then draws the clip 
     assert.equal(host.picture, "drawn");
     assert.deepEqual(host.stage, { width: 160, height: 90 });
     // Its part of the prompt comes with it: the guide, and each command's description and example.
-    assert.match(host.guide, /^A square waits, then slides/);
+    assert.match(host.guide!, /^A square waits, then slides/);
     assert.deepEqual(host.commands, { colour: { description: "The square's colour.", example: "#d04040" } });
     const data = { step: "data", name: "sq", format: "landscape", data: files.data } as const;
     await host.run({ call: data, file: video, source: SOURCE }, (m) => said.push(m));
@@ -139,7 +142,7 @@ test("the plugin's host writes the plan as the clip's data, then draws the clip 
     // Beside them, each frame's SVG, hashed: one line a frame, the same where the picture is.
     const svgs = (await readFile(`${files.clip}.svgs`, "utf8")).trim().split("\n");
     assert.deepEqual(svgs.map((s) => svgs.indexOf(s)), frames.map((f) => frames.indexOf(f)));
-    // The data again, as the request times it: each event at its span, the texts moved with their beats.
+    // The data again, as the request times it: each event at its span, the texts moved with their events.
     const drawn = await json(files.data);
     assert.equal(drawn.made.from, "videos/sq.yaml, drawn to sq-landscape.request.json");
     assert.equal(drawn.duration, 1);
@@ -191,7 +194,7 @@ test("each command's example passes its schema, and the schema writes itself as 
   await assert.rejects(loadPlugin(path.join(noJson, "src", "plugin.mjs")), /"colour" has a schema that does not write itself as JSON Schema: not here/);
 });
 
-test("a format the stage does not fill, a source its check refuses and a request of other beats are refused", async () => {
+test("a format the stage does not fill, a source its check refuses and a request of other events are refused", async () => {
   const root = await project("refused");
   const file = path.join(root, "src", "plugin.mjs");
   const plugin = await loadPlugin(file);
@@ -204,7 +207,7 @@ test("a format the stage does not fill, a source its check refuses and a request
   await mkdir(path.dirname(files.request), { recursive: true });
   await writeFile(files.request, JSON.stringify(other));
   const draw = { step: "draw", name: "sq", format: "landscape", width: 160, height: 90, ...files } as const;
-  await assert.rejects(runJob(plugin, file, { call: draw, file: video, source: SOURCE }), /the request's spans \(waits \(hold\), slide \(move\)\) are not the source's beats \(start \(hold\), slide \(move\)\): make the video again/);
+  await assert.rejects(runJob(plugin, file, { call: draw, file: video, source: SOURCE }), /the request's spans \(waits \(hold\), slide \(move\)\) are not the source's events \(start \(hold\), slide \(move\)\): make the video again/);
 });
 
 test("the plugin is the nearest package.json's: none there, none named, or a missing file", async () => {
@@ -338,6 +341,241 @@ test("a recording plugin's camera is closed when a shot fails; its limits and in
   await assert.rejects(planOf({ inputs: [path.join(root, "colours.txt")] }), /the plugin's inputs\) are not valid:[\s\S]*not an absolute one/);
   // Import's check is refused by the same limits.
   await assert.rejects(runJob(plugin, file, { call: { step: "check" }, file: video, source: { ...SOURCE, limits: { slid: {} } } }), /no event of the plan has that name/);
+});
+
+/**
+ * The square with a script (plugin.ts, script): one action, `slide`, to a side; its check finds a
+ * scene's colour in the library and works the slide out in pixels, and its picture is the square
+ * where its slides have it, as tall as it speaks, on the library's ground.
+ */
+const SCRIPTED = PLUGIN.replace(
+  "export default {",
+  `const side = {
+  "~standard": {
+    version: 1,
+    vendor: "test",
+    validate: (v) => (v.to === "left" || v.to === "right" ? { value: v } : { issues: [{ message: "it is left or right", path: ["to"] }] }),
+    jsonSchema: { input: () => ({}), output: () => ({}) },
+  },
+};
+export default {
+  script: {
+    actions: { slide: { description: "The square slides to a side.", example: "sq slide to=right", values: side, channels: ["place"], fits: true } },
+    names: { slow: 0.5 },
+    constructions: { between: { description: "Between two.", example: "between(left, right)" } },
+    tables: ["spots"],
+    guide: "A square slides to a side, and speaks.",
+    check(scenes, library) {
+      const colour = (scene) => library?.raw?.colours?.[scene.setting.colour];
+      const issues = scenes.filter((scene) => !colour(scene)).map((scene) => ({ line: scene.line, message: "no colour is named " + scene.setting.colour, hint: "name a colour of the library" }));
+      if (issues.length) return { issues };
+      return { scenes: scenes.map((scene) => ({ setting: { colour: colour(scene) }, actions: scene.actions.map((a) => ({ values: { x: a.values.to === "right" ? 120 : 20 }, length: 1.5 })) })) };
+    },
+    draw(library) {
+      const ground = library.raw.ground;
+      return (shown, { width, height }) => {
+        let x = 20;
+        for (const { values, progress } of shown.actions) x += (values.x - x) * progress;
+        return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 90" width="' + width + '" height="' + height + '">' +
+          '<rect width="160" height="90" fill="' + ground + '"/>' +
+          '<rect x="' + x + '" y="30" width="30" height="' + (30 + 10 * (shown.mouths.sq ?? 0)) + '" fill="' + shown.setting.colour + '"/></svg>';
+      };
+    },
+  },`,
+);
+
+test("a plugin with a script: its guide and actions come with it, and a script's check runs in its host", async () => {
+  const root = await project("scripted", () => SCRIPTED);
+  const video = path.join(root, "videos", "sq.yaml");
+  const said: string[] = [];
+  const host = await startPlugin((await pluginOf(video))!, (m) => said.push(m));
+  try {
+    assert.match(said[0]!, /^Plugin: square, .*plugin\.mjs \(its commands: colour; a script's actions: slide\)$/);
+    assert.deepEqual(host.script, {
+      guide: "A square slides to a side, and speaks.",
+      actions: { slide: { description: "The square slides to a side.", example: "sq slide to=right", channels: ["place"], fits: true } },
+      names: { slow: 0.5 },
+      constructions: { between: { description: "Between two.", example: "between(left, right)" } },
+    });
+    const timing = { lead: 0.6, gap: 0.4, tail: 1 };
+    const library = { file: path.join(root, "library.yaml"), raw: { colours: { red: "#d04040" } } };
+    const lines: ScriptLine[] = [
+      { line: 5, who: "sq", action: "slide", values: { to: "right", speed: "slow" } },
+      { line: 6, who: "sq", action: "say", values: {}, text: "Here I am.", anchor: { of: "prev", at: "end", plus: "- pause / 2 + prev.length / 2" } },
+    ];
+    // A value set on the whole, the plugin's name for a number, a length and the library's volume: what the check works out comes back whole.
+    const script = { values: { pause: { line: 2, text: "0.4s * 2" } }, scenes: [{ line: 3, setting: { colour: "red" }, items: lines }], issues: [] };
+    assert.deepEqual(await host.checkScript(video, script, library, ["sq"], timing, { sq: -4.5 }, {}), {
+      scenes: [
+        {
+          line: 3,
+          setting: { colour: "#d04040" },
+          lead: 0.6,
+          pause: 0.8,
+          tail: 1,
+          items: [
+            { line: 5, who: "sq", action: "slide", values: { x: 120 }, channels: ["place"], length: 1.5, takes: 3 },
+            { line: 6, who: "sq", action: "say", text: "Here I am.", volume: -4.5, anchor: { of: "prev", at: "end", plus: { seconds: -0.4, lengths: [{ line: 5, times: 0.5 }] } } },
+          ],
+        },
+      ],
+      defaults: [
+        { name: "lead", value: "0.6s", lines: [3] },
+        { name: "tail", value: "1s", lines: [3] },
+      ],
+    });
+    // A mistake of the tool's finding (the action's values) and one of the plugin's (a name), each with its line.
+    const wrong = { scenes: [{ line: 3, setting: { colour: "red" }, items: [{ ...lines[0]!, values: { to: "up" } }] }], issues: [] };
+    assert.deepEqual(await host.checkScript(video, wrong, library, ["sq"], timing, {}, {}), { issues: [{ line: 5, message: "slide, to=up: it is left or right", hint: "as in: sq slide to=right" }] });
+    // Its constructions and its tables are the tool's to read: one it has not, and a formula that does not read.
+    const made = { scenes: [{ line: 3, setting: { colour: "red", spots: { sq: "between(left" } }, items: [{ ...lines[0]!, values: { to: "beside(left, right)" } }] }], issues: [] };
+    const found = await host.checkScript(video, made, library, ["sq"], timing, {}, {});
+    assert.deepEqual("issues" in found && found.issues.map(({ line, message }) => [line, message]), [
+      [3, 'spots.sq=between(left: between( has no ")" after it'],
+      [5, 'to=beside(left, right): no construction is named "beside"'],
+    ]);
+    // What is played, over the scenes and in one, comes back with the library's file and volume.
+    const bell = { line: 6, who: "bell", action: "play", values: {} };
+    const heard = await host.checkScript(video, { over: { line: 1, items: [{ ...bell, line: 2, action: "loop", who: "tune" }] }, scenes: [{ line: 3, setting: { colour: "red" }, items: [lines[0]!, bell] }], issues: [] }, library, ["sq"], timing, { tune: -20 }, { bell: "b.wav", tune: "t.wav" });
+    assert.ok("scenes" in heard, JSON.stringify(heard));
+    assert.deepEqual(heard.over, { line: 1, items: [{ line: 2, who: "tune", action: "loop", sound: "t.wav", volume: -20 }] });
+    assert.deepEqual(heard.scenes[0]!.items[1], { line: 6, who: "bell", action: "play", sound: "b.wav", volume: 0 });
+    const blue = { scenes: [{ line: 3, setting: { colour: "blue" }, items: lines }], issues: [] };
+    assert.deepEqual(await host.checkScript(video, blue, library, ["sq"], timing, {}, {}), { issues: [{ line: 3, message: "no colour is named blue", hint: "name a colour of the library" }] });
+    // Nothing is written by it.
+    assert.equal(existsSync(path.join(root, ".cache")), false);
+  } finally {
+    host.close();
+  }
+});
+
+test("a script's clip is drawn from its compiled scenario and the library, with no video file", async () => {
+  const root = await project("played", () => SCRIPTED);
+  const plugin = (await pluginOf(path.join(root, "videos", "sq.yaml")))!;
+  await rm(path.join(root, "videos"), { recursive: true });
+  // Ten frames a second: the slide from frame 2 for 4, the line from 8 for 3, then 2 frames more.
+  const scenes = [
+    {
+      line: 3,
+      setting: { colour: "#d04040" },
+      lead: 0.2,
+      pause: 0.2,
+      tail: 0.2,
+      items: [
+        { line: 5, who: "sq", action: "slide", values: { x: 120 }, channels: ["place"], length: 0.4 },
+        { line: 6, who: "sq", action: "say", text: "Here I am.", volume: 0 },
+      ],
+    },
+  ];
+  const compiled = compile(scenes, [{ file: "a.wav", duration: 0.3, mouth: [0.5, 1, 0] }], { fps: 10, loudness: -14, moves: { slowest: 0.5, fastest: 2 } }, "../../videos/sq.yaml");
+  const cache = path.join(root, ".cache", "sq");
+  const file = path.join(cache, "compiled.json");
+  await mkdir(cache, { recursive: true });
+  await writeFile(file, compiledText(compiled));
+  const clip = path.join(cache, "clips", "sq-landscape.mp4");
+  const library = { file: path.join(root, "library.yaml"), raw: { ground: "#ffffff" } };
+  const call = { format: "landscape", width: 160, height: 90, compiled: file, clip };
+  const said: string[] = [];
+  const host = await startPlugin(plugin, quiet);
+  try {
+    await host.play(call, library, (m) => said.push(m));
+    assert.match(said[0]!, /^square: .*sq-landscape\.mp4, drawn from compiled\.json \(landscape\)$/);
+    assert.match(said[1]!, /^ {2}13 frames \(8 drawn\) in [\d.]+ s$/);
+    // The slide's four places and its end, the mouth's two, and the end again: the rest holds.
+    const frames = (await readFile(`${clip}.frames`, "utf8")).trim().split("\n");
+    assert.deepEqual(frames.map((f) => frames.indexOf(f)), [0, 0, 0, 3, 4, 5, 6, 6, 8, 9, 6, 6, 6]);
+    const svgs = (await readFile(`${clip}.svgs`, "utf8")).trim().split("\n");
+    assert.deepEqual(svgs.map((s) => svgs.indexOf(s)), frames.map((f) => frames.indexOf(f)));
+    // The clip lasts what is compiled, to the frame: one left from another run does not.
+    assert.deepEqual(await loadDrawn(clip, 13, 10), { width: 160, height: 90, fps: 10, duration: 1.3 });
+    await assert.rejects(loadDrawn(clip, 14, 10), /lasts 1\.3 s at 10 frames a second, not the 14 frames at 10 compiled/);
+    await assert.rejects(loadDrawn(`${clip}.none.mp4`, 13, 10), /No clip at .*none\.mp4/);
+    // Drawn again, it is the same; with another library, it is not.
+    await host.play(call, library, quiet);
+    assert.equal(await readFile(`${clip}.frames`, "utf8"), `${frames.join("\n")}\n`);
+    await host.play(call, { ...library, raw: { ground: "#eeeeee" } }, quiet);
+    assert.notEqual((await readFile(`${clip}.frames`, "utf8")).split("\n")[0], frames[0]);
+    // What fails says why, and the host takes the next call.
+    await assert.rejects(host.play({ ...call, width: 90, height: 160, format: "portrait" }, library, quiet), /the square stage is 160 by 90: it does not fill portrait \(90 by 160\)/);
+    await assert.rejects(host.play({ ...call, compiled: path.join(root, "none.json") }, library, quiet), /none\.json/);
+    await host.play(call, library, quiet);
+  } finally {
+    host.close();
+  }
+  const plain = await project("plain", (t) => t);
+  const unscripted = await loadPlugin(path.join(plain, "src", "plugin.mjs"));
+  await assert.rejects(runJob(unscripted, "plugin.mjs", { call: { step: "play", ...call }, library }), /the square plugin draws no script: it has no script/);
+  const undrawn = await project("undrawn", () => SCRIPTED.replace("draw(library)", "drawing(library)"));
+  await assert.rejects(loadPlugin(path.join(undrawn, "src", "plugin.mjs")), /is not a plugin[\s\S]*script\.draw/);
+});
+
+/** The square with a script alone: its scene, its stage and its script, and none of the plan's part. */
+const SCRIPT_ALONE = SCRIPTED.replace(/\n {2}commands:[\s\S]*\n\};\n$/, "\n};\n");
+
+test("a plugin with a script alone has none of the plan's part: it says so when ready, and a video that is no script is refused", async () => {
+  assert.doesNotMatch(SCRIPT_ALONE, /commands|guide: "A square waits|plan:|frame:/);
+  const root = await project("script-alone", () => SCRIPT_ALONE);
+  const video = path.join(root, "videos", "sq.yaml");
+  const said: string[] = [];
+  const host = await startPlugin((await pluginOf(video))!, (m) => said.push(m));
+  try {
+    assert.match(said[0]!, /^Plugin: square, .*plugin\.mjs \(a script's actions: slide\)$/);
+    assert.deepEqual([host.scene, host.picture, host.guide, host.commands, host.script!.guide], ["square", "drawn", undefined, undefined, "A square slides to a side, and speaks."]);
+    // Its videos/sq.yaml is no script: checked as import and check do, or planned as make does, it is refused.
+    const why = /sq\.yaml is not written as a script, and the square plugin's videos are scripts alone: give each scene a script: \(AGENTS\.md, "A script"\)/;
+    await assert.rejects(host.check(video, SOURCE, undefined), why);
+    await assert.rejects(host.run({ call: { step: "data", name: "sq", format: "landscape", data: filesOf(root).data }, file: video, source: SOURCE }, quiet), why);
+    assert.equal(existsSync(filesOf(root).data), false, "nothing is written");
+  } finally {
+    host.close();
+  }
+  // The plan's part is all there, or none of it, and a plugin has it or a script.
+  const loaded = async (name: string, text: string) => loadPlugin(path.join(await project(name, () => text), "src", "plugin.mjs"));
+  await assert.rejects(loaded("no-plan", PLUGIN.replace("plan: (s) =>", "planned: (s) =>")), /is not a plugin[\s\S]*the plan's part has plan too: give it, or none of the plan's part and a script[\s\S]*plan/);
+  await assert.rejects(loaded("a-guide", SCRIPT_ALONE.replace('scene: "square",', 'scene: "square", guide: "A square.",')), /the plan's part has commands too[\s\S]*the plan's part has check too[\s\S]*the plan's part has plan too[\s\S]*give frame/);
+  await assert.rejects(loaded("nothing", SCRIPT_ALONE.replace("script: {", "notScript: {")), /is not a plugin[\s\S]*give the plan's part \(commands, guide, check, plan, and frame or camera\), or a script, or both/);
+});
+
+test("a plugin with no script takes none; an action's example is a line that names it and passes its schema", async () => {
+  const plain = await project("unscripted");
+  const video = path.join(plain, "videos", "sq.yaml");
+  const host = await startPlugin((await pluginOf(video))!, quiet);
+  try {
+    assert.equal(host.script, undefined);
+    await assert.rejects(host.checkScript(video, { scenes: [], issues: [] }, undefined, [], { lead: 0.6, gap: 0.4, tail: 1 }, {}, {}), /sq\.yaml is written as a script, and the square plugin takes none: it has no script/);
+  } finally {
+    host.close();
+  }
+  const broken = async (name: string, edit: (text: string) => string) => loadPlugin(path.join(await project(name, () => edit(SCRIPTED)), "src", "plugin.mjs"));
+  await assert.rejects(broken("example-value", (t) => t.replace("sq slide to=right", "sq slide to=up")), /the action "slide" fails its own example, sq slide to=up:\n {2}to: it is left or right/);
+  // An action names its channels, one at least, and may be fitted.
+  await assert.rejects(broken("no-channels", (t) => t.replace(', channels: ["place"]', "")), /is not a plugin[\s\S]*channels[\s\S]*script\.actions\.slide\.channels/);
+  await assert.rejects(broken("empty-channels", (t) => t.replace('channels: ["place"]', "channels: []")), /name one channel at least[\s\S]*script\.actions\.slide\.channels/);
+  await assert.rejects(broken("named-channels", (t) => t.replace('channels: ["place"]', 'channels: ["His Place"]')), /is not a plugin[\s\S]*script\.actions\.slide\.channels/);
+  await assert.rejects(broken("fits-how", (t) => t.replace("fits: true", "fits: 2")), /is not a plugin[\s\S]*script\.actions\.slide\.fits/);
+  // Or it is open, and not both.
+  assert.equal((await broken("open", (t) => t.replace("fits: true", "open: true"))).script!.actions.slide!.open, true);
+  await assert.rejects(broken("open-how", (t) => t.replace("fits: true", 'open: "yes"')), /is not a plugin[\s\S]*script\.actions\.slide\.open/);
+  await assert.rejects(broken("open-and-fitted", (t) => t.replace("fits: true", "fits: true, open: true")), /it is fitted to words \(fits\) or goes on to the end of its block \(open\), one of the two[\s\S]*script\.actions\.slide/);
+  // The tool's own values are no action's, and a name for a number is no value's.
+  const naming = (name: string, properties: string) => (t: string) => t.replace("names: { slow: 0.5 }", `names: { ${name}: 2 }`).replace("jsonSchema: { input: () => ({})", `jsonSchema: { input: () => ({ properties: { ${properties} } })`);
+  await assert.rejects(broken("named-pause", naming("pause", "to: {}")), /"pause" is a value of the tool's, and no name for a number/);
+  await assert.rejects(broken("named-to", naming("to", "to: {}")), /"to" is a value of slide's, and no name for a number/);
+  await assert.rejects(broken("takes-speed", naming("quick", "to: {}, speed: {}")), /the action "slide" takes a value called speed, which is the tool's own for every action/);
+  await assert.rejects(broken("named-text", (t) => t.replace("names: { slow: 0.5 }", 'names: { slow: "half" }')), /is not a plugin[\s\S]*script\.names\.slow/);
+  // An example may name the plugin's numbers.
+  const half = (t: string) => t.replace('v.to === "left" ||', 'v.to === 0.5 ||').replaceAll("sq slide to=right", "sq slide to=slow");
+  assert.equal((await broken("example-name", half)).script!.actions.slide!.example, "sq slide to=slow");
+  // A construction's example is one of it, and a table's name is a key's.
+  const constructing = (example: string) => (t: string) => t.replace('example: "between(left, right)"', `example: ${example}`);
+  await assert.rejects(broken("constructed-other", constructing('"beside(left, right)"')), /the construction "between" fails its own example, beside\(left, right\):\n {2}it is between\( \) with what it is worked out from, by itself/);
+  await assert.rejects(broken("constructed-sum", constructing('"between(left, right) + 1"')), /the construction "between" fails its own example/);
+  await assert.rejects(broken("constructed-open", constructing('"between(left"')), /fails its own example, between\(left:\n {2}between\( has no "\)" after it/);
+  await assert.rejects(broken("constructed-none", constructing("3")), /is not a plugin[\s\S]*script\.constructions\.between\.example/);
+  await assert.rejects(broken("tables", (t) => t.replace('tables: ["spots"]', "tables: [3]")), /is not a plugin[\s\S]*script\.tables/);
+  await assert.rejects(broken("example-action", (t) => t.replace("sq slide to=right", "sq say: Hello!")), /the action "slide" fails its own example, sq say: Hello!:\n {2}it is one line of a script that names slide/);
+  await assert.rejects(broken("example-line", (t) => t.replace("sq slide to=right", "sq slide right")), /fails its own example, sq slide right:\n {2}"right" is not a value/);
+  for (const own of ["say", "play", "loop"]) await assert.rejects(broken(own, (t) => t.replace("actions: { slide:", `actions: { ${own}:`)), new RegExp(`plugin\\.mjs: "${own}" is the tool's own action: give the plugin's another name`));
 });
 
 test("a plugin draws or records, one of the two", async () => {

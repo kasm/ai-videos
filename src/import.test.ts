@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
 import { addEntries, episodeOf, importReply, readReply } from "./import.ts";
+import { encodeWav } from "./tts.ts";
 
 const fence = "```";
 
@@ -74,8 +75,10 @@ test("a block is an episode: its name, the entries it adds as written, and its v
     { section: "characters", name: "frog", value: { voice: "am_echo", parts: { body: [1] } }, text: "frog: # small and green\n  voice: am_echo\n  parts: { body: [1] }\n" },
     { section: "backgrounds", name: "pond", value: { fill: "#4f9bd6" }, text: 'pond: { fill: "#4f9bd6" }\n' },
   ]);
-  // The rest as the chat wrote it, comments and all.
+  // The rest as the chat wrote it, comments and all, each line where it was in the block.
   assert.equal(episode.file, "# The first one\nuse: cartoon # the scene\nscenes: # what happens\n  - background: pond\n");
+  assert.deepEqual(episode.lines.slice(0, 4), [1, 12, 13, 14]);
+  assert.deepEqual(episodeOf({ line: 1, text: "\nepisode: a\n\nuse: x\n" }).lines.slice(0, 1), [4]);
   // An entry written inline is written again, in blocks.
   const inline = episodeOf({ line: 1, text: "episode: a\nlibrary: { backgrounds: { pond: { fill: red } } }\nuse: x\n" });
   assert.deepEqual(inline.entries.map((e) => e.text), ["pond:\n  fill: red\n"]);
@@ -144,6 +147,17 @@ export default {
   repair: (raw) => (raw.colour === "rouge" ? { source: { ...raw, colour: "red" }, did: ["rouge is red"] } : { source: raw, did: [] }),
   plan: (s) => ({ duration: 2, events: [{ name: "start", at: 0, span: "hold" }], texts: [{ text: s.says ?? "Hello.", ...(s.who ? { speaker: s.who } : {}), from: 0, to: 2 }] }),
   frame: () => "<svg/>",
+  script: {
+    actions: { slide: { description: "The square slides to a side.", example: "sq slide to=right", values: string, channels: ["place"], fits: true } },
+    guide: "A square of a colour of the library slides, and speaks.",
+    check(scenes, library) {
+      const colours = library?.raw?.colours ?? {};
+      const issues = scenes.filter((scene) => !colours[scene.setting.colour]).map((scene) => ({ line: scene.line, message: 'no colour is named "' + scene.setting.colour + '"', hint: "the library has " + Object.keys(colours).join(", ") }));
+      if (issues.length) return { issues };
+      return { scenes: scenes.map((scene) => ({ setting: { colour: colours[scene.setting.colour] }, actions: scene.actions.map(() => ({ values: {}, length: 1 })) })) };
+    },
+    draw: () => () => "<svg/>",
+  },
 };
 `;
 
@@ -161,7 +175,7 @@ test("a reply imported: each episode the plugin takes is written, what it adds g
   await writeFile(
     reply,
     [
-      episode("sq-1", "library:\n  colours:\n    blue: '#4060d0' # new\n  characters:\n    bo:\n      voice: am_echo\nuse: square\ncolour: blue\nwho: bo\nsays: I am Bo.\n"),
+      episode("sq-1", "library:\n  colours:\n    blue: '#4060d0' # new\n  characters:\n    bo:\n      voice: am_echo\n      volume: -4dB\nuse: square\ncolour: blue\nwho: bo\nsays: I am Bo.\n"),
       episode("sq-2", "use: square\ncolour: rouge\n"),
       episode("sq-3", "use: square\ncolour: green\n"),
       episode("sq-4", "library:\n  characters:\n    al:\n      voice: xx_none\nuse: square\ncolour: red\nwho: al\n"),
@@ -180,7 +194,7 @@ test("a reply imported: each episode the plugin takes is written, what it adds g
   assert.deepEqual(taken, [path.join(videos, "sq-1.yaml"), path.join(videos, "sq-2.yaml")]);
   assert.equal(await readFile(path.join(videos, "sq-1.yaml"), "utf8"), "use: square\ncolour: blue\nwho: bo\nsays: I am Bo.\n");
   assert.equal(await readFile(path.join(videos, "sq-2.yaml"), "utf8"), "use: square\ncolour: rouge\n");
-  assert.equal(await readFile(path.join(root, "library.yaml"), "utf8"), `${library}  blue: '#4060d0' # new\n\ncharacters:\n  bo:\n    voice: am_echo\n`);
+  assert.equal(await readFile(path.join(root, "library.yaml"), "utf8"), `${library}  blue: '#4060d0' # new\n\ncharacters:\n  bo:\n    voice: am_echo\n    volume: -4dB\n`);
   assert.match(log, /Library: library\.yaml: added blue, bo \(am_echo\)/);
   assert.match(log, /videos\/sq-2\.yaml: written\n {2}The plugin mends, in what it draws \(the file is as written\):\n {4}- rouge is red/);
 
@@ -209,8 +223,64 @@ test("a reply imported: each episode the plugin takes is written, what it adds g
   assert.doesNotMatch(again.join("\n"), /Library:/);
   assert.equal(await readFile(path.join(videos, "sq-2.yaml"), "utf8"), "use: square\ncolour: red\n");
 
+  // A sound is a file, which no chat has: an episode that adds one is refused, and one that has the library's again is not.
+  const withSounds = `${await readFile(path.join(root, "library.yaml"), "utf8")}\nsounds:\n  bell: { file: sounds/bell.wav }\n`;
+  await writeFile(path.join(root, "library.yaml"), withSounds);
+  const sounds = path.join(root, "stories", "sounds.reply.md");
+  await writeFile(
+    sounds,
+    [
+      episode("sq-7", "library:\n  sounds:\n    drum:\n      file: sounds/drum.wav\nuse: square\ncolour: red\n"),
+      episode("sq-8", "library:\n  sounds:\n    bell: { file: sounds/bell.wav }\n  colours:\n    black: '#000000'\nuse: square\ncolour: black\n"),
+      episode("sq-9", "library:\n  colours:\n    white: '#ffffff'\n  sounds: { horn: { file: a.wav }, fife: { file: b.wav }, bell: { file: c.wav } }\nuse: square\ncolour: white\n"),
+      "All episodes written.\n",
+    ].join("\n"),
+  );
+  const heard = await importReply(sounds, () => {});
+  assert.deepEqual(heard.videos, [path.join(videos, "sq-8.yaml")]);
+  assert.match(heard.refused!, /- sq-7: it adds a sound to the library \(drum\): a sound is a file, which only a person adds, so leave sounds: out of library:\n- sq-9: it adds sounds to the library \(horn and fife\): a sound is a file/);
+  const now = await readFile(path.join(root, "library.yaml"), "utf8");
+  assert.ok(now.includes("black: '#000000'") && now.includes("bell: { file: sounds/bell.wav }") && !/drum|horn|fife|white/.test(now), now);
+
   // A file with no block in it is no reply.
   const empty = path.join(root, "stories", "empty.md");
   await writeFile(empty, "Sure! Here is a summary of the story.\n");
   await assert.rejects(importReply(empty, () => {}), /empty\.md holds no YAML block: paste the chat's reply into it/);
+});
+
+test("a script episode is checked as check checks it, its sounds' files too, and a wrong one is told its mistakes at the lines of its block", async () => {
+  const root = path.join(scratch, "scripts");
+  await mkdir(path.join(root, "src"), { recursive: true });
+  await mkdir(path.join(root, "sounds"));
+  await writeFile(path.join(root, "package.json"), JSON.stringify({ "ai-videos": { plugin: "src/plugin.mjs" } }));
+  await writeFile(path.join(root, "src", "plugin.mjs"), PLUGIN);
+  const library = "colours:\n  red: '#d04040'\ncharacters:\n  sq: { voice: am_puck }\nsounds:\n  bell: { file: sounds/bell.wav }\n  horn: { file: sounds/horn.wav }\n";
+  await writeFile(path.join(root, "library.yaml"), library);
+  await writeFile(path.join(root, "sounds", "bell.wav"), encodeWav(Float32Array.from({ length: 4800 }, (_, i) => 0.3 * Math.sin(i / 10)), 48000));
+  const scene = (colour: string, lines: string[]) => `scenes:\n  - colour: ${colour}\n    script: |\n${lines.map((line) => `      ${line}\n`).join("")}`;
+  const reply = path.join(root, "stories", "sc.reply.md");
+  await mkdir(path.dirname(reply), { recursive: true });
+  await writeFile(
+    reply,
+    [
+      episode("sc-1", `library:\n  characters:\n    bo: { voice: am_echo }\nuse: square\n${scene("red", ["bell play", "sq slide to=right", "& bo say: I am Bo."])}`),
+      episode("sc-2", `# the second\nlibrary:\n  characters:\n    al: { voice: am_echo }\nuse: square\n${scene("red", ["sq slid to=right", "al say: Hello.", "ed say: Who?"])}`),
+      episode("sc-3", `use: square\n${scene("green", ["sq say: Green?"])}`),
+      episode("sc-4", `use: square\n${scene("red", ["horn play", "sq say: A horn?"])}`),
+      "All episodes written.\n",
+    ].join("\n"),
+  );
+  const said: string[] = [];
+  const { refused, videos } = await importReply(reply, (m) => said.push(m));
+  assert.deepEqual(videos, [path.join(root, "videos", "sc-1.yaml")], said.join("\n"));
+  assert.equal(await readFile(videos[0]!, "utf8"), `use: square\n${scene("red", ["bell play", "sq slide to=right", "& bo say: I am Bo."])}`);
+  // What sc-2 draws goes in too, as an episode after it may name it.
+  assert.match(await readFile(path.join(root, "library.yaml"), "utf8"), /\n {2}sq: \{ voice: am_puck \}\n {2}bo: \{ voice: am_echo \}\n {2}al: \{ voice: am_echo \}\nsounds:/);
+
+  // What check says, each line where the chat wrote it: sc-2's first mistake is the file's sixth line, and its block's tenth.
+  const items = refused!.split("\n- ");
+  assert.equal(items.length, 4, refused);
+  assert.match(items[1]!, /^sc-2: 2 mistakes, each at its line of the block \(the one after its fence is line 1\):\n {2}\n {2}line 10: sq slid to=right\n {4}no action is named "slid"\n {4}Hint: the actions are say, slide, play and loop: did you mean slide\?\n {2}\n {2}line 12: ed say: Who\?\n/);
+  assert.match(items[2]!, /^sc-3: a mistake, at its line of the block \(the one after its fence is line 1\):\n {2}\n {2}line 4: - colour: green\n {4}no colour is named "green"\n {4}Hint: the library has red$/);
+  assert.match(items[3]!, /^sc-4: a mistake, at its line of the block[^\n]*\n {2}\n {2}line 6: horn play\n {4}there is no file sounds\/horn\.wav, which library\.yaml has for horn\n/);
 });

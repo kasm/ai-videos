@@ -1,6 +1,7 @@
-# What the cartoons name: each character, drawn once, with its voice, and the backgrounds. A video
-# file names them; the format is in CLAUDE.md ("The library"). `voice` is the video tool's (one of
-# Kokoro's: npm run -s video -- voices lists them); the rest is the cartoon plugin's.
+# What the cartoons name: each character, drawn once, with its voice, the backgrounds, and the sounds a
+# script plays. A video file names them; the format is in CLAUDE.md ("The library"). `voice` is the video
+# tool's (one of Kokoro's: npm run -s video -- voices lists them), and so is `sounds`; the rest is the
+# cartoon plugin's.
 
 characters:
   pip:
@@ -134,6 +135,32 @@ characters:
         - { shape: ellipse, at: [50, -232], size: [18, 22], fill: "#14151a" }
       mouth:
         - { shape: ellipse, at: [0, -165], size: [64, 15], fill: "#5b2333" }
+  bramble: # a small, round, brown hedgehog with prickles and a pointed snout, about 265 by 240
+    voice: bf_isabella
+    shoulder: [75, -94]
+    parts:
+      body:
+        - { shape: rect, at: [-70, -190], size: [18, 50], round: 9, fill: "#4a301c" } # the prickles on top
+        - { shape: rect, at: [-40, -208], size: [18, 50], round: 9, fill: "#4a301c" }
+        - { shape: rect, at: [-8, -215], size: [18, 50], round: 9, fill: "#4a301c" }
+        - { shape: rect, at: [28, -208], size: [18, 50], round: 9, fill: "#4a301c" }
+        - { shape: rect, at: [-100, -165], size: [50, 18], round: 9, fill: "#4a301c" } # and down the back
+        - { shape: rect, at: [-108, -128], size: [50, 18], round: 9, fill: "#4a301c" }
+        - { shape: rect, at: [-108, -90], size: [50, 18], round: 9, fill: "#4a301c" }
+        - { shape: rect, at: [-98, -52], size: [50, 18], round: 9, fill: "#4a301c" }
+        - { shape: rect, at: [0, -105], size: [200, 210], round: 95, fill: "#7a5230" }
+        - { shape: ellipse, at: [20, -100], size: [150, 160], fill: "#d9b48a" } # the face
+        - { shape: ellipse, at: [95, -102], size: [75, 38], fill: "#d9b48a" } # the snout
+        - { shape: ellipse, at: [130, -108], size: [24, 22], fill: "#2b1d14" } # the nose
+      arm:
+        - { shape: rect, at: [75, -70], size: [32, 80], round: 16, fill: "#5c3c22" }
+      eyes:
+        - { shape: ellipse, at: [-12, -142], size: [34, 42], fill: "#ffffff" }
+        - { shape: ellipse, at: [48, -142], size: [34, 42], fill: "#ffffff" }
+        - { shape: ellipse, at: [-2, -139], size: [14, 18], fill: "#1c1917" }
+        - { shape: ellipse, at: [58, -139], size: [14, 18], fill: "#1c1917" }
+      mouth:
+        - { shape: ellipse, at: [20, -80], size: [46, 12], fill: "#5b2333" }
 
 backgrounds:
   meadow: # the plain meadow: the sky, the sun and the grass
@@ -201,3 +228,8 @@ backgrounds:
       - { shape: ellipse, at: [960, 520], size: [1480, 860], fill: "#593722" }
       - { shape: ellipse, at: [1520, 420], size: [260, 260], fill: "#f7c85c" }
       - { shape: rect, at: [960, 950], size: [1920, 260], fill: "#6e472b" }
+
+sounds: # a script plays them; each its file, from this folder, and how loud it is (sounds/make.mjs made these)
+  tune: { file: sounds/tune.flac, volume: -20dB } # eight quiet seconds of music, to be looped
+  jingle: { file: sounds/jingle.flac } # four notes up, as on a radio before the news
+  rustle: { file: sounds/rustle.flac, volume: -6dB } # somebody in the reeds

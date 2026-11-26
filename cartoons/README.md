@@ -1,9 +1,10 @@
 # Cartoons
 
 Simple 2D cartoons with talking characters, made by [ai-videos](../README.md) from one text file
-each. Characters are flat shapes that walk, turn, jump, wave, point, blink and talk in front of a
-background, each in a voice of its own, with captions. There are no props, no changing faces, and
-one move at a time: the narrator tells the rest.
+each. Characters are flat shapes that walk, turn, look at one another, jump, wave, point, blink and
+talk in front of a background, each in a voice of its own, with captions. Several of them act and talk
+at once: a chorus, someone who breaks in, talk over a radio, two who run off together. Music and
+sounds come from the library. There are no props and no changing faces: the narrator tells the rest.
 
 First [set up the tool](../README.md#set-up). The commands below are typed in this folder; it needs
 no install of its own to make videos.
@@ -51,6 +52,11 @@ again.
 **With Claude Code**, opened in the repository's root, ask it to "write an episode from
 stories/\<name\>.md". It answers the same prompt itself, and looks at the frames it made.
 
+A whole example: [stories/the-race.md](stories/the-race.md), a chat's reply to its prompt,
+[the-race.reply.md](stories/the-race.reply.md), and the two episodes it gave,
+[the-race-1.yaml](videos/the-race-1.yaml) and [the-race-2.yaml](videos/the-race-2.yaml), taken and made
+as the chat wrote them.
+
 ## By hand
 
 Save this as `videos/first-talk.yaml`:
@@ -62,52 +68,59 @@ scenes:
   - background: meadow # a background of library.yaml
     places: { pip: left, mo: off-right } # where each character stands as the scene begins
     faces: { mo: left } # the others face right
-    beats: # what happens, a moment at a time
-      - name: mo-comes
-        walk: { who: mo, to: right }
-        says:
-          - { who: narrator, text: "Here comes Mo." }
-      - name: pip-waves
-        pose: { pip: wave }
-        says:
-          - { who: pip, text: "Hello, Mo!" }
-      - name: mo-jumps
-        pose: { pip: stand }
-        jump: { who: mo, times: 2 }
-        says:
-          - { who: mo, text: "Hello, Pip! What a fine day." }
+    script: | # a row for each thing that happens, in order
+      tune loop
+      mo walk to=right
+      & narrator say: Here comes Mo.
+      pip wave
+      & pip say: Hello, Mo!
+      [fine] mo say: Hello, Pip! What a fine day for a jump.
+      & pip stand
+      pip say @ fine.word(jump): A jump?
+      together:
+        pip jump times=2
+        mo jump times=2
+        narrator say: And so they jump, both at once.
 ```
 
-Check it and see its timing, in seconds, then make it:
+The music goes on under the whole scene, Mo walks for as long as the narrator speaks, and Pip breaks
+in at Mo's word "jump". Check it, see its timing, in seconds, then make it:
 
 ```
+npm run -s video -- check videos/first-talk.yaml
 npm run -s video -- make videos/first-talk.yaml --fit
 npm run -s video -- make videos/first-talk.yaml
 ```
 
-The video is `out/first-talk.mp4`. A mistake in the file stops `make`, with the place and the
-reason. One with a single right answer, such as a walk backwards, is
-[mended](CLAUDE.md#mending) in the video instead, and `make` says so.
+The video is `out/first-talk.mp4`. `check` shows every mistake in the file, each with its line and a
+hint, and speaks nothing.
 
-What a beat may have, besides its `name`:
+What a row may be:
 
-| Key | What happens |
+| Row | What happens |
 | --- | --- |
-| `walk: { who: mo, to: right }` | Mo walks to a mark: `off-left`, `left`, `middle`, `right` or `off-right`. |
-| `turn: { who: mo }` | Mo turns to face the other way. |
-| `jump: { who: mo, times: 2 }` | Mo hops in place. |
-| `pose: { pip: wave }` | Pip's arm: `stand`, `wave` or `point`, until it is changed. |
-| `background: night` | The background changes, as a cut. |
-| `says:` | The lines, each with `who` (a character, or `narrator`) and `text`. |
-| `takes: 2` | The beat's length in seconds, for a pause with nothing said. |
+| `pip say: Hello!` | Pip says it, in Pip's voice. `narrator say:` is the narrator, whom nobody sees. |
+| `mo walk to=right` | Mo walks to a place: a mark (`off-left`, `left`, `middle`, `right`, `off-right`), a point (`to=700`), or beside someone (`to=left-of(pip, near)`). |
+| `mo turn` | Mo turns to face the other way. |
+| `mo look-at target=pip` | Mo faces Pip wherever Pip goes, to the end of its block. |
+| `mo jump times=2` | Mo hops. |
+| `pip wave`, `pip point`, `pip stand` | Pip's arm, until it is changed. |
+| `scene background to=night` | The background changes, as a cut. |
+| `tune loop`, `rustle play` | A sound of the library, again and again, or once. |
+| `together:`, `in order:`, `ending together:`, `under:` | A block: its rows, indented under it, begin at once, follow each other, end at once, or go on under the rest and are cut where it ends. |
+| `& …` | The row begins with the one above it. |
+| `… @ a.word(jump)` | The row begins at a moment of the one labelled `[a]`: its start, its end, a share of it, or a word. |
+| `… speed=slow`, `takes=2s`, `volume=-6dB` | A value: how fast, how long, how loud. Set under `values:` on a scene or the file, it holds for all in it. |
 
-A beat has at most one move (`walk`, `turn` or `jump`), and two characters never stand on one mark
-of the stage. The full format is in [CLAUDE.md](CLAUDE.md#the-scenario), and these show it in use:
+A character does one thing at a time with its voice, its place, its facing, its arm and its hops, and
+two characters never stand on one spot. The full format is in [CLAUDE.md](CLAUDE.md#the-script) and
+the tool's [AGENTS.md](../AGENTS.md#a-script), and these show it in use:
 
 - [hello.yaml](videos/hello.yaml): the smallest whole one
-- [meet.yaml](videos/meet.yaml): two characters and the narrator
-- [the-shy-visitor.yaml](videos/the-shy-visitor.yaml): every move and pose, and backgrounds that
-  change
+- [meet.yaml](videos/meet.yaml): two characters who talk, each in a voice of its own
+- [sundown.yaml](videos/sundown.yaml): every action but a look, and a background that changes twice
+- [all-at-once.yaml](videos/all-at-once.yaml): what can happen at once, in three scenes, with music
+  and sounds
 
 ## To change something
 
@@ -118,6 +131,8 @@ of the stage. The full format is in [CLAUDE.md](CLAUDE.md#the-scenario), and the
 | The characters and backgrounds there are | `library.yaml`: [how to draw one](CLAUDE.md#the-library). |
 | The narrator's voice, for every video | `voice` in `package.json`, under `"ai-videos"`. |
 | One video's narrator, speed or loudness | `voice:`, `speed:` or `loudness:` in its file, beside `use:`. |
+| How loud a line, a character or a sound is | `volume=-6dB` on the row, or a character's or a sound's `volume:` in `library.yaml`. |
+| The sounds there are | `sounds:` in `library.yaml`, each a file you put in `sounds/`, licensed for a public repo. |
 | Whether a web page is made too | `outputs: { web: true }` in its file, or `"outputs": { "web": true }` in `package.json` for all. |
 
 `npm run -s video -- voices` writes samples of several voices into the tool's `out/voice-samples/`,

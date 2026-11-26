@@ -2,7 +2,8 @@
 // file and sends it make's calls (make.ts, Call), one at a time, each with the video's source. It
 // does for every plugin what is the same in each: has the source checked, writes the plan as the
 // clip's data, and draws the clip to the request, a moment at a time, encoded by frames.ts: a
-// drawing plugin's SVG turned into pixels by resvg, a recording plugin's PNG as it is.
+// drawing plugin's SVG turned into pixels by resvg, a recording plugin's PNG as it is. A video
+// written as a script is checked and drawn here too, from its compiled scenario alone.
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -11,31 +12,59 @@ import { Resvg } from "@resvg/resvg-js";
 import { z } from "zod";
 import type { requestDocument } from "./fit.ts";
 import { encoder, moments, writeClipData, type ClipText } from "./frames.ts";
+import type { Compiled } from "./compile.ts";
+import { readFormula } from "./formula.ts";
 import type { Call } from "./make.ts";
 import type { DrawingPlugin, EventLimits as Limits, Library, Plan, Plugin, RecordingPlugin, Schema } from "./plugin.ts";
+import { TOOL_ACTIONS, isBlock, readScript } from "./read.ts";
+import { checkScenario, type Action, type Checked, type ConstructionOf, type ScriptPlugin, type Timing, type WrittenScript } from "./scenario.ts";
 import { EventLimits, FORMATS, slug } from "./script.ts";
+import { pictureOf, shownAt } from "./shown.ts";
+import { OWN, plainValues, valuesTaken } from "./values.ts";
+
+/** The check of a video written as a script (scenario.ts): its scenes as written, the names with a voice, the video's pauses, and the library's volumes and sounds. */
+export interface ScriptCall {
+  step: "script";
+  script: WrittenScript;
+  speakers: string[];
+  timing: Timing;
+  volumes: Record<string, number>;
+  sounds: Record<string, string>;
+}
+
+/** The drawing of a video written as a script: its compiled scenario, and the clip to draw from it. */
+export interface PlayCall {
+  step: "play";
+  format: string;
+  /** The size to draw at: the format's. */
+  width: number;
+  height: number;
+  /** The compiled scenario's file (compile.ts), and the clip's. */
+  compiled: string;
+  clip: string;
+}
 
 /**
- * A call for the plugin, with the video file and its source (the file, parsed, without the tool's
- * keys), and the project's library, when it has one: one of make's (make.ts), or import's check,
- * which mends, checks and plans the source and writes nothing.
+ * A call for the plugin, with the project's library, when it has one: one of make's (make.ts), with
+ * the video file and its source (the file, parsed, without the tool's keys); import's check of the
+ * same, which mends, checks and plans the source and writes nothing; a script's check, which writes
+ * nothing either; or a script's drawing, which is given no video file.
  */
-export interface Job {
-  call: Call | { step: "check" };
-  file: string;
-  source: unknown;
-  library?: Library;
-}
+export type Job =
+  | { call: Call | { step: "check" } | ScriptCall; file: string; source: unknown; library?: Library }
+  | { call: PlayCall; library?: Library };
 
 /** What a plugin says of itself when it is ready: its scene, its stage, how it pictures, and its part of the prompt. */
 export interface Described {
   scene: string;
   stage: { width: number; height: number };
-  /** `drawn` as SVG (its `frame`), or `recorded` by its camera. */
+  /** `drawn` as SVG (its `frame`, or its script's `draw`), or `recorded` by its camera. */
   picture: "drawn" | "recorded";
-  guide: string;
-  /** Each command's description and example (its schema stays in the plugin's process). */
-  commands: Record<string, { description: string; example: unknown }>;
+  /** The plan's part of the prompt, and each command's description and example (its schema stays in the plugin's process): none when its videos are scripts alone. */
+  guide?: string;
+  commands?: Record<string, { description: string; example: unknown }>;
+  /** Its part of a script, when its videos may be written as one: its guide, each action's description, example, channels and whether it is fitted or open, each construction's description and example, and its names for numbers. */
+  script?: { guide: string; actions: Record<string, Omit<Action, "values">>; names: Record<string, number>; constructions: Record<string, ConstructionOf> };
 }
 
 /** What a job did: the drawing's frames, what was mended, and for the plan its limits and the files it is made from. */
@@ -47,6 +76,8 @@ export interface Done {
   plan?: Plan;
   limits?: Record<string, Limits>;
   inputs?: string[];
+  /** A script's check: the scenario worked out, or every mistake in it. */
+  script?: Checked;
 }
 
 /** What the host says: once that it is ready (or why not), then once for each job. */
@@ -64,30 +95,69 @@ const isSchema = (v: unknown): v is Schema => {
 const fn = z.custom<never>((v) => typeof v === "function", "give a function");
 const pixels = z.number().int().positive();
 
-/** What the tool reads of a plugin's default export (plugin.ts): one that draws (`frame`) or records (`camera`). */
+/** The plan's part of a plugin (plugin.ts): all of it but what is optional, or, in a plugin with a script, none. */
+const PLAN = ["commands", "guide", "check", "repair", "plan", "inputs", "frame", "camera"] as const;
+
+/** What the tool reads of a plugin's default export (plugin.ts): one that draws (`frame`), records (`camera`), or has scripts alone. */
 const PluginShape = z
   .object({
     scene: slug,
     stage: z.object({ width: pixels, height: pixels }),
-    commands: z.record(
-      slug,
-      z.object({
-        description: z.string().min(1),
-        example: z.custom((v) => v !== undefined, "give an example"),
-        schema: z.custom<Schema>(isSchema, "give a schema with ~standard.validate and ~standard.jsonSchema (as zod 4's have)"),
-      }),
-    ),
-    guide: z.string().trim().min(1, "give the plugin's part of the prompt (plugin.ts, guide)"),
-    check: fn,
+    commands: z
+      .record(
+        slug,
+        z.object({
+          description: z.string().min(1),
+          example: z.custom((v) => v !== undefined, "give an example"),
+          schema: z.custom<Schema>(isSchema, "give a schema with ~standard.validate and ~standard.jsonSchema (as zod 4's have)"),
+        }),
+      )
+      .optional(),
+    guide: z.string().trim().min(1, "give the plugin's part of the prompt (plugin.ts, guide)").optional(),
+    check: fn.optional(),
     repair: fn.optional(),
-    plan: fn,
+    plan: fn.optional(),
     inputs: fn.optional(),
     frame: fn.optional(),
     camera: fn.optional(),
+    script: z
+      .object({
+        actions: z.record(
+          slug,
+          z
+            .object({
+              description: z.string().min(1),
+              example: z.string().min(1),
+              values: z.custom<Schema>(isSchema, "give a schema with ~standard.validate and ~standard.jsonSchema (as zod 4's have)"),
+              channels: z.array(slug, "give what of its character it keeps busy: its channels, as [\"place\"]").min(1, "name one channel at least"),
+              fits: z.boolean().optional(),
+              open: z.boolean().optional(),
+            })
+            .refine(({ fits, open }) => !(fits && open), "it is fitted to words (fits) or goes on to the end of its block (open), one of the two"),
+        ),
+        names: z.record(slug, z.number()).optional(),
+        constructions: z.record(slug, z.object({ description: z.string().min(1), example: z.string().min(1) })).optional(),
+        tables: z.array(z.string().min(1)).optional(),
+        guide: z.string().trim().min(1, "give the plugin's part of the guide to a script (plugin.ts, script)"),
+        check: fn,
+        draw: fn,
+      })
+      .optional(),
   })
-  .refine((p) => (p.frame === undefined) !== (p.camera === undefined), {
-    message: "give frame (a moment drawn as an SVG) or camera (a moment recorded as a PNG), one of the two",
-    path: ["frame"],
+  .superRefine((p, ctx) => {
+    // The plan's part is all there, or, with a script, none of it.
+    const given = PLAN.filter((key) => p[key] !== undefined);
+    if (given.length === 0 && p.script) return;
+    if (given.length === 0) {
+      ctx.addIssue({ code: "custom", message: "give the plan's part (commands, guide, check, plan, and frame or camera), or a script, or both", path: [] });
+      return;
+    }
+    for (const key of ["commands", "guide", "check", "plan"] as const) {
+      if (p[key] === undefined) ctx.addIssue({ code: "custom", message: `the plan's part has ${key} too: give it, or none of the plan's part and a script`, path: [key] });
+    }
+    if ((p.frame === undefined) === (p.camera === undefined)) {
+      ctx.addIssue({ code: "custom", message: "give frame (a moment drawn as an SVG) or camera (a moment recorded as a PNG), one of the two", path: ["frame"] });
+    }
   });
 
 /** What a plan's `inputs` may be: paths from the project's folder, each a file or a folder there or above. */
@@ -137,7 +207,7 @@ export async function loadPlugin(file: string): Promise<Plugin> {
   const shape = PluginShape.safeParse(module.default);
   if (!shape.success) throw new Error(`${file} is not a plugin (its default export; AGENTS.md, "Plugins"):\n${z.prettifyError(shape.error)}`);
   const plugin = module.default as Plugin;
-  for (const [name, { example, schema }] of Object.entries(plugin.commands)) {
+  for (const [name, { example, schema }] of Object.entries(plugin.commands ?? {})) {
     const checked = await schema["~standard"].validate(example);
     if (checked.issues) throw new Error(`${file}: the command "${name}" fails its own example:\n${issuesText(checked.issues)}`);
     try {
@@ -145,6 +215,35 @@ export async function loadPlugin(file: string): Promise<Plugin> {
     } catch (e) {
       throw new Error(`${file}: the command "${name}" has a schema that does not write itself as JSON Schema: ${message(e)}`);
     }
+  }
+  // An action's example is one line of a script that names it, with no block, label or anchor, its values what the action takes.
+  for (const [name, { example, values }] of Object.entries(plugin.script?.actions ?? {})) {
+    if (TOOL_ACTIONS.includes(name)) throw new Error(`${file}: "${name}" is the tool's own action: give the plugin's another name`);
+    const read = readScript(example);
+    const [line] = read.items;
+    let why = read.issues[0] && `  ${read.issues[0].message}`;
+    const own = line && !isBlock(line) && read.items.length === 1 && line.action === name && !line.text && !line.label && !line.anchor ? line : undefined;
+    if (!why && !own) why = `  it is one line of a script that names ${name}, with no words after a colon`;
+    why ??= issuesText((await values["~standard"].validate(plainValues(own!.values, plugin.script?.names))).issues ?? []);
+    if (why) throw new Error(`${file}: the action "${name}" fails its own example, ${example}:\n${why}`);
+  }
+  // A construction's is one of it, and nothing more.
+  for (const [name, { example }] of Object.entries(plugin.script?.constructions ?? {})) {
+    let why: string | undefined;
+    try {
+      const formula = readFormula(example);
+      if (formula.is !== "construction" || formula.name !== name) why = `it is ${name}( ) with what it is worked out from, by itself`;
+    } catch (e) {
+      why = message(e);
+    }
+    if (why) throw new Error(`${file}: the construction "${name}" fails its own example, ${example}:\n  ${why}`);
+  }
+  // The tool's own values mean what they mean for every action, and a name for a number is no action's value.
+  const taken = Object.entries(valuesTaken(plugin.script?.actions ?? {})).flatMap(([name, values]) => Object.keys(values).map((value) => [name, value] as const));
+  for (const [name, value] of taken) if (OWN.includes(value)) throw new Error(`${file}: the action "${name}" takes a value called ${value}, which is the tool's own for every action`);
+  for (const name of Object.keys(plugin.script?.names ?? {})) {
+    const of = OWN.includes(name) ? "the tool's" : taken.find(([, value]) => value === name)?.[0];
+    if (of) throw new Error(`${file}: "${name}" is a value of ${of === "the tool's" ? of : `${of}'s`}, and no name for a number`);
   }
   return plugin;
 }
@@ -158,6 +257,7 @@ function fills(plugin: Plugin, format: string, { width, height }: { width: numbe
 }
 
 type Request = ReturnType<typeof requestDocument>;
+type Size = { width: number; height: number };
 
 function readRequest(file: string): Request {
   let text: string;
@@ -173,8 +273,9 @@ function readRequest(file: string): Request {
 const ms = (seconds: number) => Math.round(seconds * 1000) / 1000;
 
 /**
- * The plan's texts as the request times them: a time in a beat moves with the beat, in proportion
- * to how far into it it was. An end goes with the beat it ends, a start with the one it begins.
+ * The plan's texts as the request times them: a time in an event's span moves with the span, in
+ * proportion to how far into it it was. An end goes with the span it ends, a start with the one it
+ * begins.
  */
 function retime(plan: Plan, request: Request): ClipText[] {
   const at = (t: number, end: boolean) => {
@@ -187,22 +288,32 @@ function retime(plan: Plan, request: Request): ClipText[] {
   return plan.texts.map((text) => ({ ...text, from: at(text.from, false), to: Math.min(at(text.to, true), request.duration) }));
 }
 
+/** The SVG of each frame of the source drawn to the request, a moment at a time. */
+function* framesTo(plugin: DrawingPlugin, source: unknown, request: Request, size: Size) {
+  for (const moment of moments(request)) yield plugin.frame(source, moment, size);
+}
+
+/** The SVG of each frame of a compiled scenario, drawn by the plugin's script. */
+function* framesOf(script: ScriptPlugin, compiled: Compiled, library: Library | undefined, size: Size) {
+  const picture = pictureOf(compiled);
+  const draw = script.draw(library);
+  for (let frame = 0; frame < picture.frames; frame++) yield draw(shownAt(picture, frame), size);
+}
+
 /**
- * Draws the source to the request into `call.clip`, a moment at a time. A frame whose SVG is the one
- * before is not drawn again. Beside the clip's `.frames`, `<clip>.svgs` holds a hash of each frame's
- * SVG, a line a frame: what a web page of the video draws (page.ts) is compared with it.
+ * Draws the clip `file` from its frames' SVGs, in order. A frame whose SVG is the one before is not
+ * drawn again. Beside the clip's `.frames`, `<clip>.svgs` holds a hash of each frame's SVG, a line a
+ * frame: what a web page of the video draws (page.ts) is compared with it.
  */
-async function draw(plugin: DrawingPlugin, source: unknown, call: Extract<Call, { step: "draw" }>, request: Request) {
-  const size = { width: call.width, height: call.height };
-  const out = encoder(call.clip, { ...size, fps: request.fps, crf: CRF });
+async function draw(file: string, size: Size, fps: number, frames: Iterable<string>) {
+  const out = encoder(file, { ...size, fps, crf: CRF });
   let drawn = 0;
   let svg = "";
   let picture: Uint8Array | undefined;
   const svgs: string[] = [];
   let hash = "";
   try {
-    for (const moment of moments(request)) {
-      const next = plugin.frame(source, moment, size);
+    for (const next of frames) {
       if (next !== svg || !picture) {
         svg = next;
         hash = svgHash(svg);
@@ -222,9 +333,9 @@ async function draw(plugin: DrawingPlugin, source: unknown, call: Extract<Call, 
     out.abort();
     throw e;
   }
-  const frames = await out.end();
-  writeFileSync(`${call.clip}.svgs`, `${svgs.join("\n")}\n`);
-  return { frames, drawn };
+  const count = await out.end();
+  writeFileSync(`${file}.svgs`, `${svgs.join("\n")}\n`);
+  return { frames: count, drawn };
 }
 
 /**
@@ -256,6 +367,17 @@ async function record(plugin: RecordingPlugin, source: unknown, call: Extract<Ca
   return { frames: await out.end(), drawn };
 }
 
+/** A compiled scenario's clip, drawn from its file and the library, and nothing else. */
+async function play(plugin: Plugin, call: PlayCall, library: Library | undefined): Promise<Done> {
+  if (!plugin.script) throw new Error(`the ${plugin.scene} plugin draws no script: it has no script (AGENTS.md, "A script")`);
+  fills(plugin, call.format, call);
+  const compiled = JSON.parse(readFileSync(call.compiled, "utf8")) as Compiled;
+  const size = { width: call.width, height: call.height };
+  const began = performance.now();
+  const { frames, drawn } = await draw(call.clip, size, compiled.fps, framesOf(plugin.script, compiled, library, size));
+  return { frames, drawn, seconds: (performance.now() - began) / 1000 };
+}
+
 /** A frame's SVG as `<clip>.svgs` holds it: the md5 of its text, as UTF-8. */
 export const svgHash = (svg: string) => createHash("md5").update(svg).digest("hex");
 
@@ -263,10 +385,17 @@ export const svgHash = (svg: string) => createHash("md5").update(svg).digest("he
  * One of make's calls: step one writes the plan as the clip's data, and says what the plugin
  * mended in the source, the plan's limits and the files it is made from; step two draws the clip
  * and writes its data again. Each has the source mended, then checked. Import's check gives what
- * was mended and the plan, and writes nothing.
+ * was mended and the plan, and writes nothing. A script's two: its check, and its clip drawn from
+ * the compiled scenario.
  */
 export async function runJob(plugin: Plugin, pluginFile: string, job: Job): Promise<Done> {
+  if (!("file" in job)) return play(plugin, job.call, job.library);
   const { call, file } = job;
+  if (call.step === "script") {
+    if (!plugin.script) throw new Error(`${file} is written as a script, and the ${plugin.scene} plugin takes none: it has no script (AGENTS.md, "A script")`);
+    return { script: await checkScenario(plugin.script, call.script, job.library, call.speakers, call.timing, call.volumes, call.sounds) };
+  }
+  if (!plugin.plan) throw new Error(`${file} is not written as a script, and the ${plugin.scene} plugin's videos are scripts alone: give each scene a script: (AGENTS.md, "A script")`);
   if (call.step !== "check") fills(plugin, call.format, call.step === "draw" ? call : FORMATS[call.format]);
   const repaired = plugin.repair?.(job.source, job.library) ?? { source: job.source, did: [] };
   const source = plugin.check(repaired.source, file, job.library);
@@ -285,9 +414,12 @@ export async function runJob(plugin: Plugin, pluginFile: string, job: Job): Prom
   // The tool writes the request from this plan's data, so they differ only when the source changed since.
   const kinds = (list: { name: string; span: string }[]) => list.map((s) => `${s.name} (${s.span})`).join(", ");
   const asked = kinds(request.spans.map((s) => ({ name: s.event, span: s.span })));
-  if (asked !== kinds(plan.events)) throw new Error(`the request's spans (${asked}) are not the source's beats (${kinds(plan.events)}): make the video again`);
+  if (asked !== kinds(plan.events)) throw new Error(`the request's spans (${asked}) are not the source's events (${kinds(plan.events)}): make the video again`);
   const began = performance.now();
-  const { frames, drawn } = plugin.camera ? await record(plugin, source, call, request) : await draw(plugin, source, call, request);
+  const size = { width: call.width, height: call.height };
+  const { frames, drawn } = plugin.camera
+    ? await record(plugin, source, call, request)
+    : await draw(call.clip, size, request.fps, framesTo(plugin, source, request, size));
   writeClipData(call.data, {
     ...made,
     request: call.request,
@@ -315,8 +447,14 @@ if (import.meta.main) {
         ),
       );
     });
-    const commands = Object.fromEntries(Object.entries(plugin.commands).map(([name, { description, example }]) => [name, { description, example }]));
-    await send({ ready: { scene: plugin.scene, stage: plugin.stage, picture: plugin.camera ? "recorded" : "drawn", guide: plugin.guide, commands } });
+    const commands = plugin.commands && Object.fromEntries(Object.entries(plugin.commands).map(([name, { description, example }]) => [name, { description, example }]));
+    const script = plugin.script && {
+      guide: plugin.script.guide,
+      actions: Object.fromEntries(Object.entries(plugin.script.actions).map(([name, { values: _values, ...described }]) => [name, described])),
+      names: plugin.script.names ?? {},
+      constructions: Object.fromEntries(Object.entries(plugin.script.constructions ?? {}).map(([name, { description, example }]) => [name, { description, example }])),
+    };
+    await send({ ready: { scene: plugin.scene, stage: plugin.stage, picture: plugin.camera ? "recorded" : "drawn", ...(plugin.plan ? { guide: plugin.guide, commands } : {}), ...(script ? { script } : {}) } });
   } catch (e) {
     await send({ failed: message(e) });
     process.exit(1);

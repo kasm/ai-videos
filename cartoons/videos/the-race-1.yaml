@@ -1,0 +1,50 @@
+use: cartoon
+cast: { radio: am_michael }
+values: { pause: 0.4s }
+scenes:
+  - background: morning
+    places: { mo: off-left, pip: off-right, bramble: off-left, tuk: off-right }
+    faces: { pip: left, tuk: left }
+    script: |
+      mo walk to=700
+      & narrator say: Every morning, Mo brings out his old radio.
+      pip walk to=1200
+      & narrator say: And Pip comes to hear the news with him.
+      narrator say: This morning, they are there early.
+      jingle play
+      radio say: Good morning. Today at noon there is a race
+      radio say: to the big oak, at the far end of the meadow.
+      radio say: Whoever gets there first wins a basket of plums.
+      together:
+        pip say volume=4dB: A race!
+        mo say volume=4dB: A race!
+        pip jump
+        mo jump
+      in order:
+        under volume=-12dB:
+          radio say: And now the weather. It will be dry all morning, with a light wind from the west.
+          radio say: Clouds will come in the afternoon, and there may be a little rain tonight.
+        [boast] mo say: I have the longest legs in the meadow, so I...
+        pip say @ boast.word(so): And I have the fastest feet!
+        narrator say: The radio goes on about the weather.
+        narrator say: Nobody listens to it.
+      rustle play
+      narrator say: Something rustles in the long grass.
+      bramble walk to=330
+      & narrator say: Out steps somebody they have never seen.
+      & mo turn
+      narrator say: A hedgehog, small, round, brown and prickly.
+      narrator say: Her name is Bramble. She lives in the hedge
+      narrator say: at the end of the meadow.
+      bramble say: If you please, I would like to race too.
+      together:
+        pip say: Ha, ha, ha!
+        mo say: Ha, ha, ha!
+        pip jump times=2
+      mo say: A hedgehog? In a race?
+      tuk walk to=1560 speed=fast
+      & narrator say: Then Tuk runs in, all out of breath.
+      & pip turn
+      tuk say: I heard it on the radio! I am racing too!
+      & tuk jump
+      narrator say: Now there are four who want those plums.

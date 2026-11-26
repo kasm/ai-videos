@@ -1,0 +1,755 @@
+# Plan: the compiled scenario
+
+## Now
+
+- Plan written 2026-11-24 in the chat that designed it, the user's yes
+  that day. It replaces `concurrent-actions.md` (in git's history, `main`
+  at 6be1a85), whose goal it carries whole.
+- The user's picks that day: a scenario is script lines in the YAML
+  video file; the seven cartoons are rewritten at the end; places by
+  construction, two actions by one character at once, looking at someone
+  who moves and a start at a word of a line are in; the hierarchy
+  inherits, with no reusable pieces; the smallest script comes first; the
+  work goes on the branch `compiled-scenario`, from `main`. Kept from the
+  old plan: cartoons
+  stay at -14 LUFS, judged by ear; two rows of captions at most, smaller,
+  a third speaker with none; the sample's sounds are plain ones made with
+  ffmpeg.
+- `docs/scenario2.md` is the user's first sketch of this system. Where
+  the two differ, this plan holds: its Markdown file, its plugins and its
+  errors after the voices are not taken.
+- The old step 1's draft (commit e955433, branch `concurrent-actions`)
+  is not built on: today's plan format stays as on `main`.
+- **Step 1 done 2026-11-24.** Checked:
+  `npm test` and `npm run typecheck` here and in `cartoons/`; RayCraft's
+  media typecheck and `test:libs`, no file of RayCraft changed;
+  `make --fit` of the ten gives requests equal to the baseline, byte for
+  byte; `make cartoons/videos/hello-script.yaml --fit` writes
+  `.cache/hello-script/compiled.json`; `check`, on a broken copy of it
+  with an empty `AI_VIDEOS_CACHE`, refuses an unknown action, a wrong
+  value and an unknown name, each with its line and a hint.
+- **Step 2 done 2026-11-25**, watched by the user beside `hello`. The
+  narrator begins after the walk (4.77 s, `hello`'s at 0.6 s), as lines
+  only follow each other so far: the user's pick was to pin that in step
+  4's "Done when". Other picks: the tool works out what a frame shows and
+  the plugin draws that; a said line holds its mouth and its captions.
+  Checked: `npm test` and `npm run typecheck` here and in `cartoons/`;
+  RayCraft's media typecheck and `test:libs`, no file of it changed;
+  `make --fit` of the ten gives requests equal to the baseline, byte for
+  byte, and the seven cartoons, made whole, draw the same `.svgs`;
+  `make cartoons/videos/hello-script.yaml` gives the video, 289 frames
+  as compiled, and the page, whose own drawing gives the video's `.svgs`;
+  so did a longer script (two scenes, four speakers, 25 fps).
+- **Step 3 done 2026-11-25**, its laws accepted by the user that day:
+  `AGENTS.md`, "What happens at once". The user's picks: in order, a line
+  comes after everything above it, the anchored too; what is cut or open
+  at a scene's own level goes on through its `tail`; a voice that waits for
+  the end of its block's fitted move is refused. Checked: `npm test` and
+  `npm run typecheck` here and in `cartoons/`; RayCraft's media typecheck
+  and `test:libs`, no file of it changed; `make --fit` of the ten gives
+  requests equal to the baseline, byte for byte (the seven made anew, in a
+  copy of `cartoons/`; RayCraft's three from the cache); 5,000 random
+  scripts compile to the same bytes as before, and `hello-script`, made
+  whole, has every stage from the cache; each of thirty laws broken on
+  purpose fails a test.
+- Left by step 3: for step 8, a second look in one block is refused so far,
+  as the first holds its channel.
+- **Step 4 done 2026-11-25.** The user's picks: the words `in order:`,
+  `together:` and `under:`, not Flexbox's; a moment is `a.50%`, and a word
+  is named, `a.word(mole)`; Flexbox's sharing of spare time is a step of
+  its own, 5b; the walk joined to a line in `hello-script` stays at 1.69
+  times its own speed (`hello`'s 1.17). Checked: `npm test` and `npm run typecheck` here and in
+  `cartoons/`; RayCraft's media typecheck and `test:libs`, no file of it
+  changed; `make --fit` of the ten gives requests equal to the baseline,
+  byte for byte; `all-at-once` and `hello-script` made whole: each video has
+  the frames compiled, its voices are in its sound at their compiled times
+  (within 0.2 ms), the cut one's rest is not, and the page's own drawing
+  gives the video's `.svgs`; `hello-script` has `hello`'s frames (164, the
+  narrator at 0.6 s); two fresh `claude -p`, the default model's and
+  Sonnet's, given only the guide, each wrote a cartoon with all of it that
+  passed `check` as written; 40,000 random scripts neither throw nor break a
+  compiled scenario; each of sixty rules broken on purpose fails a test.
+- Left by step 4: for step 7, each character's actions are one channel so
+  far, and places are checked in the order written; for step 9, voices at
+  once can clip (`all-at-once`'s mix peaks at 1.21, 19 samples); for step
+  11, one caption shows at a time, and in `all-at-once` six are up too
+  short to read.
+- **Step 5 done 2026-11-25.** The user's picks: values are set by
+  `values:` and on a block's header; a formula is inherited as it is
+  written; a move given a speed or `takes`, on any level, keeps it and is
+  fitted to no words; `speed` is the tool's, times the action's own;
+  `arrive=` came in with it; a pause that comes to less than 0 is none.
+  And, beyond the step: the promise "a longer voice begins nothing earlier"
+  is dropped (step 3 proved it, and nothing rested on it), so that
+  `5s - a.length` is allowed; 5b is cut down to a block whose lines end
+  together; 5a is new. Checked: `npm test` and `npm run typecheck` here and
+  in `cartoons/`; RayCraft's media typecheck and `test:libs`, no file of it
+  changed; `make --fit` of the ten gives requests equal to the baseline,
+  byte for byte; `hello-script` compiles to the same bytes as before;
+  `all-at-once` made whole has the frames compiled (929, two beats between
+  the radio's lines), the page's own drawing gives the video's
+  `.svgs`, and with `beat` alone changed to 0.8s it has 1,085; three fresh
+  `claude -p`, two of the default model and one of Sonnet, given only the
+  guide, each wrote a cartoon with a block's settings that passed `check` as
+  written; 60,000 random scripts, 15,521 of them accepted, neither throw nor
+  break a compiled scenario; each of 105 rules broken on purpose fails a
+  test, but the four that 5a takes.
+- **Step 5a done 2026-11-25.** The generator it replaces wrote 2,409
+  different scripts in 40,000 draws. Found by the random scripts and mended:
+  a sum a hair off 0 was no 0 (`speed=0.1 + 0.2 - 0.3` gave a scene of 4.5e17
+  frames), one mistake of a line was said twice, and a slip of grammar in a
+  message. Checked: `npm test` and `npm run typecheck` here and in
+  `cartoons/`; RayCraft's media typecheck and `test:libs`, no file of it
+  changed; `make --fit` of the ten gives requests equal to the baseline, byte
+  for byte; `hello-script` and `all-at-once` compile to the same bytes as
+  before; 40,000 different random scripts, 20,726 of them with no mistake
+  (and 100,000, 51,580), none throws or breaks a compiled scenario, and each
+  timing keeps the promises and is the laws'; step 5's own run with the
+  cartoon plugin, 80,000 more, finds nothing; each of 110 rules broken on
+  purpose fails a test, the four too; of 67 breaks in what lays a script or
+  draws a random one, the random tests and the generator's own find 59 (the
+  other eight are among the 110).
+- **Step 5b done 2026-11-25**, its law accepted by the user that day, as
+  proposed. The user's picks: the word is `ending together:`, as
+  `end together:` can be read as the close of a block; a line whose channel
+  is busy ends the whole block later; any anchor in it is refused, also to
+  something outside it, and so is `arrive`. In `all-at-once` Tuk walks in,
+  the words ending as it arrives: the first pick, a walk off the stage, was
+  out of sight 0.9 s before it ended. Checked: `npm test` and
+  `npm run typecheck` here and in `cartoons/`; RayCraft's media typecheck
+  and `test:libs`, no file of it changed; `make --fit` of the ten gives
+  requests equal to the baseline, byte for byte; `hello-script` compiles to
+  the same bytes as before; `all-at-once` made whole has the frames compiled
+  (983), the page's own drawing gives the video's `.svgs`, and its 19 voices
+  are in its sound at their compiled times; 7,757 random plans keep every
+  property, with the plain solver's times; 40,000 different random scripts,
+  20,732 of them with no mistake, neither throw nor break a compiled
+  scenario; of 54 rules broken on purpose, 53 fail a test, and the other (a
+  walk in the block fitted to its voices) changes no timing.
+- **Step 6 done 2026-11-25**, `all-at-once`'s scene accepted by the user
+  that day. The user's picks: the step touches the tool too, which reads
+  `name(a, b)` in a line and in `places:`, and the plugin says what it comes
+  to; a point is one number, its x on the ground, among the values, so a
+  place has no height, and `door + 100` stands for an offset; `near` is the
+  gap between two bodies, 0.3 of the smaller one's width; two are on one
+  spot when one covers more than 0.3 of the smaller; a position is no value:
+  `places:` says where a character begins, and its name in a place is where
+  it is. Reading one as a number (`pip.x + 100`) waits until a cartoon needs
+  it. Checked: `npm test` and `npm run typecheck` here and in `cartoons/`;
+  RayCraft's media typecheck and `test:libs`, no file of it changed;
+  `make --fit` of the ten gives requests equal to the baseline, byte for
+  byte; `hello-script`, and `all-at-once` as it was, compile to the same
+  bytes as before; `all-at-once` made whole has the frames compiled (988),
+  the page's own drawing gives the video's `.svgs`, and its 19 voices are in
+  its sound at their compiled times; 40,000 different random scripts, 20,326
+  of them with no mistake, neither throw nor break a compiled scenario; each
+  of 135 rules broken on purpose fails a test. Not tried: the guide on a
+  fresh `claude -p`.
+- Left by step 6: for step 7, who stands where is followed in the order
+  written, so two who walk to one spot at different times are told by that
+  order alone.
+- **Step 7 done 2026-11-25**, its laws and `all-at-once`'s third scene
+  accepted by the user that day. The user's picks: a walk may end where
+  another stands only if that one has surely left, however long the voices
+  turn out to be; two rows on one channel that would begin at once are
+  refused, words too, in a `together:` or joined by `&`; the arm's actions
+  are `wave`, `point` and `stand`, a pose that stays; a plugin says which
+  of its actions may be fitted, and only the walk is. "Surely left" is
+  before the other arrives, not as it does: else two who arrive at once
+  pass, if one goes on at once, by the order they are written in. The step
+  touches the tool too: its actions name their channels, and law 7 grew.
+  Checked: `npm test` and `npm run typecheck` here and in `cartoons/`;
+  RayCraft's media typecheck and `test:libs`, no file of it changed;
+  `make --fit` of the ten gives requests equal to the baseline, byte for
+  byte, and the seven cartoons draw the same 6,942 frames; `hello-script`
+  compiles to the same bytes as before, and `all-at-once`'s first two
+  scenes too, but for their line numbers; `all-at-once` made whole has the
+  frames compiled (1,321), the page's own drawing gives the video's
+  `.svgs`, and its 23 voices are in its sound at their compiled times;
+  40,000 different random scripts, 20,562 of them with no mistake, neither
+  throw nor break a compiled scenario; of 180,000 with the cartoon plugin,
+  130,635 are taken, and in none do two ever stand on one spot, or a channel
+  go on from anywhere but where it was left; each of 166 rules broken on
+  purpose fails a test. Not tried: the guide on a fresh `claude -p`.
+- Left by step 7: the spot's check is safe, not exact. Of 3,087 small
+  shapes, 1,306 are refused for a spot alone, and 58 of those no voice
+  lengths tried spoil (the ones looked at have walks anchored part-way into
+  one another, or to one's end). For step 13, a script cannot change the
+  background within a scene, which `sundown` and `the-shy-visitor` do, in
+  two beats each: step 7a, new, the user's yes 2026-11-25.
+- **Step 7a done 2026-11-25**, `all-at-once`'s change accepted by the user
+  that day. The user's picks: the row is `scene background to=night`, so
+  `scene` is no character's name; it lasts a frame, or the time it is given;
+  two anchored to one moment are taken, as on any channel (law 7 stays as it
+  is). In `all-at-once` the third scene's last words are new, and the day
+  breaks in them as the badger walks off. Checked: `npm test` and
+  `npm run typecheck` here and in `cartoons/`; RayCraft's media typecheck and
+  `test:libs`, no file of it changed; `make --fit` of the ten gives requests
+  equal to the baseline, byte for byte, and the seven cartoons draw the same
+  6,942 frames; `hello-script` compiles to the same bytes as before, and
+  `all-at-once`'s first two scenes too; `all-at-once` made whole has the
+  frames compiled (1,346), the page's own drawing gives the video's `.svgs`,
+  and its 23 voices are in its sound at their compiled times; of 60,000
+  different random scripts with the cartoon plugin, 30,990 are taken, each
+  frame of them shows the last background that has begun, and what is refused
+  of a change is what a plain re-telling of the rows says; each of 46 rules
+  broken on purpose fails a test. Not tried: the guide on a fresh `claude -p`; and no
+  test has the timing `make` prints, which gives no speed to what is over
+  within a frame.
+- Left by step 7a: of two changes anchored to one moment the second waits a
+  frame, so the first shows for one.
+- **Step 8 done 2026-11-25**, `all-at-once`'s looks accepted by the user
+  that day. The user's picks: `follow` is left out, with its refusal (a walk
+  joined to another's, to beside where that ends, keeps beside it: 276 px on
+  every frame, tried); a second look, or a turn, in a look's block stays
+  refused; a look leaves its character facing the side where the other was
+  as it ended, worked out as it is drawn, so nothing more is refused, and
+  the compiled scenario says of a `turn` only that it turns. A plugin's
+  action may be `open` now, and the picture is told how long each lasts;
+  the laws' text is made clearer alone, and an open move under the rest is
+  refused, as law 6 has it. Checked: `npm test` and `npm run typecheck` here
+  and in `cartoons/`; RayCraft's media typecheck and `test:libs`, no file of
+  it changed; `make --fit` of the ten gives requests equal to the baseline,
+  byte for byte, and the seven cartoons draw the same 6,942 frames;
+  `hello-script` compiles to the same bytes as before, and `all-at-once` too,
+  but for its looks, its turns and its line numbers; `all-at-once` made whole
+  has the frames compiled (1,346), 48 of them other than before, the page's
+  own drawing gives the video's `.svgs`, and its 23 voices are in its sound at
+  their compiled times; 40,000 different random scripts, 20,556 of them with
+  no mistake, neither throw nor break a compiled scenario; of 60,000 with the
+  cartoon plugin, 42,690 are taken, and each facing in each frame of them is
+  what a plain re-telling says (and of 4,000 more, after the picture's last
+  edit); each of 111 rules broken on purpose fails a test. Not tried: the
+  guide on a fresh `claude -p`.
+- Left by step 8: a look is at a character alone, and not at a place; a second
+  look in one block may be taken later, and no script breaks by it.
+- **Step 9 done 2026-11-25**, `all-at-once`'s sound accepted by the user that
+  day. The user's picks: every voice is first made as loud as any other, so that 0dB
+  is the same for all, over each as Kokoro speaks it; at the video's loudness
+  the difference gives way, so a line louder than the rest is flattened to
+  what fits, and `make` says how far the peaks were lowered. A volume is in
+  decibels, from -60 to 12, and a character's is in the library. A cartoon in
+  beats has none, and keeps today's levelling. Checked: `npm test` and
+  `npm run typecheck` here and in `cartoons/`; RayCraft's media typecheck
+  and `test:libs`, no file of it changed; `make --fit` of the ten gives
+  requests equal to the baseline, byte for byte, the seven cartoons draw the
+  same 6,942 frames, and each of the ten's `sound.m4a`, made anew, is the
+  same bytes, its key too; two lines written 12 dB apart are 11.7 apart in
+  the test's sound, which today's levelling has 10.9 apart; `hello-script`
+  and `all-at-once` compile as before but for the volumes and the line
+  numbers; `all-at-once` made whole has the frames compiled (1,346), only
+  its sound made anew, at -14.0 LUFS, its 23 voices at their compiled times,
+  the narrator at -13.4 in four lines of five (before, -12.6 to -16.5),
+  the radio 8 dB under and Tuk's hush 6; the page's own drawing gives the
+  video's `.svgs`; 40,000 different random scripts with volumes on every
+  level, 20,440 of them with no mistake, neither throw nor break a compiled
+  scenario, and each said line's volume is what a plain re-telling says; how
+  loud a voice is agrees with ffmpeg's meter on all 552 cached voices, to
+  0.06 LU; of 126 rules broken on purpose, 122 fail a test, and the other four
+  change no result. Not tried: the guide on a fresh `claude -p`.
+- Left by step 9: the narrator's volume is the file's to set
+  (`narrator.volume`), as it is not in the library; for step 10, a script's
+  mix is mono, at the voices' 24 kHz.
+- **Step 10 done 2026-11-26**, `all-at-once`'s music and effects accepted by
+  the user that day. The user's picks: a sound is the one who does its line
+  (`rustle play`, `tune loop`), and what is looped is open; music over the
+  scenes is in a script of the cartoon's own, on top of the file, sounds alone,
+  from the first frame to where the last scene ends; at `0dB` a sound is as
+  loud as a voice, its file measured; a stereo file keeps its two channels, so a
+  script's mix has two, at 48 kHz. No law changed: the cartoon's own rows are together with its scenes,
+  each open or cut. Checked: `npm test` and `npm run typecheck` here and in
+  `cartoons/`; RayCraft's media typecheck and `test:libs`, no file of it
+  changed; `make --fit` of the ten gives requests equal to the baseline, byte
+  for byte, the seven cartoons draw the same 6,942 frames, and each of the ten's
+  `sound.m4a`, made anew, is the same bytes, its key too; `hello-script`
+  compiles to the same bytes as before, and `all-at-once` without its sounds
+  too, but for its line numbers; `all-at-once` made whole has the frames
+  compiled (1,412), at -14.0 LUFS, its 23 voices, its jingle and its rustle at
+  their compiled times, its tune where it should be over both cuts, each as
+  loud as it is written to 0.1 dB (the rustle 1.1 dB less, as the limiter takes
+  more of it), and the page's own drawing gives the video's `.svgs`; a rustle of
+  other bytes and the same length had the sound alone made anew, the clip, the
+  check and the render from the cache; 40,000 different random scripts with
+  sounds over the scenes and in them, 20,151 of them with no mistake, neither
+  throw nor break a compiled scenario, and each is laid by the laws and as loud
+  as a plain re-telling says; of 162 rules broken on purpose, 160 fail a test,
+  and the other 2 change no result. Not tried: the guide on a fresh `claude -p`.
+- Left by step 10: music under some of the scenes and not the others is not
+  written yet (groups of scenes, a `script:` and `scenes:` in a row of
+  `scenes:`, would have it, and change no script); what is cut stops in 30 ms,
+  music too, as a fade is out; for step 12, the prompt shows `library.yaml`
+  with its `sounds:` while it still teaches beats, which play none.
+- **Step 11 done 2026-11-26**, two at once over a frame with Tuk accepted by
+  the user that day. The user's picks: two at once sit below everyone's feet,
+  44 px, from y 880 to 44 px above the frame's edge; the one begun first is
+  above; of three the quietest has none, then the one begun last. A line at
+  once with another is in its row all through, each piece a row long, and a
+  caption is up through its words, whatever else begins. Checked: `npm test`
+  and `npm run typecheck` here and in `cartoons/`; RayCraft's media typecheck
+  and `test:libs`, no file of it changed; `make --fit` of the ten gives
+  requests equal to the baseline, byte for byte; `hello-script` compiles to
+  the same bytes, and `all-at-once` too but for its captions; `hello` and
+  `hello-script`, rendered anew, have the same pixels in every frame;
+  `all-at-once` made whole passes HyperFrames' check, no layout issue and 3
+  captions too short to read where there were 7, and in its video and its
+  page each frame with two at once shows both, apart (y 880 to 954 and 962 to
+  1036); a portrait page has them apart too, in the area social apps leave
+  clear; 40,000 different random scripts, 20,151 of them with no mistake,
+  have the captions a plain re-telling of the rules says; each of 19 rules
+  broken on purpose fails a test. Not tried: the guide on a fresh `claude -p`.
+- Left by step 11: a row does not say whose it is; a third line at once has
+  no caption, even where it outlasts the other two; a player's bar, while it
+  shows, covers part of the lower row.
+- **Step 12 done 2026-11-26**, `the-race` accepted by the user that day. The
+  user's picks: a plugin with a script is taught scripts alone, with nothing of
+  its beats; the story is new, `stories/the-race.md`, with Pip, Mo and Tuk and a
+  hedgehog the chat draws; Sonnet's run is kept in the repo, its reply, its two
+  episodes and its Bramble in the library. A refused script is told its
+  mistakes at the lines of the chat's block. Checked: `npm test` and
+  `npm run typecheck` here and in `cartoons/`; RayCraft's media typecheck and
+  `test:libs`, no file of it changed; `make --fit` of the ten gives requests
+  equal to the baseline, byte for byte, and the beats guide is the same bytes;
+  two fresh `claude -p` with no tools, Sonnet's and the default model's, given
+  only the prompt for `the-race`, each gave episodes (two, and three) that
+  imported and made on the first try, with no edit by hand, with voices at
+  once, actions at once, sounds and named values (Sonnet's own `values:`, the
+  default model's the plugin's names and a block's `pause`); Sonnet's, made in
+  `cartoons/`, draw the same `.svgs` as in a copy; a block broken on purpose was
+  refused with `check`'s messages at its lines, one pass after another.
+- Left by step 12: the prompt is about 46,000 characters, twice the beats
+  one; which way talkers face is the chat's to get right, and in Sonnet's
+  argument Pip's back is to the others; what a refused episode draws goes
+  into the library all the same, as before, since a later episode may name it.
+- **Step 13 done 2026-11-26**, the seven watched by the user beside their
+  old videos and accepted that day. The user's picks: the tool lets a
+  plugin with a script leave out the plan's part, and such a plugin's video
+  that is no script is refused by `make`, `check` and `import`; the seven
+  are rewritten beat by beat, the same lines, moves and poses in the same
+  order; `hello` is what `hello-script` was, which goes; the chat's beats
+  reply for `forest1` goes; `docs/workflow.html` has what was false
+  mended, and keeps its walk through a plan as RayCraft's path. Checked:
+  `npm test` and `npm run typecheck` here and in `cartoons/`; RayCraft's
+  media typecheck and `test:libs`, no file of it changed; `make --fit` of
+  RayCraft's three gives requests equal to the baseline, byte for byte, and
+  each makes whole, recorded again: first-shadow twice, with the same
+  frames, which differ from Nov 23's from frame 775 on, as the Chrome that
+  records them updated itself on Nov 24; `git grep -n "beats:" cartoons/`
+  finds nothing; the seven, made with the beats code and without it, draw
+  the same SVG in every frame; an old beats file is refused by `check`;
+  every cartoon of `videos/` compiles in a test. Each is as long as in
+  beats or 1 to 5 s longer, as a move with no line of its own has a pause
+  on each side (164 and 164 frames, 329 and 330, 580 and 634, 1277 and
+  1381, 1629 and 1777, 1732 and 1820, 1231 and 1272).
+- Left by step 13: `docs/workflow.html`'s "Inside make" walks through a
+  plan (`meet` as it was in beats); a rewrite around the compiled scenario
+  waits for the user's yes.
+- **The plan is done.**
+
+
+## Goal
+
+An AI writes a cartoon as a **scenario**: scenes, blocks and lines
+(`pip say: Hello!`, `tuk walk to=left-of(pip, near)`), with names and
+relations in place of seconds and coordinates. The tool **compiles** it:
+checks it, speaks and measures the voices, fits everything to them, and
+writes the **compiled scenario**: every action, voice, sound and caption
+with its frames and plain numbers. The picture, the sound, the captions
+and the web page are made from the compiled scenario alone.
+
+A script can say all the old plan promised, and more: voices at once
+(together, one beginning part-way into another or at a word of it, one
+going on under several lines), each at its volume; of anything long (a
+**radio**: speech or a sound) what sets the time, the radio or the talk
+over it; several characters acting at once, and one doing two things;
+one looking at another who moves; a place worked out from others; music
+and sound effects; captions for everyone who speaks. A value or a
+relation set on the cartoon, a scene or a block holds for all inside it,
+and the guide teaches a writing AI each of these as it is built.
+
+**Out of scope:** RayCraft's tutorials (its repo is not touched: its
+plugin keeps today's plan, fit and request, which stay as they are);
+reusable pieces of script; camera moves; a beat grid and singing; exact
+word times (a word's is estimated); lengths that depend on each other
+both ways (a solver); left and right in the sound; music that lowers
+itself under a voice; a voice that whispers rather than only sounds
+quieter; finding or composing music; the types of parametrization
+marked out in The approach.
+
+
+## Terms
+
+```yaml
+scenes:
+  - background: meadow                  # a scene
+    script: |                           # its script
+      together:                         # a block
+        radio say: And now the news.    # a line
+        in order:                       # a block in a block
+          [a] pip say: Did you hear?    # a label
+          mo say @ a.50%: Hear what?    # an anchor
+      tuk walk to=left                  # an action, a value
+      & narrator say: Tuk comes closer. # joined to the line before
+```
+
+The structure, from the outside in:
+
+- **Scenario:** one cartoon as an AI writes it, in its YAML video file.
+- **Scene:** a part of it with its own background, points and starting
+  places. Scenes follow each other.
+- **Script:** a scene's text: its lines and blocks.
+- **Line:** one thing one character does or says: who, the action, its
+  values, and after the colon its text (`pip say: Hello!`).
+- **Block:** lines grouped under a header that says how they relate:
+  *in order* (each after the one before), *together* (all begin at
+  once) or *ending together* (all end at once: lines alone). A block is
+  used as a line is: it has a start and an end, and may hold blocks. A
+  scene's script is a block in order; a line joined to the one before
+  (`&`) is together with it.
+- **Level:** the cartoon, a scene, a block, a line. A value set on one
+  holds for the levels inside it.
+
+Who and what:
+
+- **Character:** who acts or speaks: one of the library's, or the
+  narrator.
+- **Action:** what a line does: the tool's own (`say`, `play`) or one
+  the plugin names (`walk`, `jump`).
+- **Channel:** a part of a character that does one thing at a time: its
+  voice, its place, its arm.
+- **Value:** what a line, a block, a scene or the cartoon sets: a
+  number, a place, a volume. A **named value** has a name of the
+  writer's; a **default** is what is taken when none is written.
+- **Point:** a place on the stage, named by the plugin or by the scene.
+
+Time:
+
+- **Interval:** a line's time, from its start to its end.
+- **Moment:** a start, an end, a share or a word of a line.
+- **Anchor:** what a line says about its own start, in place of its
+  block's rule: a moment of a line above, plus or minus seconds
+  (`@ a.end - 0.5s`).
+- **Label:** a name given to a line, so that lines below can anchor to
+  it (`[a]`). `prev` and `block` need none.
+- **Fixed, fitted, open, cut:** how a line gets its length. Fixed:
+  measured (a voice) or given. Fitted: a move sped up or slowed to the
+  voices of its block, within limits. Open: to the end of its block.
+  Cut: stopped at the end of its block, if not ended before.
+- **Waits:** a block ends only when what is in it has ended, the open
+  and the cut left out.
+
+Compiling:
+
+- **Check:** the pass before the voices, and the only one that refuses.
+- **Fit:** every start and end worked out from the measured voices.
+- **Compiled scenario:** the result: every line with its frames and
+  plain numbers. The picture, the sound, the captions and the page are
+  made from it.
+
+The words a script uses for these (`together:`, `under:`, `&`, `@`) are
+settled in `AGENTS.md`, "A script".
+
+
+## The approach
+
+Proposed in the chat of 2026-11-24. Step 3 has settled the part on time,
+and step 5 the part on values.
+
+**One graph, worked out in order, as a spreadsheet is.** Every value of
+a scenario is a cell: a named value, a place, a start, an end, a length,
+a speed, a volume. Each cell has exactly one formula, and a formula
+reads other cells. `check` builds the graph from the script alone:
+
+- a cell with no formula takes its default, and `check` says so;
+- a cell with two (a walk given both a speed and a length) is refused;
+- a loop is refused, with its whole chain.
+
+The cells are then worked out in the graph's order. No equations are
+solved together: a relation such as `length = distance / speed` is used
+in one direction, the one the writer left open.
+
+**Two passes, with the voices between.**
+
+- Before them, `check` works out every cell that needs no voice: named
+  values, places, a move's own length, volumes. So it sees numbers, and
+  can refuse a place off the stage or two characters on one spot.
+- After them, the cells that need the voices (starts, ends, a fitted
+  move's length and speed) are worked out by formulas that cannot fail:
+  the latest of, plus, kept within limits, the earliest of. So nothing
+  is refused once the voices are measured.
+
+**Time: every line is an interval on a channel** (a character's voice,
+its place, its arm). Its laws are in `AGENTS.md`, "What happens at once".
+At their core they are the critical-path method: each start is the longest
+path to it through a graph with no loops, so there is one earliest timing.
+The cut and the fit read finished values on top.
+
+**The types of parametrization.** The examples only show the kind: the
+script's words for each are settled in its step.
+
+| When a line begins | Example | |
+| --- | --- | --- |
+| In order: after the line before, plus `pause` | the default | in |
+| Together: with the line before, or all of a block | `&`, `together:` | in |
+| At a moment of a line above, plus or minus seconds | `@ a.end - 0.5s` | in |
+| At a share of a line above | `@ a.50%` | in |
+| At a word of a line above | `@ a.word(mole)` | in, estimated |
+| At a moment of a line below | | out: a loop could be written |
+| So that it ends with the longest of its block | `ending together:` | in |
+| By a share of its block's spare time | `justify=center` | out |
+| On a grid of beats | `every=beat` | out |
+
+| How long it lasts | Example | |
+| --- | --- | --- |
+| Measured: a voice, a sound file | `say`, `play` | in |
+| Given | `takes=2s` | in |
+| From a speed, times its own | `walk speed=slow` | in |
+| Fitted to the voices of its block, within limits | a walk joined to lines | in |
+| To arrive at a moment of a line above, within limits | `walk arrive=a.end` | in |
+| From the length of a line above, said or given | `takes=a.length / 2` | in |
+| From the length of a block, or of a fitted move | | out: known only once everything has its place |
+| Open: to the end of its block | `look-at`, a loop | in |
+| Cut: to the end of its block, if not ended before | a radio under the talk | in |
+| Repeated | `jump times=3`, `loop` | in |
+| A voice placed so that it ends at a moment | `say ends=a.end` | out, but in an `ending together:` |
+
+| Where | Example | |
+| --- | --- | --- |
+| A named point: the plugin's marks, a scene's own | `to=left`, `door: 300` | in |
+| Offset from a point | `door + 100` | in |
+| Beside a point or a character | `left-of(pip, near)` | in |
+| Between two | `midpoint(door, tree)` | in |
+| Where a character is, read from the lines above | `pip` in a formula | in |
+| Where a character is at a moment of the clock | `anna@go.end` | out: it needs the voices |
+| Followed frame by frame | `look-at target=pip` | in |
+| Along a path, where paths cross | `along(road, 30%)` | out: a cartoon has one ground line |
+
+| What a value is | Example | |
+| --- | --- | --- |
+| A number with its unit | `0.4s`, `150`, `-12dB`, `50%` | in |
+| A named value | `near: 150` | in |
+| The plugin's name for a number | `slow`, `loud` | in |
+| Arithmetic over these | `near * 2 + 20` | in |
+| A state that stays until changed | `pose wave` | in, as today |
+| A value that changes during an action | a fade, a zoom | out |
+| Manner | `say (angry)` | out: no voice or face here can do it |
+| Conditions, loops, reusable pieces | | out |
+
+**Where it is set.** On the cartoon, a scene, a block or a line, for
+everything or for one character or one action (`radio.volume`,
+`walk.speed`); the nearest wins. The project's settings and a profile
+are the layers above, as today. Its laws are in `AGENTS.md`, "Values".
+The defaults do the common thing, so a writer writes only the
+exceptions: lines run in order, a move joined to lines is fitted to them,
+a character stands where the lines above left it.
+
+**What the compiled scenario keeps:** each cell's number, and nothing of
+how it came to it.
+
+
+## Steps (one session each)
+
+Every step: `npm test` and `npm run typecheck` pass here and in
+`cartoons/`; `npm --prefix ../RayCraft/media run typecheck` and
+`npm --prefix ../RayCraft run test:libs` pass, no file of RayCraft
+changed; `make --fit` gives today's ten requests **as before** (equal to
+the baseline in `.review/concurrent-actions/before/`; the seven
+cartoons' until step 13); what a step adds to the script, the guide
+teaches, with an example a test compiles; the step's notes (`AGENTS.md`
+or `cartoons/CLAUDE.md`) say what it added.
+
+### 1. Compile the smallest script (the tool, cartoons)
+
+A cartoon written as a script, its lines in order, is checked, spoken
+and compiled: `make <file> --fit` prints its timing and writes the
+compiled scenario. The plugin names its actions; today's plugins and
+formats stay as they are. **Done when:**
+`cartoons/videos/hello-script.yaml`, with `hello`'s lines and actions in
+order, compiles; a test finds each line and action in its compiled
+scenario with its frames, and nothing there but numbers, texts and file
+names; a new `check <file>` refuses an unknown action, a wrong value and
+an unknown name, each with its line and a hint, with no voice model on
+the disk.
+
+### 2. Play it (the tool, cartoons)
+
+The picture, the sound, the captions and the web page are made from the
+compiled scenario and nothing else. `Effort: xhigh`. **Done when:**
+`make videos/hello-script.yaml` gives a video and a page; a test draws
+the frames from the compiled scenario and the library with no video
+file, and finds the page's frames the same (`.svgs`); the user has
+watched it beside `hello`.
+
+### 3. Fit what happens at once (the tool)
+
+The laws that place voices, actions and sounds that overlap, on plans
+written as data: what begins together, part-way into or after another;
+what a block waits for and what is cut where it ends; one channel, one
+thing at a time; a move fitted to its lines. `Effort: xhigh`. **Done
+when:** the user has accepted the laws in `AGENTS.md`; a note beside the
+tests proves each property (one timing for any lengths; nothing before
+what it comes after; a block ends after all it waits for; what is cut
+ends with its block and moves nothing else; a longer voice begins
+nothing earlier; a channel never does two things); the tests show two
+lines begun together, one begun half-way into another, one going on
+under three others and another of its voice after it, the same two cut
+where the third ends, a block that waits for its long voice, and a clip
+that ends after its last voice not cut; seeded random plans keep every
+property; small plans get the times a plain solver gives that repeats
+the rules until nothing changes.
+
+### 4. Say it in a script (the tool, cartoons)
+
+The script's words for step 3: blocks in order or together, a line
+joined to the one before, a start part-way into a line above (a share, a
+word, seconds before its end), and what goes on under the rest, cut or
+waited for. **Done when:** a new `videos/all-at-once.yaml` with a
+chorus, an interruption at a word, a murmur of two lines under three
+others, cut where they end, and a radio the talk waits for makes as a
+video and a page; `hello-script`, its narrator joined to the walk,
+begins to speak when `hello` does; a test finds each voice in the sound
+at its compiled time, and the cut ones silent after the cut; `check`
+refuses a name from below, a loop, and a voice that follows a cut one in
+its block, each with both lines and a hint; a fresh `claude -p` with no
+tools, given only the guide, writes such a scene that passes `check`.
+
+### 5. Name values and inherit them (the tool)
+
+A script writes names and arithmetic in place of numbers (`pause`,
+`near * 2`, `slow`), and a value, a default or a relation set on the
+cartoon, a scene or a block, for everything or for one character or
+action, holds for all inside it. **Done when:** tests show each level
+over the one above it, a block's setting reaching its lines, and one
+character's setting reaching only its own; a move given both a speed
+and a length is refused, a loop of values is refused with its chain,
+and a default taken is said; a compiled scenario holds numbers only;
+`all-at-once`, made again with one value changed, has another timing
+and no other edit; a fresh `claude -p`, given only the guide, writes a
+scene with a block's settings that passes `check`.
+
+### 5a. Random scripts that do not repeat (the tool)
+
+A generator copied between random tests repeats early: step 5's test tried
+a few hundred scripts again and again, and step 4's run of 40,000 may have.
+The random tests draw from one that does not, and step 5's own run
+(`.review/step-5a/fuzz.ts`) becomes a test. The four of step 5's rules that
+no test caught get one each. **Done when:** every random test draws from
+one shared generator, and says how many different scripts or plans it
+tried; random scripts with values on every level neither throw nor break a
+compiled scenario, and keep the promises of `AGENTS.md`, "What happens at
+once"; 40,000 of them have been run, and what they find is mended; a test
+fails when one of the four is broken: a character's value over an action's,
+for a value that is no length; a wrong `takes`, `speed` or `arrive` counts
+as given; a script with a row that does not read has no mistakes of its
+values shown; a number in `values:` is taken as it is written.
+
+### 5b. End together (the tool)
+
+A block whose lines end at once, where the longest does, the shorter ones
+begun later. Its end is worked out from their lengths, so that a line that
+begins by it is no loop. Its items are lines, and a move in it takes its
+given length, or its own. The word for it is settled in the step. **Done
+when:** the user has accepted the law in `AGENTS.md`; the note beside the
+tests proves the five promises with it; tests show a voice that ends with a
+longer walk, two voices that end together, and one that waits for its
+channel; random plans keep every property, and the plain solver gives the
+same times; `check` refuses, each with its lines and a hint, a voice twice
+in it, a line of it anchored to another, and a block in it; `all-at-once`
+has one, and the user accepts it.
+
+### 6. Work out places (cartoons)
+
+A scene names its own points, and a place is worked out from points and
+characters: `midpoint(door, tree)`, `left-of(pip, near)`. A character's
+place is where the lines above leave it. **Done when:** a test shows
+each construction; two characters on one spot, and a place that cannot
+be worked out, are refused by `check`; the compiled scenario holds
+coordinates only; a scene of `all-at-once` uses them, and the user
+accepts it.
+
+### 7. Act on channels (cartoons)
+
+A character's place, hop, facing, arm and voice are channels: several
+characters act at once, and one does two things on different channels
+(walks while it waves), each action with its own start and length.
+`Effort: xhigh`. **Done when:** `src/picture.test.ts` shows one walking
+from a block's start while another hops and a third turns a second
+later, one walking while it waves, and their order kept in a block
+stretched by its lines; two actions for one channel in one block, and
+two who walk to one spot, are refused by `check`; `all-at-once` has such
+a block and the user accepts it.
+
+### 7a. Change the background (the tool, cartoons)
+
+A line changes its scene's background as it begins, at once, as a beat's
+`background` does: everyone stays where they are, and it stays so until
+another line changes it. Nobody does it, so whose line it is, and its word,
+are settled in the step. **Done when:** `src/picture.test.ts` shows the
+frame before a change, its first frame and one long after, a walk going on
+through it, and a change anchored to a word; two changes that would begin
+at once, a name the library lacks and a change to the background that is
+there already are refused by `check`; the page's frames are the same;
+`all-at-once` has one and the user accepts it.
+
+### 8. Look at someone who moves (the tool, cartoons)
+
+`look-at` holds for as long as its block: which way its character faces
+is worked out in each frame from the other character's place, and places
+are worked out first. **Done when:** a test shows one character facing
+another all through her walk past it, the same in the page's frames;
+`all-at-once` has it and the user accepts it.
+
+### 9. Mix voices at their volumes (the tool)
+
+A character's volume in the library, and a line's, a block's or a
+scene's own over it, set how loud each voice is; the mix comes to the
+video's loudness by one gain, its peaks limited, so the differences
+stay. **Done when:** a test finds two lines written 12 dB apart 12 dB
+apart (to 1 dB) in a `sound.m4a` at -14 LUFS, their peaks as far over
+their loudness as Kokoro's, and two full voices at once unclipped;
+today's ten keep their `sound.m4a`; the user has listened to
+`all-at-once`.
+
+### 10. Play music and sound effects (the tool, cartoons)
+
+The library names the project's audio files, and a script plays one once
+or looped under a block, a scene or the whole cartoon, at its volume:
+cut where that ends, or waited for. A sound keeps its own quality.
+**Done when:** `src/sound.test.ts` finds each sound at its time and
+level, a tone above 12 kHz among them; `check` refuses a missing file by
+name; a file whose bytes changed redoes the sound and no drawing;
+`import` refuses a reply that adds a sound; `all-at-once` has music that
+goes on from one scene into the next, an effect, and a sound the talk
+waits for; the files, in git, are plain ones made with ffmpeg or the
+user's own, licensed for a public repo.
+
+### 11. Caption everyone who speaks (the tool)
+
+Lines that sound at once show one above the other, in the video and on
+the page, each as long as its own words, or to its cut: two rows at
+most, smaller, a third speaker with none. Where they sit, clear of the
+mouths, is agreed with the user first. **Done when:** `all-at-once`
+passes HyperFrames' check, and a frame of it and of its page shows both
+lines, neither over the other; the user accepts two at once over a
+frame with Tuk, whose mouth is the lowest; a video with no two lines at
+once keeps its captions.
+
+### 12. Teach it to a web chat (the tool's prompt, cartoons)
+
+The prompt teaches the whole script: the tool's part (lines, blocks,
+names and relations, with the patterns worth knowing: a chorus, an
+interruption, talk over a radio, walk and talk, arriving together) and
+the plugin's actions. `import` takes script episodes, and answers a
+wrong one with `check`'s messages. **Done when:** a fresh `claude -p`
+with no tools, given only the prompt for a story written for it (people
+talking over each other, two who run off together, a sound the library
+has), gives episodes that import and make with no edit by hand, with
+lines at once, actions at once, a sound and a named value; the READMEs
+and `docs/workflow.html` say what a cartoon can now do; the user accepts
+it.
+
+### 13. Rewrite the seven cartoons (cartoons)
+
+The seven are rewritten as scripts, and the beats format and its code
+go. **Done when:** the user has watched each beside its old video and
+accepted it; `git grep -n "beats:" cartoons/` finds nothing; RayCraft's
+three make as before.

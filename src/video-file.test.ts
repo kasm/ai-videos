@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
 import type { ClipJson } from "./clip.ts";
-import { formatOf, linesOf, readVideoFile, scriptOf } from "./video-file.ts";
+import { formatOf, linesOf, readVideoFile, scriptOf, writtenScript } from "./video-file.ts";
 
 const scratch = await mkdtemp(path.join(os.tmpdir(), "ai-videos-file-"));
 after(() => rm(scratch, { recursive: true, force: true }));
@@ -60,6 +60,64 @@ test("the library: each character's voice is the project's cast, and the plugin 
     file: path.join(root, "library.yaml"),
     raw: { characters: { pip: { parts: { body: [] } }, mo: { parts: { body: [] } } }, backgrounds: { meadow: { fill: "#bfe3ff" } } },
   });
+});
+
+test("the library: its sounds are the tool's alone, each with its file and how loud it is, and the plugin gets none of them", async () => {
+  const text = "characters:\n  pip: { voice: am_puck, volume: -2dB, parts: {} }\nsounds:\n  tune: { file: sounds/tune.flac, volume: -20dB }\n  bell: { file: ../shared/bell.mp3 }\n";
+  const root = await project("library-sounds", {}, { "meet.yaml": "use: cartoon\nscenes: []\n" }, text);
+  const video = await readVideoFile(path.join(root, "videos", "meet.yaml"));
+  assert.deepEqual(video.sounds, { tune: "sounds/tune.flac", bell: "../shared/bell.mp3" });
+  assert.deepEqual(video.volumes, { pip: -2, tune: -20 });
+  assert.deepEqual(video.library!.raw, { characters: { pip: { parts: {} } } });
+  // A library with no sounds has none, and so has a project with no library.
+  for (const [name, library] of [["sounds-none", "characters: {}\n"], ["sounds-no-library", undefined]] as const) {
+    const bare = await project(name, {}, { "meet.yaml": "use: cartoon\n" }, library);
+    assert.deepEqual((await readVideoFile(path.join(bare, "videos", "meet.yaml"))).sounds, {});
+  }
+  const wrong = async (name: string, sounds: string) => {
+    const bad = await project(`sounds-${name}`, {}, { "a.yaml": "use: cartoon\n" }, `characters:\n  pip: { voice: am_puck }\nsounds: ${sounds}\n`);
+    let said = "";
+    await assert.rejects(readVideoFile(path.join(bad, "videos", "a.yaml")), (e: Error) => ((said = e.message), true));
+    return said;
+  };
+  assert.match(await wrong("no-file", "{ bell: { volume: -6dB } }"), /library\.yaml: its sounds are not valid:[\s\S]*give each sound its file, a path from this folder[\s\S]*bell\.file/);
+  assert.match(await wrong("empty-file", '{ bell: { file: "" } }'), /give each sound its file/);
+  assert.match(await wrong("path", "{ bell: sounds/bell.wav }"), /its sounds are not valid/);
+  assert.match(await wrong("absolute", `{ bell: { file: '${path.resolve("bell.wav")}' } }`), /a sound's file is a path from this folder, not an absolute one/);
+  assert.match(await wrong("volume", "{ bell: { file: b.wav, volume: -6 } }"), /a sound's volume is in decibels, -4dB: 0dB is as loud as any voice[\s\S]*bell\.volume/);
+  assert.match(await wrong("far", "{ bell: { file: b.wav, volume: 13dB } }"), /a volume is from -60dB to 12dB/);
+  assert.match(await wrong("key", "{ bell: { file: b.wav, loop: true } }"), /its sounds are not valid[\s\S]*loop/);
+  assert.match(await wrong("name", "{ Bell: { file: b.wav } }"), /a sound's name is lowercase letters, digits and dashes, a letter first/);
+  // A name is one thing: its volume is.
+  assert.match(await wrong("character", "{ pip: { file: b.wav } }"), /library\.yaml: pip is a character and a sound: call the sound something else/);
+  assert.match(await wrong("narrator", "{ narrator: { file: b.wav } }"), /library\.yaml: narrator is the narrator and a sound: call the sound something else/);
+});
+
+test("the library: a character's volume is the tool's too, in decibels, and the plugin gets none of it", async () => {
+  const root = await project("library-volumes", {}, { "meet.yaml": "use: cartoon\nscenes: []\n" }, "characters:\n  pip: { voice: am_puck, volume: -4.5dB, parts: {} }\n  mo: { voice: bf_emma, parts: {} }\n  tuk: { voice: bm_fable, volume: +3dB }\n");
+  const video = await readVideoFile(path.join(root, "videos", "meet.yaml"));
+  assert.deepEqual(video.volumes, { pip: -4.5, tuk: 3 });
+  assert.deepEqual(video.library!.raw, { characters: { pip: { parts: {} }, mo: { parts: {} }, tuk: {} } });
+  assert.deepEqual(video.settings.cast, { pip: "am_puck", mo: "bf_emma", tuk: "bm_fable" });
+  const bare = await project("library-none", {}, { "meet.yaml": "use: cartoon\n" });
+  assert.deepEqual((await readVideoFile(path.join(bare, "videos", "meet.yaml"))).volumes, {});
+
+  const wrong = async (name: string, volume: string) => {
+    const root = await project(`volume-${name}`, {}, { "a.yaml": "use: cartoon\n" }, `characters:\n  pip: { voice: am_puck, volume: ${volume} }\n`);
+    return assert.rejects(readVideoFile(path.join(root, "videos", "a.yaml")), (e: Error) => {
+      assert.match(e.message, /library\.yaml: its characters are not valid:[\s\S]*characters\.pip\.volume/);
+      assert.match(e.message, name.startsWith("far") ? /a volume is from -60dB to 12dB/ : /a character's volume is in decibels, -4dB: 0dB is as loud as any voice/);
+      return true;
+    });
+  };
+  await wrong("number", "-4");
+  await wrong("unit", "-4db");
+  await wrong("formula", "-4dB * 2");
+  await wrong("product", "2 * -4dB");
+  await wrong("name", "quiet");
+  await wrong("table", "{ a: 1 }");
+  await wrong("far-under", "-61dB");
+  await wrong("far-over", "12.5dB");
 });
 
 test("settings in layers: the server's, the project's over them, the file's, then a profile's", async () => {
@@ -182,6 +240,202 @@ test("the script: one scene by the file's name, its lines the plan's, every spea
     /alone\.yaml: mo says "Rounded apart from its event\.", and the cast \(it is empty\) gives mo no voice: give mo a voice: under the character in .*library\.yaml, or under cast: in the file/,
   );
   assert.throws(() => scriptOf(alone, { ...PLAN, texts: [] }), /alone\.yaml has no line to say/);
+});
+
+test("a file written as a script: each scene's own keys, and its script's lines with their lines in the file", async () => {
+  const text = [
+    "use: cartoon", // line 1
+    "",
+    "scenes:",
+    "  - background: meadow", // 4: the scene
+    "    places: { pip: off-left }",
+    "    script: |", // 6
+    "      pip walk to=middle", // 7
+    "",
+    "      # a note",
+    "      narrator say: This is Pip.", // 10
+    "  - script: |",
+    "      pip wave hello", // 12
+    "    background: night", // a scene's keys in any order
+    "",
+  ].join("\r\n");
+  const root = await project("as-script", {}, { "hello.yaml": text, "beats.yaml": "use: cartoon\nscenes:\n  - beats: []\n" });
+  const video = await readVideoFile(path.join(root, "videos", "hello.yaml"));
+  assert.equal(video.text, text);
+  assert.deepEqual(video.script, {
+    scenes: [
+      {
+        line: 4,
+        setting: { background: "meadow", places: { pip: "off-left" } },
+        items: [
+          { line: 7, who: "pip", action: "walk", values: { to: "middle" } },
+          { line: 10, who: "narrator", action: "say", values: {}, text: "This is Pip." },
+        ],
+      },
+      { line: 11, setting: { background: "night" }, items: [] },
+    ],
+    issues: [{ line: 12, message: '"hello" is not a value', hint: "write a value as name=value, before the colon, and what is said after it: pip say: Hello!" }],
+  });
+  // The plugin's source is the file as before: the script path reads its own.
+  assert.deepEqual(Object.keys(video.source), ["scenes"]);
+  // A file with no script in its scenes is not one.
+  assert.equal((await readVideoFile(path.join(root, "videos", "beats.yaml"))).script, undefined);
+  assert.equal(writtenScript("use: cartoon\nscenes: 3\n"), undefined);
+});
+
+test("a script's blocks are in the file as they are indented, under its own margin", () => {
+  const text = ["scenes:", "  - script: |", "", "      together:", "        pip say: Hi.", "        in order:", "            mo say: Hello.", "      & tuk say: Hm?", "    background: night", ""].join("\n");
+  assert.deepEqual(writtenScript(text), {
+    scenes: [
+      {
+        line: 2,
+        setting: { background: "night" },
+        items: [
+          {
+            line: 4,
+            order: "together",
+            joined: true,
+            items: [
+              {
+                line: 4,
+                order: "together",
+                items: [
+                  { line: 5, who: "pip", action: "say", values: {}, text: "Hi." },
+                  { line: 6, order: "in order", items: [{ line: 7, who: "mo", action: "say", values: {}, text: "Hello." }] },
+                ],
+              },
+              { line: 8, who: "tuk", action: "say", values: {}, text: "Hm?" },
+            ],
+          },
+        ],
+      },
+    ],
+    issues: [],
+  });
+});
+
+test("the values of a file and of a scene are formulas, each with its line; they are no key of the plugin's", async () => {
+  const text = [
+    "use: cartoon", // line 1
+    "timing: { gap: 0.2 }",
+    "values: { pause: 0.8s, walk.speed: slow, near: 150 }", // 3
+    "scenes:",
+    "  - background: meadow", // 5
+    "    values:",
+    "      near: near-by * 2 + 20", // 7
+    '      "pip.near": "1.50"',
+    "      share: 50%",
+    "    script: |",
+    "      pip say: Hi.", // 11
+    "  - script: |",
+    "      pip say: Ho.",
+    "",
+  ].join("\n");
+  const root = await project("with-values", {}, { "hello.yaml": text });
+  const video = await readVideoFile(path.join(root, "videos", "hello.yaml"));
+  const say = (line: number, words: string) => ({ line, who: "pip", action: "say", values: {}, text: words });
+  assert.deepEqual(video.script, {
+    values: { pause: { line: 3, text: "0.8s" }, "walk.speed": { line: 3, text: "slow" }, near: { line: 3, text: "150" } },
+    scenes: [
+      {
+        line: 5,
+        setting: { background: "meadow" },
+        values: { near: { line: 7, text: "near-by * 2 + 20" }, "pip.near": { line: 8, text: "1.50" }, share: { line: 9, text: "50%" } },
+        items: [say(11, "Hi.")],
+      },
+      { line: 12, setting: {}, items: [say(13, "Ho.")] },
+    ],
+    issues: [],
+  });
+  assert.equal(video.settings.timing.gap, 0.2, "a setting is the tool's still");
+});
+
+test("a number in values is taken as it is written, as a line's is, and not as YAML reads it", () => {
+  const script = (row: string) => writtenScript(["values:", `  ${row}`, "scenes:", "  - script: |", "      pip say: Hi.", ""].join("\n"))!;
+  for (const number of ["2.50", "010", "+2", "-3", "12345678901234567890"]) assert.deepEqual(script(`near: ${number}`).values, { near: { line: 2, text: number } });
+  // What YAML has as a number and a formula does not is refused, as it is on a line.
+  assert.deepEqual(script("near: 1e3").issues.map(({ line, message }) => [line, message]), [[2, 'near=1e3: "1e" has no unit that is known']]);
+  assert.deepEqual(script("near: 0x10").issues.map(({ line, message }) => [line, message]), [[2, 'near=0x10: "0x" has no unit that is known']]);
+});
+
+test("a script on top of the file is the cartoon's own, its lines those of the file, before its scenes or after them", () => {
+  const scene = ["scenes:", "  - script: |", "      pip say: Hi."];
+  const script = writtenScript(["use: cartoon", "script: |", "  tune loop volume=-20dB", "  in order:", "    bell play", ...scene, ""].join("\n"))!;
+  assert.deepEqual(script.issues, []);
+  assert.deepEqual(script.over, {
+    line: 2,
+    items: [
+      { line: 3, who: "tune", action: "loop", values: { volume: "-20dB" } },
+      { line: 4, order: "in order", items: [{ line: 5, who: "bell", action: "play", values: {} }] },
+    ],
+  });
+  assert.deepEqual(script.scenes.map(({ line }) => line), [7]);
+  assert.deepEqual(writtenScript([...scene, "script: |", "  tune loop", ""].join("\n"))!.over, { line: 4, items: [{ line: 5, who: "tune", action: "loop", values: {} }] });
+  assert.ok(!("over" in writtenScript([...scene, ""].join("\n"))!));
+  // It is a block of lines, as a scene's.
+  const refused = (...rows: string[]) => writtenScript([...rows, ...scene, ""].join("\n"))!.issues.map(({ line, message }) => [line, message]);
+  assert.deepEqual(refused("script: tune loop"), [[1, "this script is not a block of lines"]]);
+  assert.deepEqual(refused("script: |", "  # nothing yet"), [[1, "this script has no line"]]);
+  assert.deepEqual(refused("script: |", "  tune"), [[2, "tune does nothing: the action comes after the name"]]);
+  // Without scenes that have one, it is no script's file.
+  assert.equal(writtenScript("script: |\n  tune loop\nscenes:\n  - beats: []\n"), undefined);
+});
+
+test("values that do not read, and a key on top of a script that nothing reads, are refused with their lines", () => {
+  const scene = ["scenes:", "  - script: |", "      pip say: Hi."];
+  const refused = (...rows: string[]) => writtenScript([...rows, ...scene, ""].join("\n"))!.issues.map(({ line, message }) => [line, message]);
+  assert.deepEqual(refused("values:", "  pause: 2 *", "  near: 150px", "  on: true", "  none:", "  list: [1, 2]", "  walk: { speed: slow, takes: 2s }"), [
+    [2, 'pause=2 *: something is missing after "*"'],
+    [3, 'near=150px: "150px" has no unit that is known'],
+    [4, "on has no value"],
+    [5, "none has no value"],
+    [6, "list has no value"],
+    [7, "walk has values of its own"],
+  ]);
+  assert.equal(writtenScript(["values:", "  walk: { speed: slow, takes: 2s }", ...scene, ""].join("\n"))!.issues[0]!.hint, "write each on a row: walk.speed: slow, walk.takes: 2s");
+  assert.deepEqual(refused("values: 0.5s"), [[1, "these values are not a mapping"]]);
+  assert.deepEqual(writtenScript(["use: cartoon", "valuse: { pause: 1s }", "outputs: { web: true }", ...scene, ""].join("\n"))!.issues, [
+    {
+      line: 2,
+      message: 'nothing reads "valuse"',
+      hint: "on top of a script are use, voice, cast, speed, fps, loudness, timing, quality, outputs, values, script and scenes: did you mean values?",
+    },
+  ]);
+  const [inScene] = writtenScript(["scenes:", "  - values: { pause: 1 s }", "    script: |", "      pip say: Hi.", ""].join("\n"))!.issues;
+  assert.deepEqual([inScene!.line, inScene!.message], [2, 'pause=1 s: "s" comes after what is a value already']);
+});
+
+test("between { and } a comma ends a value, so a construction there is said to be cut, once, and how to write it", () => {
+  const say = ["    script: |", "      pip say: Hi.", ""];
+  const script = (...rows: string[]) => writtenScript([...rows, ...say].join("\n"))!;
+  assert.deepEqual(script("values: { meet: midpoint(door, tree), near: 2 }", "scenes:", "  - background: meadow").issues, [
+    { line: 1, message: 'between { and } a comma ends a value: meet is "midpoint(door", and no more', hint: 'write it in quotes, meet: "midpoint(door, tree)", or on a row of its own' },
+  ]);
+  // In a scene's values, and in any of its own keys; several in one, and one in another.
+  assert.deepEqual(script("scenes:", "  - values: { meet: midpoint(1, 2) }", "    places: { pip: left, mo: left-of(midpoint(pip, 300), near), tuk: right, mole: right-of(pip, 1) }").issues.map(({ line, message, hint }) => [line, message, hint.split(",")[0], hint.match(/"(.*)"/)![1]]), [
+    [3, 'between { and } a comma ends a value: mo is "left-of(midpoint(pip", and no more', "write it in quotes", "left-of(midpoint(pip, 300), near)"],
+    [3, 'between { and } a comma ends a value: mole is "right-of(pip", and no more', "write it in quotes", "right-of(pip, 1)"],
+    [2, 'between { and } a comma ends a value: meet is "midpoint(1", and no more', "write it in quotes", "midpoint(1, 2)"],
+  ]);
+  // In quotes, on a row of its own, and with no comma it is whole.
+  const whole = script("values:", "  meet: midpoint(door, tree)", "scenes:", '  - places: { pip: edge(left), mo: "left-of(pip, near)" }');
+  assert.deepEqual([whole.issues, whole.values, whole.scenes[0]!.setting], [[], { meet: { line: 2, text: "midpoint(door, tree)" } }, { places: { pip: "edge(left)", mo: "left-of(pip, near)" } }]);
+  // One with no end is said where it is worked out, and a key with no value is its own mistake.
+  assert.deepEqual(script("scenes:", "  - places: { pip: edge(left, mo: 3 }").issues, []);
+  assert.deepEqual(script("values: { meet: 2, near }", "scenes:", "  - background: meadow").issues.map(({ message }) => message), ["near has no value"]);
+});
+
+test("a script is a block of lines, one in every scene", () => {
+  const block = "write its lines under script: |, one under another";
+  const script = writtenScript('scenes:\n  - script: "pip say: Hi."\n  - background: night\n  - script: |\n      # nothing yet\n  - night\n  - script: >\n      pip say: Hi.\n');
+  assert.deepEqual(script?.issues, [
+    { line: 2, message: "this script is not a block of lines", hint: block },
+    { line: 3, message: "this scene has no script", hint: block },
+    { line: 4, message: "this script has no line", hint: block },
+    { line: 6, message: "this scene is not a mapping", hint: `a scene has its own keys and its script: ${block}` },
+    { line: 7, message: "this script is not a block of lines", hint: block },
+  ]);
+  assert.equal(script?.scenes.length, 4);
 });
 
 test("the format is the one of the stage's shape", () => {

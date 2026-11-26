@@ -1,0 +1,58 @@
+use: cartoon
+cast: { radio: am_michael }
+values: { pause: 0.4s }
+scenes:
+  - background: morning
+    places: { bramble: 330, mo: 700, tuk: 1130, pip: 1390 }
+    script: |
+      narrator say: Today there is a race to the big oak.
+      narrator say: The first one there wins a basket of plums.
+      narrator say: Pip, Mo and Tuk all want to win it.
+      narrator say: So does Bramble, a small hedgehog.
+      narrator say: Now everybody talks at once.
+      in order:
+        under volume=-14dB:
+          radio say: Tonight will be cool, with mist on the pond. Tomorrow brings sun in the morning, and then more clouds.
+        together:
+          pip say: The plums are mine! I have the fastest feet!
+          mo say: No, mine! I have the longest legs!
+          tuk say volume=-8dB: I heard it too, I heard it on the radio!
+          bramble say volume=-8dB: Excuse me, please, may I say something?
+        narrator say: And nobody hears anybody.
+      [ready] mo say: Ready, steady...
+      pip walk to=off-right speed=fast @ ready.end
+      & tuk walk to=off-right speed=fast
+      & mo look-at target=pip
+      & narrator say: Before Mo can say go, Pip and Tuk are off!
+      narrator say: Mo stares after them.
+      narrator say: Bramble does not run.
+      bramble turn
+      & narrator say: She turns round,
+      bramble walk to=off-left speed=slow
+      & narrator say: and slowly walks off the other way.
+  - background: oak-foot
+    places: { bramble: 740, mo: off-right, pip: off-left, tuk: off-left }
+    faces: { mo: left }
+    script: |
+      narrator say: At the big oak, all is quiet.
+      narrator say: Bramble is there first, waiting under it.
+      mo walk to=1260
+      & narrator say: Next comes Mo, puffing and blowing.
+      together:
+        mo say: Bramble? You are here already?
+        mo jump
+      [run] pip walk to=450 speed=fast
+      & narrator say: Last come Pip and Tuk, from the wrong side!
+      tuk walk to=190 speed=fast @ run.start + 0.5s
+      & bramble turn
+      narrator say: Hot and tired, they ran all round the meadow.
+      bramble say: The big oak was this way all along.
+      narrator say: Bramble has won the basket of plums.
+      narrator say: And she shares them with everybody,
+      narrator say: for a race is more fun when all get a plum.
+      together:
+        pip say: Thank you!
+        tuk say: Thank you!
+      bramble turn
+      & mo say: Next year I will hear the news to the end!
+      & mo wave

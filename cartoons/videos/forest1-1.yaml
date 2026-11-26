@@ -3,90 +3,53 @@ scenes:
   - background: glade
     places: { mole: off-left, rabbit: right }
     faces: { rabbit: left }
-    beats:
-      - name: spring-morning
-        says:
-          - { who: narrator, text: "All morning, Mole whitewashed his home." }
-          - { who: narrator, text: "Spring called him up into the sunlight." }
-      - name: mole-bursts-out
-        walk: { who: mole, to: left }
-        says:
-          - { who: mole, text: "Hang spring-cleaning! This is fine!" }
-      - name: mole-hops
-        jump: { who: mole, times: 2 }
-      - name: mole-trots
-        walk: { who: mole, to: middle }
-        says:
-          - { who: narrator, text: "He trotted across the moss to a thicket." }
-      - name: rabbit-demands
-        pose: { rabbit: point }
-        says:
-          - { who: rabbit, text: "Sixpence for passing by the private path!" }
-      - name: mole-jeers
-        pose: { rabbit: stand }
-        jump: { who: mole, times: 1 }
-        says:
-          - { who: mole, text: "Acorn-sauce!" }
-      - name: rabbit-retreats
-        turn: { who: rabbit }
-      - name: rabbit-runs
-        walk: { who: rabbit, to: off-right }
-        says:
-          - { who: narrator, text: "Mole bowled past the grumpy old rabbit." }
-      - name: mole-rambles
-        walk: { who: mole, to: off-right }
-        says:
-          - { who: narrator, text: "He rambled on through sunlit clearings." }
+    script: |
+      narrator say: All morning, Mole whitewashed his home.
+      narrator say: Spring called him up into the sunlight.
+      mole walk to=left
+      & mole say: Hang spring-cleaning! This is fine!
+      mole jump times=2
+      mole walk to=middle
+      & narrator say: He trotted across the moss to a thicket.
+      rabbit point
+      & rabbit say: Sixpence for passing by the private path!
+      rabbit stand
+      & mole jump
+      & mole say: Acorn-sauce!
+      rabbit turn
+      rabbit walk to=off-right
+      & narrator say: Mole bowled past the grumpy old rabbit.
+      mole walk to=off-right
+      & narrator say: He rambled on through sunlit clearings.
   - background: oak-foot
     places: { mole: off-left, squirrel: off-right }
     faces: { squirrel: left }
-    beats:
-      - name: mole-arrives-oak
-        walk: { who: mole, to: middle }
-        says:
-          - { who: narrator, text: "Soon he stood beneath a colossal oak." }
-          - { who: narrator, text: "Never had he seen the Deep Forest Canopy." }
-      - name: squirrel-appears
-        walk: { who: squirrel, to: right }
-        says:
-          - { who: narrator, text: "From a beech hollow peered a Red Squirrel." }
-      - name: squirrel-greets
-        pose: { squirrel: wave }
-        says:
-          - { who: squirrel, text: "Hullo, Mole! Would you like to come up?" }
-      - name: mole-answers-ground
-        pose: { squirrel: stand }
-        says:
-          - { who: mole, text: "Oh, it's all very well to talk." }
-      - name: basket-ride
-        says:
-          - { who: narrator, text: "Squirrel lowered a mossy basket on vines." }
-          - { who: narrator, text: "He hauled Mole smoothly into the boughs." }
+    script: |
+      mole walk to=middle
+      & in order:
+        narrator say: Soon he stood beneath a colossal oak.
+        narrator say: Never had he seen the Deep Forest Canopy.
+      squirrel walk to=right
+      & narrator say: From a beech hollow peered a Red Squirrel.
+      squirrel wave
+      & squirrel say: Hullo, Mole! Would you like to come up?
+      squirrel stand
+      & mole say: Oh, it's all very well to talk.
+      narrator say: Squirrel lowered a mossy basket on vines.
+      narrator say: He hauled Mole smoothly into the boughs.
   - background: canopy
     places: { mole: left, squirrel: right }
     faces: { squirrel: left }
-    beats:
-      - name: mole-rapture
-        jump: { who: mole, times: 1 }
-        says:
-          - { who: mole, text: "I've never been up in the trees before!" }
-      - name: squirrel-wisdom
-        says:
-          - { who: squirrel, text: "Nothing is half so worth doing," }
-          - { who: squirrel, text: "as simply messing about in the treetops." }
-      - name: mole-warns
-        pose: { mole: point }
-        says:
-          - { who: mole, text: "Look above, Squirrel!" }
-      - name: branch-bump
-        pose: { mole: stand }
-        jump: { who: squirrel, times: 1 }
-        says:
-          - { who: narrator, text: "Too late! The basket struck a stout limb." }
-      - name: squirrel-laughs
-        says:
-          - { who: squirrel, text: "Or with branches! Shall we travel together?" }
-      - name: mole-delighted
-        jump: { who: mole, times: 2 }
-        says:
-          - { who: narrator, text: "Mole waggled his toes in pure bliss." }
+    script: |
+      mole jump
+      & mole say: I've never been up in the trees before!
+      squirrel say: Nothing is half so worth doing,
+      squirrel say: as simply messing about in the treetops.
+      mole point
+      & mole say: Look above, Squirrel!
+      mole stand
+      & squirrel jump
+      & narrator say: Too late! The basket struck a stout limb.
+      squirrel say: Or with branches! Shall we travel together?
+      mole jump times=2
+      & narrator say: Mole waggled his toes in pure bliss.

@@ -3,51 +3,30 @@ scenes:
   - background: canopy
     places: { mole: left, squirrel: right }
     faces: { squirrel: left }
-    beats:
-      - name: afternoon-restless
-        says:
-          - { who: narrator, text: "As the sun dipped, Mole grew restless." }
-          - { who: mole, text: "Squirrelly! Let me work the hoist-rope now!" }
-      - name: squirrel-refuses
-        says:
-          - { who: squirrel, text: "Not yet, my friend. Wait for lessons." }
-      - name: mole-grabs-rope
-        jump: { who: mole, times: 1 }
-        says:
-          - { who: narrator, text: "Proud Mole jumped up and yanked the brake!" }
-          - { who: narrator, text: "Whoosh! Over tipped the car through the leaves." }
-      - name: mole-apologizes
-        says:
-          - { who: narrator, text: "Squirrel caught him and righted the basket." }
-          - { who: mole, text: "Squirrelly, I am sorry! I was a complete ass." }
-          - { who: mole, text: "Will you forgive me?" }
-      - name: squirrel-forgives
-        pose: { squirrel: wave }
-        says:
-          - { who: squirrel, text: "Bless you, what's a little tumble to me?" }
-          - { who: squirrel, text: "Stay with me, and I'll teach you to climb." }
-      - name: mole-relieved
-        pose: { squirrel: stand }
-        jump: { who: mole, times: 1 }
-        says:
-          - { who: narrator, text: "Touched, Mole wiped a tear and cheered up." }
+    script: |
+      narrator say: As the sun dipped, Mole grew restless.
+      mole say: Squirrelly! Let me work the hoist-rope now!
+      squirrel say: Not yet, my friend. Wait for lessons.
+      mole jump
+      & narrator say: Proud Mole jumped up and yanked the brake!
+      narrator say: Whoosh! Over tipped the car through the leaves.
+      narrator say: Squirrel caught him and righted the basket.
+      mole say: Squirrelly, I am sorry! I was a complete ass.
+      mole say: Will you forgive me?
+      squirrel wave
+      & squirrel say: Bless you, what's a little tumble to me?
+      squirrel say: Stay with me, and I'll teach you to climb.
+      squirrel stand
+      & mole jump
+      & narrator say: Touched, Mole wiped a tear and cheered up.
   - background: squirrel-drey
     places: { squirrel: left, mole: right }
     faces: { mole: left }
-    beats:
-      - name: cozy-evening
-        says:
-          - { who: narrator, text: "At home, Squirrel lit a bright resin-lamp." }
-          - { who: narrator, text: "He told thrilling tales before the fire." }
-      - name: squirrel-goodnight
-        pose: { squirrel: wave }
-        says:
-          - { who: squirrel, text: "Sleep well in the bedroom-hollow, Mole." }
-      - name: mole-goodnight
-        pose: { squirrel: stand }
-        says:
-          - { who: mole, text: "Thank you, my friend. Goodnight." }
-      - name: forest-whispers
-        takes: 2
-        says:
-          - { who: narrator, text: "That day was the first of many in the canopy." }
+    script: |
+      narrator say: At home, Squirrel lit a bright resin-lamp.
+      narrator say: He told thrilling tales before the fire.
+      squirrel wave
+      & squirrel say: Sleep well in the bedroom-hollow, Mole.
+      squirrel stand
+      & mole say: Thank you, my friend. Goodnight.
+      narrator say: That day was the first of many in the canopy.

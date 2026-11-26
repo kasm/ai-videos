@@ -1,7 +1,9 @@
 // The prompt a story is wrapped in: the tool's part (the reply's shape and names), the plugin's
-// guide and commands, the library as written, the voices nobody has, and the story at the end.
+// guide and commands, or the guide to a script for a plugin that has one, the library as written,
+// the voices nobody has, and the story at the end.
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { guideOf } from "./guide.ts";
 import { ALL_WRITTEN, promptOf, type PromptParts } from "./prompt.ts";
 import { kokoroVoices } from "./tts.ts";
 
@@ -44,6 +46,18 @@ test("the format is the plugin's guide, then its commands, each with its example
   assert.match(prompt, /## The format\n\nA cartoon is drawn on one stage\.\n\n## The commands\n/);
   assert.ok(prompt.includes("- **walk**: The character walks to a mark. For example: `walk: { who: pip, to: middle }`"));
   assert.ok(prompt.includes("- **background**: The background from this beat on. For example: `background: night`"));
+});
+
+test("a plugin whose videos are written as scripts is taught scripts alone: the guide to a script in place of its format and its commands", () => {
+  const slide = { description: "The square slides to a side.", example: "sq slide to=right", channels: ["place"], fits: true };
+  const script = { guide: "\nA square slides to a side.\n", actions: { slide }, names: { fast: 1.6 }, constructions: {} };
+  const prompt = promptOf({ ...PARTS, plugin: { ...PARTS.plugin, script } });
+  assert.ok(prompt.includes(`\n\n${guideOf(script).trim()}\n\n## The library\n\n`));
+  assert.match(prompt, /## Your reply\n[\s\S]*\n## A script\n\nA scene's `script` says what happens in it[\s\S]*\n## The format\n\nA square slides to a side\.\n\n## The actions\n/);
+  assert.ok(prompt.includes("- **slide**: The square slides to a side. Channel: `place`; it is fitted. For example: `sq slide to=right`"));
+  // The beats, or events, are not taught.
+  assert.doesNotMatch(prompt, /## The commands|A cartoon is drawn on one stage|walk: \{ who: pip/);
+  assert.ok(prompt.endsWith("A frog sat by the pond and said hello.\n"));
 });
 
 test("the library comes as written, and the voices nobody has, best first", () => {

@@ -1,18 +1,23 @@
 // A plugin's video as one file (AGENTS.md, "A video file"): videos/<name>.yaml, with `use:` naming
 // its plugin, its own settings, and the rest the plugin's source. What it names is in the project's
-// library (library.yaml), its characters' voices among it. Settings come in layers, each over the
+// library (library.yaml), its characters' voices among it, and the sounds a script plays. Settings come in layers, each over the
 // one before: the server's (the tool's defaults), the project's (its package.json's "ai-videos",
 // and the library's voices as its cast), the file's, and the profile picked when making. Each line
 // is written once, in the source: the plugin's plan gives the lines, and this file makes them the
 // script the pipeline reads.
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { parse } from "yaml";
+import { LineCounter, isMap, isScalar, isSeq, parse, parseDocument, visit, type Pair } from "yaml";
 import { z } from "zod";
 import type { ClipJson } from "./clip.ts";
+import { Wrong, exact, readFormula } from "./formula.ts";
 import { pluginOf, type PluginFile } from "./make.ts";
+import { listed, nearest } from "./names.ts";
 import type { Library } from "./plugin.ts";
+import { readScript } from "./read.ts";
+import { NARRATOR, type Issue, type WrittenOver, type WrittenScene, type WrittenScript, type WrittenValue } from "./scenario.ts";
 import { FORMATS, overlay, settings, slug, Speaker, type EventLimitsScript, type FormatName, type VideoScript } from "./script.ts";
+import { volumeWrong } from "./values.ts";
 
 /** The project's library, beside its package.json. */
 export const LIBRARY_FILE = "library.yaml";
@@ -51,14 +56,48 @@ const ProjectSettings = z.strictObject({
   cast: z.never({ error: `a character's voice is in ${LIBRARY_FILE}, beside this package.json: voice: under the character` }).optional(),
 });
 
-/** What the tool reads of a library: each character's voice. The rest is the plugin's. */
+/** A volume in the library, dB, from its text: a character's, or a sound's. */
+const libraryVolume = (whose: string) => {
+  const form = `${whose} volume is in decibels, -4dB: 0dB is as loud as any voice`;
+  return z
+    .string({ error: form })
+    .regex(/^[-+]?\d+(\.\d+)?dB$/, form)
+    .transform((text) => exact(Number(text.slice(0, -2))))
+    .superRefine((dB, ctx) => {
+      const wrong = volumeWrong(dB);
+      if (wrong) ctx.addIssue({ code: "custom", message: wrong });
+    });
+};
+const NAME_FORM = (whose: string) => (issue: { code?: string }) => (issue.code === "invalid_key" ? `${whose} name is lowercase letters, digits and dashes, a letter first` : undefined);
+
+/** What the tool reads of a library: each character's voice, and how loud it is. The rest is the plugin's. */
 const LibraryVoices = z.looseObject({
   characters: z
-    .record(Speaker, z.looseObject({ voice: z.string({ error: "give each character its voice: one of the tool's (npm run video -- voices lists them)" }).min(1) }), {
-      error: (issue) => (issue.code === "invalid_key" ? "a character's name is lowercase letters, digits and dashes, a letter first" : undefined),
-    })
+    .record(
+      Speaker,
+      z.looseObject({
+        voice: z.string({ error: "give each character its voice: one of the tool's (npm run video -- voices lists them)" }).min(1),
+        volume: libraryVolume("a character's").optional(),
+      }),
+      { error: NAME_FORM("a character's") },
+    )
     .optional(),
 });
+
+/** The library's sounds, the tool's alone: each with its file, and how loud it is. */
+const LibrarySounds = z
+  .record(
+    Speaker,
+    z.strictObject({
+      file: z
+        .string({ error: "give each sound its file, a path from this folder: file: sounds/door.flac" })
+        .min(1, "give each sound its file, a path from this folder: file: sounds/door.flac")
+        .refine((file) => !path.isAbsolute(file), "a sound's file is a path from this folder, not an absolute one"),
+      volume: libraryVolume("a sound's").optional(),
+    }),
+    { error: NAME_FORM("a sound's") },
+  )
+  .optional();
 
 /** library.yaml as written: its path, its text and the text parsed. */
 export interface LibraryFile {
@@ -89,17 +128,36 @@ async function readLibraryFile(dir: string): Promise<LibraryFile | undefined> {
   return { file, text, raw };
 }
 
-/** A library, parsed: its voices taken out as the cast, and the rest the plugin's. Errors name `file`. */
-export function libraryOf(file: string, raw: Record<string, unknown>): { library: Library; cast: Record<string, string> } {
+/** What the tool takes out of a library: its voices as the cast, its sounds, each with its file, a path from its folder, and the volumes of both, dB. */
+export interface LibraryParts {
+  cast: Record<string, string>;
+  sounds: Record<string, string>;
+  volumes: Record<string, number>;
+}
+
+/** A library, parsed: what is the tool's taken out, and the rest the plugin's. Errors name `file`. */
+export function libraryOf(file: string, whole: Record<string, unknown>): { library: Library } & LibraryParts {
+  const { sounds: written, ...raw } = whole;
   const voices = LibraryVoices.safeParse(raw);
   if (!voices.success) throw new Error(`${file}: its characters are not valid:\n${z.prettifyError(voices.error)}`);
   const cast: Record<string, string> = {};
+  const volumes: Record<string, number> = {};
   const characters: Record<string, unknown> = {};
-  for (const [who, { voice, ...drawn }] of Object.entries(voices.data.characters ?? {})) {
+  for (const [who, { voice, volume, ...drawn }] of Object.entries(voices.data.characters ?? {})) {
     cast[who] = voice;
+    if (volume !== undefined) volumes[who] = volume;
     characters[who] = drawn;
   }
-  return { library: { file, raw: voices.data.characters ? { ...raw, characters } : raw }, cast };
+  const parsed = LibrarySounds.safeParse(written);
+  if (!parsed.success) throw new Error(`${file}: its sounds are not valid:\n${z.prettifyError(parsed.error)}`);
+  const sounds: Record<string, string> = {};
+  for (const [name, sound] of Object.entries(parsed.data ?? {})) {
+    // A volume set for a name is for all that it is.
+    if (name === NARRATOR || Object.hasOwn(cast, name)) throw new Error(`${file}: ${name} is ${name === NARRATOR ? "the narrator" : "a character"} and a sound: call the sound something else`);
+    sounds[name] = sound.file;
+    if (sound.volume !== undefined) volumes[name] = sound.volume;
+  }
+  return { library: { file, raw: voices.data.characters ? { ...raw, characters } : raw }, cast, sounds, volumes };
 }
 
 /** A project with a plugin: what its videos share. */
@@ -107,8 +165,12 @@ export interface Project {
   plugin: PluginFile;
   /** library.yaml as written; none when the project has none. */
   libraryFile: LibraryFile | undefined;
-  /** The library without its voices, for the plugin; none without a library.yaml. */
+  /** The library without its voices, its sounds and its volumes, for the plugin; none without a library.yaml. */
   library: Library | undefined;
+  /** The library's sounds, each with its file, a path from the project's folder: a script's. */
+  sounds: Record<string, string>;
+  /** The library's volumes, dB, by whose they are: a script's. */
+  volumes: Record<string, number>;
   /** The project's layer over the server's: package.json's "ai-videos", and the library's voices as its cast. */
   settings: Record<string, unknown> & { cast: Record<string, string>; voice: string };
 }
@@ -119,9 +181,9 @@ export async function readProject(plugin: PluginFile): Promise<Project> {
   const project = ProjectSettings.safeParse(plugin.settings);
   if (!project.success) throw new Error(`${plugin.package}: "ai-videos" is not valid:\n${z.prettifyError(project.error)}`);
   const libraryFile = await readLibraryFile(plugin.dir);
-  const { library, cast } = libraryFile ? libraryOf(libraryFile.file, libraryFile.raw) : { library: undefined, cast: {} };
+  const { library, cast, sounds, volumes } = libraryFile ? libraryOf(libraryFile.file, libraryFile.raw) : { library: undefined, cast: {}, sounds: {}, volumes: {} };
   const { plugin: _plugin, cast: _cast, ...settings } = project.data;
-  return { plugin, libraryFile, library, settings: { ...settings, cast } };
+  return { plugin, libraryFile, library, sounds, volumes, settings: { ...settings, cast } };
 }
 
 /** The keys of a video file that are the tool's; every other key is the plugin's source. */
@@ -136,8 +198,16 @@ export interface VideoFile {
   use: string;
   /** The file, parsed, without the tool's keys: what the plugin checks. */
   source: Record<string, unknown>;
-  /** The project's library, without its voices: what the plugin finds the names in. None without a library.yaml. */
+  /** The file as written, when it was read from the disk: a mistake is shown with its line. */
+  text?: string;
+  /** Its scenes and their lines, when it is written as a script (AGENTS.md, "A script") and was read from the disk. */
+  script?: WrittenScript;
+  /** The project's library, without its voices, its sounds and its volumes: what the plugin finds the names in. None without a library.yaml. */
   library: Library | undefined;
+  /** The library's sounds, each with its file, a path from the project's folder: a script's. */
+  sounds: Record<string, string>;
+  /** The library's volumes, dB, by whose they are: a script's. */
+  volumes: Record<string, number>;
   /** The server's settings, the project's over them, the file's, then the profile's. */
   settings: FileSettingsScript;
   profile: ProfileName | undefined;
@@ -184,7 +254,127 @@ export async function readVideoFile(file: string, profile?: string): Promise<Vid
   if (!isRecord(raw)) throw new Error(`${file}: a video file is a mapping: use:, its settings, and its plugin's source`);
   const plugin = await pluginOf(file);
   if (!plugin) throw new Error(`${file}: no package.json above it names a plugin ("ai-videos": { "plugin" }), and a video file is a plugin's`);
-  return videoFileOf(await readProject(plugin), file, raw, profile);
+  const script = writtenScript(text);
+  return { ...videoFileOf(await readProject(plugin), file, raw, profile), text, ...(script ? { script } : {}) };
+}
+
+/**
+ * A value that a comma has cut: between `{` and `}` YAML ends a value at it, and has the rest as keys
+ * with no value. `{ meet: midpoint(pip, mo) }` is so cut: its pairs, and what is wrong.
+ */
+function cutValues(node: unknown, lineOf: (node: unknown) => number): { pairs: Pair[]; issue: Issue }[] {
+  if (!isMap(node) || !node.flow) return [];
+  const open = (text: string) => text.split("(").length - text.split(")").length;
+  const cut: { pairs: Pair[]; issue: Issue }[] = [];
+  const pairs = node.items as Pair[];
+  for (const [k, { key, value }] of pairs.entries()) {
+    if (!isScalar(value)) continue;
+    const first = String(value.value);
+    let whole = first;
+    let end = k + 1;
+    for (; open(whole) > 0 && pairs[end]?.value === null; end++) whole += `, ${pairs[end]!.key}`;
+    if (end === k + 1) continue;
+    cut.push({
+      pairs: pairs.slice(k, end),
+      issue: { line: lineOf(key), message: `between { and } a comma ends a value: ${key} is "${first}", and no more`, hint: `write it in quotes, ${key}: "${whole}", or on a row of its own` },
+    });
+  }
+  return cut;
+}
+
+/** The values of a file or a scene (`values:`), each a formula with its line in the file. */
+function writtenValues(node: unknown, lineOf: (node: unknown) => number): { values: Record<string, WrittenValue>; issues: Issue[] } {
+  const values: Record<string, WrittenValue> = {};
+  const issues: Issue[] = [];
+  const form = "a value is written by its name: values: { pause: 0.3s, walk.speed: slow }";
+  if (!isMap(node)) return { values, issues: [{ line: lineOf(node), message: "these values are not a mapping", hint: form }] };
+  const cut = cutValues(node, lineOf);
+  issues.push(...cut.map(({ issue }) => issue));
+  for (const pair of node.items) {
+    if (cut.some(({ pairs }) => pairs.includes(pair))) continue;
+    const { key, value } = pair;
+    const line = lineOf(key);
+    const name = String(isScalar(key) ? key.value : key);
+    const issue = (message: string, hint: string) => void issues.push({ line, message, hint });
+    if (isMap(value)) issue(`${name} has values of its own`, `write each on a row: ${value.items.map((inner) => `${name}.${inner.key}: ${inner.value}`).join(", ")}`);
+    else if (!isScalar(value) || value.value === null || typeof value.value === "boolean") issue(`${name} has no value`, form);
+    else {
+      // A number as it is written, and not as YAML has it.
+      const text = typeof value.value === "number" ? (value.source ?? String(value.value)) : String(value.value);
+      try {
+        readFormula(text);
+        values[name] = { line, text: text.trim() };
+      } catch (e) {
+        if (!(e instanceof Wrong)) throw e;
+        issue(`${name}=${text}: ${e.message}`, e.hint);
+      }
+    }
+  }
+  return { values, issues };
+}
+
+/**
+ * A video file's scenes and their lines, when it is written as a script (AGENTS.md, "A script"):
+ * `scenes:` is a list, and one of them has a `script:`. Each scene is its own keys but `script` and
+ * `values`, and its script's lines and blocks, each with its line in the file. A script is a block of
+ * lines (`script: |`), so that a line of it is a line of the file. Beside its scenes the file has the
+ * tool's keys, its own `values` and a `script` of its own, which goes on over them, and no other. Undefined
+ * for any other file.
+ */
+export function writtenScript(text: string): WrittenScript | undefined {
+  const lineCounter = new LineCounter();
+  const document = parseDocument(text, { lineCounter });
+  const list = document.get("scenes", true);
+  if (!isSeq(list) || !list.items.some((item) => isMap(item) && item.has("script"))) return undefined;
+  const lineOf = (node: unknown) => lineCounter.linePos((node as { range: [number, number, number] }).range[0]).line;
+  const scenes: WrittenScene[] = [];
+  const issues: Issue[] = [];
+  const valuesOf = (node: unknown) => {
+    if (node === undefined) return {};
+    const read = writtenValues(node, lineOf);
+    issues.push(...read.issues);
+    return { values: read.values };
+  };
+  const top = document.contents as { items: { key: unknown }[] };
+  const keys = [...TOOL_KEYS, "values", "script", "scenes"];
+  for (const { key } of top.items) {
+    const name = String(key);
+    if (keys.includes(name)) continue;
+    const near = nearest(name, keys);
+    issues.push({ line: lineOf(key), message: `nothing reads "${name}"`, hint: `on top of a script are ${listed(keys)}${near ? `: did you mean ${near}?` : ""}` });
+  }
+  const own = valuesOf(document.get("values", true));
+  const block = "write its lines under script: |, one under another";
+  /** The lines and blocks of a `script:`, a block of lines. */
+  const itemsOf = (script: unknown): WrittenScene["items"] => {
+    if (!isScalar(script) || script.type !== "BLOCK_LITERAL" || typeof script.value !== "string") {
+      issues.push({ line: lineOf(script), message: "this script is not a block of lines", hint: block });
+      return [];
+    }
+    // The block's first line is the one under its `|`.
+    const read = readScript(script.value, lineOf(script) + 1);
+    issues.push(...read.issues);
+    if (read.items.length === 0 && read.issues.length === 0) issues.push({ line: lineOf(script), message: "this script has no line", hint: block });
+    return read.items;
+  };
+  const script = document.get("script", true);
+  const over: { over?: WrittenOver } = script === undefined ? {} : { over: { line: lineOf(script), items: itemsOf(script) } };
+  for (const item of list.items) {
+    const line = lineOf(item);
+    if (!isMap(item)) {
+      issues.push({ line, message: "this scene is not a mapping", hint: `a scene has its own keys and its script: ${block}` });
+      continue;
+    }
+    const { script: _script, values: _values, ...setting } = item.toJS(document) as Record<string, unknown>;
+    for (const key of Object.keys(setting)) {
+      visit(item.get(key, true) as Parameters<typeof visit>[0], { Map: (_, map) => void issues.push(...cutValues(map, lineOf).map(({ issue }) => issue)) });
+    }
+    const values = valuesOf(item.get("values", true));
+    const script = item.get("script", true);
+    if (script === undefined) issues.push({ line, message: "this scene has no script", hint: block });
+    scenes.push({ line, setting, ...values, items: script === undefined ? [] : itemsOf(script) });
+  }
+  return { ...own, ...over, scenes, issues };
 }
 
 /**
@@ -211,6 +401,8 @@ export function videoFileOf(project: Project, file: string, raw: Record<string, 
     use: used.data,
     source,
     library: project.library,
+    sounds: project.sounds,
+    volumes: project.volumes,
     settings: picked ? FileSettings.parse(overlay(layered.data, PROFILES[picked])) : layered.data,
     profile: picked,
     cache: path.join(plugin.dir, ".cache", name),

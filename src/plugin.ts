@@ -1,17 +1,31 @@
 // What a project's plugin is (AGENTS.md, "Plugins"): the module that draws a project's scenes, run
 // by the tool in a child process of its own (host.ts). A plugin holds what is its own: its source's
-// check, its commands and its guide, the plan of its beats and the picture of a moment, drawn as
-// an SVG or recorded by its camera. The tool does the rest.
+// check, its commands and its guide, the plan of its events and the picture of a moment, drawn as
+// an SVG or recorded by its camera; or its part of a script; or both. The tool does the rest.
 //
-// A project imports this file for its types (package.json, "exports"), and its tests for `moments`,
-// which imports nothing: nothing else here runs, so a plugin needs none of the tool's packages. A
-// schema is any library's that follows the Standard Schema and Standard JSON Schema interfaces
-// (standardschema.dev), as zod 4's do.
+// A project imports this file for its types (package.json, "exports"), and its tests for `moments`
+// and for a script's reading, check, compiling and what a frame of it shows, which need none of the
+// tool's packages: nothing else here runs. A schema is any library's that follows the Standard
+// Schema and Standard JSON Schema interfaces (standardschema.dev), as zod 4's do.
 import type { ClipEvent, ClipText, Moment, Request } from "./frames.ts";
+import type { ScriptPlugin } from "./scenario.ts";
 
 export type { ClipEvent, ClipText, Moment, Request };
 /** The moment each frame of a request shows, as the host gives them to the plugin: for a plugin's tests. */
 export { moments } from "./moments.ts";
+/** A script read, checked and compiled as the tool does it (AGENTS.md, "A script"): for a plugin's tests, and its hints. */
+export { listed, nearest } from "./names.ts";
+export { SAY, isBlock, readScript } from "./read.ts";
+export { NARRATOR, checkScenario, linesIn } from "./scenario.ts";
+export type { Action, ActionLine, Anchor, Checked, CheckedLine, CheckedOver, CheckedScene, ConstructionOf, Default, Issue, Plain, SceneActions, SceneChecked, ScriptBlock, ScriptItem, ScriptLine, ScriptPlugin, Timing, WrittenAnchor, WrittenOver, WrittenScene, WrittenScript, WrittenValue } from "./scenario.ts";
+export { shownAs } from "./formula.ts";
+export type { Construction, Span, Worked } from "./formula.ts";
+export { plainValues } from "./values.ts";
+export { compile } from "./compile.ts";
+export type { Compiled, CompiledCaption, CompiledLine, CompiledScene, CompileSettings, Said, Sounded, Voiced } from "./compile.ts";
+/** What each frame of a compiled scenario shows, as the host gives it to a plugin's `script.draw`: for a plugin's tests. */
+export { pictureOf, shownAt } from "./shown.ts";
+export type { CompiledPicture, Shown, ShownAction } from "./shown.ts";
 
 /** One problem a schema finds: its message, and where in the value. */
 export interface SchemaIssue {
@@ -37,7 +51,7 @@ export interface Schema<Output = unknown> {
 export type SchemaResult<Output> = { readonly value: Output; readonly issues?: undefined } | { readonly issues: ReadonlyArray<SchemaIssue> };
 
 /**
- * One command of the plugin's scenario: what a beat may do (a walk, a pose). It is described once,
+ * One command of the plugin's source: what an event may do (a click, a slide). It is described once,
  * and the checks, the prompt and a JSON Schema for a local model all come from that.
  */
 export interface Command {
@@ -49,11 +63,11 @@ export interface Command {
   schema: Schema;
 }
 
-/** A source's beats at its own pace: the clip's events and texts (ai-videos-clip, clip.ts). */
+/** A source's events at its own pace: the clip's events and texts (ai-videos-clip, clip.ts). */
 export interface Plan {
   /** The clip's length, seconds. */
   duration: number;
-  /** One event per beat, in order, the first at 0. */
+  /** Its events, in order, the first at 0. */
   events: ClipEvent[];
   /** The source's own words: a line each, and when it applies. */
   texts: ClipText[];
@@ -88,26 +102,38 @@ export interface Camera {
 
 /**
  * The project's library, `library.yaml` beside its package.json: what its videos name (a cartoon's
- * characters and backgrounds). The tool reads it, takes each character's `voice` for the cast, and
- * gives the plugin the rest.
+ * characters and backgrounds). The tool reads it, takes each character's `voice` for the cast and its
+ * `volume`, and the `sounds`, and gives the plugin the rest.
  */
 export interface Library {
   /** The library's file, for an error to name. */
   file: string;
-  /** The file, parsed from YAML, without each character's `voice`. */
+  /** The file, parsed from YAML, without each character's `voice` and `volume`, and without its `sounds`. */
   raw: unknown;
 }
 
-/**
- * What every plugin has: its scene, its commands and guide, its source's check and plan. A drawing
- * plugin's are pure (below); a recording plugin's may read the project's files `inputs` names.
- */
-interface PluginBase<Source> {
+/** What every plugin has: its scene and its stage, and, optional, its part of a video written as a script. */
+interface PluginBase {
   /** The scene it draws (lowercase letters, digits and dashes): a video file's `use:` names it. */
   scene: string;
   /** The size its picture is drawn at, px: the video's format is the one of its shape. */
   stage: { width: number; height: number };
-  /** The commands of its scenario, by name. */
+  /**
+   * Optional: its part of a video written as a script (AGENTS.md, "A script"): the actions a line
+   * may name, its part of the guide, its check of a script and its picture. A video file whose
+   * scenes have a `script:` goes this way, and none of the plan's functions is called for it.
+   * Without it, the plugin's videos are not written as scripts.
+   */
+  script?: ScriptPlugin;
+}
+
+/**
+ * The plan's part: its commands and guide, its source's check and plan, for a video that is no
+ * script. A drawing plugin's are pure (below); a recording plugin's may read the project's files
+ * `inputs` names.
+ */
+interface Planning<Source> extends PluginBase {
+  /** The commands of its source, by name. */
   commands: Record<string, Command>;
   /**
    * Its part of the prompt (prompt.ts), in Markdown: what its videos can show, the format of its
@@ -127,7 +153,7 @@ interface PluginBase<Source> {
    * mended, a sentence each. Without it, nothing is mended.
    */
   repair?(raw: unknown, library: Library | undefined): { source: unknown; did: string[] };
-  /** The source's beats as the clip's events and texts, at its own pace. */
+  /** The source's events and texts, as the clip's, at its own pace. */
   plan(source: Source): Plan;
   /**
    * Optional: the project's files the plan and the picture are made from, beyond the video file,
@@ -143,7 +169,7 @@ interface PluginBase<Source> {
  * no Node APIs, no clock, no unseeded randomness. So a frame is the same in every run, and the same
  * code draws in the video's web page.
  */
-export interface DrawingPlugin<Source = unknown> extends PluginBase<Source> {
+export interface DrawingPlugin<Source = unknown> extends Planning<Source> {
   /** A moment's picture as an SVG of the whole stage, `width` by `height` pixels. */
   frame(source: Source, moment: Moment, size: { width: number; height: number }): string;
   camera?: undefined;
@@ -154,11 +180,30 @@ export interface DrawingPlugin<Source = unknown> extends PluginBase<Source> {
  * browser), in the host's process, with Node. It must give the same picture in every run all the
  * same: `.frames` compares two runs. Its web page plays the clip it drew.
  */
-export interface RecordingPlugin<Source = unknown> extends PluginBase<Source> {
+export interface RecordingPlugin<Source = unknown> extends Planning<Source> {
   /** Opens the camera on the source, for the clip drawn to `request`, `width` by `height` pixels. */
   camera(source: Source, request: Request, size: { width: number; height: number }): Promise<Camera>;
   frame?: undefined;
 }
 
-/** A plugin, the module's default export: one that draws, or one that records. `Source` is its own scenario, as `check` gives it. */
-export type Plugin<Source = unknown> = DrawingPlugin<Source> | RecordingPlugin<Source>;
+/**
+ * A plugin whose videos are scripts alone: none of the plan's part, and its picture drawn by its
+ * script's `draw`, as pure as a drawing plugin's. A video file that is no script is refused.
+ */
+export interface ScriptedPlugin extends PluginBase {
+  script: ScriptPlugin;
+  commands?: undefined;
+  guide?: undefined;
+  check?: undefined;
+  repair?: undefined;
+  plan?: undefined;
+  inputs?: undefined;
+  frame?: undefined;
+  camera?: undefined;
+}
+
+/**
+ * A plugin, the module's default export: one that draws, one that records, or one with scripts
+ * alone. `Source` is its own scenario, as `check` gives it.
+ */
+export type Plugin<Source = unknown> = DrawingPlugin<Source> | RecordingPlugin<Source> | ScriptedPlugin;

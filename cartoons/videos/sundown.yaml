@@ -1,50 +1,34 @@
-# Everything the format has, in one short day: each pose (stand, wave, point), each move (walk,
-# turn, jump), eyes that blink, and a background that changes twice while Pip and Mo stay where
-# they are. The format is in CLAUDE.md ("The scenario"); Pip, Mo and the backgrounds are drawn in
-# library.yaml.
+# A short day with every action a character has but a look: each pose of the arm (stand, wave,
+# point), each move (walk, turn, jump), eyes that blink, and a background that changes twice while Pip
+# and Mo stay where they are. The format is in CLAUDE.md ("The script"); Pip, Mo and the backgrounds
+# are drawn in library.yaml.
 use: cartoon # the plugin that draws it; the voices are library.yaml's, the other settings package.json's "ai-videos"
 
 scenes:
   - background: morning
     places: { pip: middle, mo: off-right }
     faces: { mo: left } # Mo comes in from the right, looking at Pip
-    beats:
-      - name: waits
-        says:
-          - { who: narrator, text: "Pip stands in the meadow. The sun is high." }
-      - name: mo-walks-in # a walk, while Pip waves
-        walk: { who: mo, to: right }
-        pose: { pip: wave }
-        says:
-          - { who: pip, text: "Hello, Mo! Come over here!" }
-      - name: mo-greets
-        pose: { pip: stand, mo: wave }
-        says:
-          - { who: mo, text: "Hello, Pip!" }
-      - name: sun-goes-down # the background changes; nobody moves
-        background: sundown
-        pose: { mo: stand }
-        says:
-          - { who: narrator, text: "They play all day, until the sun goes down." }
-      - name: mo-turns # a turn: Mo looks round at the sun
-        turn: { who: mo }
-      - name: mo-points
-        pose: { mo: point }
-        says:
-          - { who: mo, text: "Look, Pip! The sun is going to bed." }
-      - name: night-falls # the background changes again
-        background: night
-        pose: { mo: stand }
-        says:
-          - { who: narrator, text: "Then the night comes, and the moon is up." }
-      - name: pip-jumps # a jump of two hops
-        jump: { who: pip, times: 2 }
-        says:
-          - { who: pip, text: "Hooray! The stars are out!" }
-      - name: mo-turns-back
-        turn: { who: mo }
-      - name: good-night # both wave
-        pose: { pip: wave, mo: wave }
-        says:
-          - { who: mo, text: "Good night, Pip." }
-          - { who: pip, text: "Good night, Mo." }
+    script: |
+      narrator say: Pip stands in the meadow. The sun is high.
+      mo walk to=right
+      & pip wave
+      & pip say: Hello, Mo! Come over here!
+      pip stand
+      & mo wave
+      & mo say: Hello, Pip!
+      scene background to=sundown
+      & mo stand
+      & narrator say: They play all day, until the sun goes down.
+      mo turn
+      mo point
+      & mo say: Look, Pip! The sun is going to bed.
+      scene background to=night
+      & mo stand
+      & narrator say: Then the night comes, and the moon is up.
+      pip jump times=2
+      & pip say: Hooray! The stars are out!
+      mo turn
+      pip wave
+      & mo wave
+      & mo say: Good night, Pip.
+      pip say: Good night, Mo.

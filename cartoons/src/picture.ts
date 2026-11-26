@@ -1,12 +1,14 @@
-// One frame's picture: where everything is at a moment of the scenario, and that as an SVG. A pure
-// function of the scenario and the moment, so the same moment is the same text, and the same pixels.
-// The scenario names moves and poses; how each looks (the numbers below) is the plugin's.
-import { ARM, STAGE, moveOf, type Pose, type Scenario } from "./scenario.ts";
-import type { Moment } from "./timeline.ts";
+// One frame's picture: where everything is in a frame of a compiled scenario, as the tool says the
+// frame shows it, and that as an SVG. A pure function of what the frame shows and the library, so the
+// same frame is the same text, and the same pixels. The script names actions; how each looks (the
+// numbers below) is the plugin's.
+import type { Library as LibraryFile, Shown, ShownAction } from "ai-videos/plugin";
+import { ARM, PACE, STAGE, readLibrary, type Library, type Pose } from "./library.ts";
+import type { Did, Setting } from "./script.ts";
 
 type Point = [number, number];
-type Background = Scenario["backgrounds"][string];
-type Character = Scenario["characters"][string];
+type Background = Library["backgrounds"][string];
+type Character = Library["characters"][string];
 type Shape = Background["shapes"][number];
 
 /** A walk's step: its length along the way, and how high the character rises in the middle of it, px. */
@@ -19,6 +21,9 @@ const JUMP = 120;
 /** How narrow a turning character gets halfway, as a share of its width: a paper cut-out seen edge-on. */
 const THIN = 0.04;
 
+/** Within what distance one who passes by turns the character that looks at it, px from middle to middle: about a turn's time, at a walk's own pace. */
+const PASS = 120;
+
 /**
  * The arm's angle in each pose, degrees from hanging down as written, for a character facing right:
  * a negative angle lifts it forward, then up. A wave swings SWING to each side, WAVES times a second.
@@ -26,8 +31,6 @@ const THIN = 0.04;
 const ARM_AT: Record<Pose, number> = { stand: 0, point: -90, wave: -155 };
 const SWING = 20;
 const WAVES = 2;
-/** How long an arm takes to reach a new pose, seconds. */
-const REACH = 0.3;
 
 /** The part that talks, and how tall it is when wide open, as a share of its width: nearly round. */
 const MOUTH = "mouth";
@@ -89,70 +92,108 @@ function eyesAt(name: string, time: number): number {
   return BLINK.shut + (1 - BLINK.shut) * open;
 }
 
+/** Where a walk has a character, `p` of the way through it: a whole number of steps, so it ends with the feet down. */
+function walkAt(from: Point, to: Point, p: number): Point {
+  if (p >= 1) return [...to];
+  const [dx, dy] = [to[0] - from[0], to[1] - from[1]];
+  const way = ease(p);
+  const steps = Math.max(1, Math.round(Math.hypot(dx, dy) / STEP));
+  return [from[0] + dx * way, from[1] + dy * way - BOUNCE * Math.abs(Math.sin(Math.PI * steps * way))];
+}
+
+/** Which way a turn from facing `from` has a character, `p` of the way through it: a cut-out turned round, its width going as the cosine, fastest edge-on, and never to nothing. */
+function turnAt(from: number, p: number): number {
+  const width = Math.cos(Math.PI * p);
+  return from * (Math.abs(width) < THIN ? (p < 0.5 ? THIN : -THIN) : width);
+}
+
+/** A facing, never to nothing. */
+const thin = (facing: number) => (Math.abs(facing) < THIN ? (facing < 0 ? -THIN : THIN) : facing);
+
+/**
+ * Which way a character faces who looks at one `dx` px to its right, `into` seconds into a look that lasts
+ * `length`, having faced `facing` before: as a turn goes, an angle round from 0, facing right, to π. It
+ * turns to the other's side in a turn's time, and is as far round as that one is past while it passes
+ * within `near`: edge-on as it is in front. When the look is over, `dx` being what it was then, it turns
+ * the rest of the way to that side.
+ */
+function lookAt(facing: number, dx: number, near: number, { into, length }: Pick<ShownAction, "into" | "length">): number {
+  const from = Math.acos(facing);
+  const towards = (Math.PI / 2) * (1 - Math.max(-1, Math.min(1, dx / near)));
+  const looked = from + (towards - from) * Math.min(1, Math.min(into, length) / PACE.turn);
+  const side = dx < 0 ? Math.PI : 0;
+  return Math.cos(looked + (side - looked) * Math.min(1, Math.max(0, into - length) / PACE.turn));
+}
+
+/** How high a jump of so many hops has a character, `p` of the way through it: whole hops, so it ends with the feet down. */
+function hopAt(times: number, p: number): number {
+  const hop = (p * times) % 1;
+  return JUMP * 4 * hop * (1 - hop);
+}
+
 /** A pose's arm angle at `time`: a wave swings around its own. */
 const armAt = (pose: Pose, time: number) => ARM_AT[pose] + (pose === "wave" ? SWING * Math.sin(2 * Math.PI * WAVES * time) : 0);
 
+/** The arm's angle at `time`, `p` of the way from one pose to another: a wave's swing fades with it, or comes. */
+function armBetween(was: Pose, pose: Pose, p: number, time: number): number {
+  const reached = ease(p);
+  return pose === was ? armAt(pose, time) : armAt(was, time) * (1 - reached) + armAt(pose, time) * reached;
+}
+
+/** A background of the library, by its name. */
+function backgroundOf(library: Pick<Library, "backgrounds">, name: string): Background {
+  const background = library.backgrounds[name];
+  if (!background) throw new Error(`no background is named "${name}"`);
+  return background;
+}
+
+/** One of a scene's actions that has begun, as a frame shows it. */
+type Acted = Omit<ShownAction, "action" | "values"> & Did;
+
+/** Where a character's walks had it, `ago` seconds before the frame that shows these actions: those begun by then, each as far through as it was. */
+function placeIn(actions: Acted[], who: string, begins: Point, ago: number): Point {
+  let at = begins;
+  for (const one of actions) {
+    if (one.who === who && one.action === "walk" && one.into >= ago) at = walkAt(one.values.from, one.values.to, ago === 0 ? one.progress : (one.into - ago) / one.length);
+  }
+  return at;
+}
+
 /**
- * The scene of the moment's beat: its characters where the beats before left them, facing and posed
- * as those left them, and the moment's own beat part of the way. A walk is a whole number of steps
- * and a jump a whole number of hops, so both end with the feet down.
+ * What a frame of a compiled scenario shows (the tool's AGENTS.md, "A script"), as a staging: the
+ * scene's characters as it begins, and then as their actions have them by now, each on its own channel,
+ * whose actions are one after another: where a walk has it, how far round a turn or a look, how high a
+ * jump over that, and where its arm is. Places depend on no facing, so they come first: a look goes by
+ * where the two are, or were as it ended. The background is the last one it has changed to, or the one it
+ * begins with.
  */
-export function stagingAt(scenario: Scenario, moment: Pick<Moment, "beat" | "progress" | "time" | "into">): Staging {
-  let first = 0; // the scene's first beat, counted through the scenario
-  for (const scene of scenario.scenes) {
-    if (moment.beat >= first + scene.beats.length) {
-      first += scene.beats.length;
+export function scriptStaging(library: Library, shown: Shown): Staging {
+  const { background, characters } = shown.setting as unknown as Setting;
+  const { time } = shown;
+  const actions = shown.actions as unknown as Acted[];
+  let backdrop = background;
+  const placeOf = (who: string, ago = 0) => placeIn(actions, who, characters[who]!.at, ago);
+  const cast = new Map(Object.entries(characters).map(([name, { facing }]) => [name, { at: placeOf(name), facing: facing as number, high: 0, arm: armAt("stand", time) }]));
+  for (const did of actions) {
+    const { who, progress, into, length } = did;
+    if (did.action === "background") {
+      backdrop = did.values.to;
       continue;
     }
-    // `was` is the pose the moment's beat found the character in: its arm goes from there.
-    const cast = new Map(
-      Object.entries(scene.places).map(([who, at]) => [who, { at: [...at] as Point, facing: scene.faces[who] === "left" ? -1 : 1, pose: "stand" as Pose, was: "stand" as Pose }]),
-    );
-    let backdrop = scene.background;
-    for (const [i, beat] of scene.beats.entries()) {
-      if (first + i > moment.beat) break;
-      const now = first + i === moment.beat;
-      if (beat.background !== undefined) backdrop = beat.background;
-      for (const [who, pose] of Object.entries(beat.pose)) {
-        const one = cast.get(who);
-        if (!one) continue;
-        if (!now) one.was = pose;
-        one.pose = pose;
-      }
-      const move = moveOf(beat);
-      const one = move && cast.get(move.who);
-      if (!one) continue;
-      const p = now ? moment.progress : 1;
-      if (beat.walk) {
-        const { to } = beat.walk;
-        const [dx, dy] = [to[0] - one.at[0], to[1] - one.at[1]];
-        const way = ease(p);
-        const steps = Math.max(1, Math.round(Math.hypot(dx, dy) / STEP));
-        const rise = p >= 1 ? 0 : BOUNCE * Math.abs(Math.sin(Math.PI * steps * way));
-        one.at = p >= 1 ? [...to] : [one.at[0] + dx * way, one.at[1] + dy * way - rise];
-      } else if (beat.turn) {
-        // A cut-out turned round: its width goes as the cosine, fastest edge-on, and never to nothing.
-        const width = Math.cos(Math.PI * p);
-        one.facing *= p >= 1 ? -1 : Math.abs(width) < THIN ? (p < 0.5 ? THIN : -THIN) : width;
-      } else if (beat.jump && p < 1) {
-        const hop = (p * beat.jump.times) % 1;
-        one.at = [one.at[0], one.at[1] - JUMP * 4 * hop * (1 - hop)];
-      }
-    }
-    const background = scenario.backgrounds[backdrop];
-    if (!background) throw new Error(`no background is named "${backdrop}"`);
-    // The arm leaves its old pose and reaches the new one over REACH: a wave's swing fades with it.
-    const reached = ease(Math.min(1, moment.into / REACH));
-    const characters = [...cast].map(([name, { at, facing, pose, was }]) => ({
-      name,
-      at,
-      facing,
-      arm: pose === was ? armAt(pose, moment.time) : armAt(was, moment.time) * (1 - reached) + armAt(pose, moment.time) * reached,
-      eyes: eyesAt(name, moment.time),
-    }));
-    return { background, characters };
+    const one = cast.get(who)!;
+    if (did.action === "walk") continue;
+    if (did.action === "turn") one.facing = turnAt(one.facing, progress);
+    else if (did.action === "look-at") {
+      const { target, apart } = did.values;
+      const ago = Math.max(0, into - length);
+      one.facing = lookAt(one.facing, placeOf(target, ago)[0] - placeOf(who, ago)[0], Math.max(1, Math.min(PASS, apart)), did);
+    } else if (did.action === "jump") one.high = hopAt(did.values.times, progress);
+    else one.arm = armBetween(did.values.from, did.values.to, progress, time);
   }
-  throw new Error(`the scenario has no beat ${moment.beat}`);
+  return {
+    background: backgroundOf(library, backdrop),
+    characters: [...cast].map(([name, { at: [x, y], facing, high, arm }]) => ({ name, at: [x, y - high], facing: thin(facing), arm, eyes: eyesAt(name, time) })),
+  };
 }
 
 /** Hundredths of a pixel (or one part in `per`): enough for the picture, and the same text for the same place. */
@@ -168,7 +209,7 @@ function shapeSvg(shape: Shape): string {
 
 /**
  * A mouth's shape, `open` from 0 to 1: its top edge stays and the jaw drops, until the shape is
- * MOUTH_OPEN of its width tall. Closed, it is the shape as the scenario writes it; one written
+ * MOUTH_OPEN of its width tall. Closed, it is the shape as the library draws it; one written
  * taller than that stays as it is.
  */
 function openMouth(shape: Shape, open: number): Shape {
@@ -206,15 +247,26 @@ function characterSvg(character: Character, actor: Actor, mouth: number): string
   return `<g transform="translate(${n(actor.at[0])} ${n(actor.at[1])})${facing === "1" ? "" : ` scale(${facing} 1)`}">${parts.join("")}</g>`;
 }
 
-/** The moment's picture as an SVG of the whole stage, `width` by `height` pixels. */
-export function frameSvg(scenario: Scenario, moment: Moment, { width, height }: { width: number; height: number }): string {
-  const { background, characters } = stagingAt(scenario, moment);
+/** A picture's size, pixels. */
+interface Size {
+  width: number;
+  height: number;
+}
+
+/** The pictures of a cartoon written as a script: the library read once, and each frame's SVG drawn from what it shows. */
+export function drawScript(file: LibraryFile | undefined): (shown: Shown, size: Size) => string {
+  const library = readLibrary(file);
+  return (shown, size) => svgOf(library, scriptStaging(library, shown), shown.mouths, size);
+}
+
+/** A staging as an SVG of the whole stage, the characters drawn as the library has them, each mouth as open as `mouths` says. */
+function svgOf(library: Pick<Library, "characters">, { background, characters }: Staging, mouths: Record<string, number>, { width, height }: Size): string {
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${STAGE.width} ${STAGE.height}" width="${width}" height="${height}">`,
     `<rect width="${STAGE.width}" height="${STAGE.height}" fill="${background.fill}"/>`,
     ...background.shapes.map(shapeSvg),
-    // Only a speaker's mouth moves: the others keep theirs closed, as the scenario writes it.
-    ...characters.map((actor) => characterSvg(scenario.characters[actor.name]!, actor, moment.mouths[actor.name] ?? 0)),
+    // Only a speaker's mouth moves: the others keep theirs closed, as the library draws them.
+    ...characters.map((actor) => characterSvg(library.characters[actor.name]!, actor, mouths[actor.name] ?? 0)),
     "</svg>",
   ].join("\n");
 }

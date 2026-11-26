@@ -83,7 +83,7 @@ export async function readClipData(file: string): Promise<ClipJson> {
   return result.data;
 }
 
-interface Probe {
+export interface Probe {
   width: number;
   height: number;
   fps: number;
@@ -102,6 +102,19 @@ async function probe(file: string): Promise<Probe> {
   const duration = Number(stream.duration);
   if (!fps || !duration) throw new Error(`ffprobe gives ${file} no frame rate or length`);
   return { width: Number(stream.width), height: Number(stream.height), fps, duration };
+}
+
+/**
+ * A compiled scenario's drawn clip, read back: its size, and its length the compiled one, `frames`
+ * at `fps` (a clip left from another run is not).
+ */
+export async function loadDrawn(file: string, frames: number, fps: number): Promise<Probe> {
+  if (!(await exists(file))) throw new Error(`No clip at ${file}`);
+  const video = await probe(file);
+  if (video.fps !== fps || Math.round(video.duration * fps) !== frames) {
+    throw new Error(`${file} lasts ${video.duration} s at ${video.fps} frames a second, not the ${frames} frames at ${fps} compiled: is it from another run?`);
+  }
+  return video;
 }
 
 /** A drawn clip, with its data and its picture's size, rate and length. */

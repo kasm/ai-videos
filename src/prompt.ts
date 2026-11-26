@@ -1,11 +1,13 @@
 // The prompt (AGENTS.md, "prompt"): a story, wrapped in what a web chat needs to write its
 // episodes' files with no tools and no files of its own. The tool's part says what the reply is
-// (a YAML block per episode, named, and what to do on "continue"); the plugin's guide is the format
-// (host.ts, Described), with its commands, each described once; then the library as written, the
+// (a YAML block per episode, named, and what to do on "continue"); then the format: for a plugin
+// whose videos are written as scripts, the guide to a script (guide.ts), else the plugin's guide
+// (host.ts, Described) with its commands, each described once; then the library as written, the
 // voices and the story. import.ts reads the reply.
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { stringify } from "yaml";
+import { guideOf } from "./guide.ts";
 import type { Described } from "./host.ts";
 import { pluginOf, startPlugin } from "./make.ts";
 import { slug } from "./script.ts";
@@ -20,7 +22,7 @@ export interface PromptParts {
   story: string;
   /** The story, as written. */
   text: string;
-  plugin: Pick<Described, "scene" | "guide" | "commands">;
+  plugin: Pick<Described, "scene" | "guide" | "commands" | "script">;
   /** library.yaml as written; none when the project has none. */
   library: string | undefined;
   /** The narrator's voice, the project's `voice`: a line no character says is said in it. */
@@ -72,7 +74,7 @@ export function promptOf(p: PromptParts): string {
   ];
   const width = Math.max(...lines.map(([code]) => code.length)) + 2;
   const block = ["```yaml", ...lines.map(([code, note]) => (note ? `${code.padEnd(width)}# ${note}` : code)), "```"];
-  const commands = Object.entries(plugin.commands).map(([name, { description, example }]) => `- **${name}**: ${description} For example: \`${written(name, example)}\``);
+  const commands = Object.entries(plugin.commands ?? {}).map(([name, { description, example }]) => `- **${name}**: ${description} For example: \`${written(name, example)}\``);
   return [
     "# Videos from a story",
     "",
@@ -96,14 +98,10 @@ export function promptOf(p: PromptParts): string {
     '- If your reply is cut off, I will say "continue". Then begin again with the block of the episode that was cut off, whole, and go on.',
     "- If I send you what the tool refused, reply with the blocks it names, each whole and mended.",
     "",
-    "## The format",
-    "",
-    plugin.guide.trim(),
-    "",
-    "## The commands",
-    "",
-    ...(commands.length > 0 ? commands : ["The format has no commands."]),
-    "",
+    // A plugin with a script is taught scripts alone: its plan's part, if it has one, is not.
+    ...(plugin.script
+      ? [guideOf(plugin.script).trim(), ""]
+      : ["## The format", "", (plugin.guide ?? "").trim(), "", "## The commands", "", ...(commands.length > 0 ? commands : ["The format has no commands."]), ""]),
     ...(lib
       ? [
           "## The library",
