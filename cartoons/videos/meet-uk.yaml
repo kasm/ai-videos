@@ -1,0 +1,18 @@
+# meet.yaml in Ukrainian: Pip waits in the meadow, Mo walks in, and they talk. Each line is said in a
+# Ukrainian voice: the narrator's in package.json's "ai-videos", Pip's and Mo's in library.yaml. The
+# format is in CLAUDE.md ("The script").
+use: cartoon # the plugin that draws it; the voices are library.yaml's, the other settings package.json's "ai-videos"
+language: uk # its lines are in Ukrainian
+outputs: { web: true } # its page too, beside the video
+
+scenes:
+  - background: meadow
+    places: { pip: middle, mo: off-right }
+    faces: { mo: left } # Mo comes in from the right, looking at Pip
+    script: |
+      narrator say: Піп чекає на лузі.
+      mo walk to=right
+      & pip say: Ой, хтось іде! Привіт! Ти хто?
+      mo say: Я Мо. Я живу за пагорбом.
+      pip say: А я Піп. Пограємо?
+      mo say: Так, давай пограємо!

@@ -93,6 +93,8 @@ interface Build {
   title: string;
   /** The video file, which the build names as its source. */
   file: string;
+  /** The language of its words, the page's `lang`. */
+  language: string;
   fps: number;
   /** Seconds. */
   duration: number;
@@ -155,7 +157,7 @@ export async function compose(
   });
   const voices = timeline.scenes.flatMap((scene) => scene.lines).map((line) => ({ n: line.n, file: line.audioFile, name: voiceOf(line), start: line.start, duration: line.duration }));
   const { slug: name, file, script } = video;
-  const project = await writeBuild(root, { name, title: script.title, file, fps: timeline.fps, duration: timeline.duration, scenes, voices }, format, buildDir);
+  const project = await writeBuild(root, { name, title: script.title, file, language: script.language, fps: timeline.fps, duration: timeline.duration, scenes, voices }, format, buildDir);
   // The timeline as the build has it: each line's voice is the build's copy.
   const own = { ...timeline, scenes: timeline.scenes.map((s) => ({ ...s, lines: s.lines.map((line) => ({ ...line, audioFile: voiceOf(line) })) })) };
   await writeFile(path.join(project, "timeline.json"), JSON.stringify(own, null, 2));
@@ -169,7 +171,7 @@ export async function compose(
  */
 export async function composeCompiled(
   root: string,
-  video: { name: string; file: string },
+  video: { name: string; file: string; settings: { language: string } },
   compiled: Compiled,
   clip: { file: string; video: Probe },
   format: FormatName,
@@ -179,7 +181,7 @@ export async function composeCompiled(
   const { width, height } = clip.video;
   const duration = frameTime(compiled.frames, compiled.fps);
   const scene = { id: name, start: 0, duration, clip: { file: clip.file, width, height, duration }, captions: compiledCaptions(name, compiled) };
-  return writeBuild(root, { name, title: name, file: video.file, fps: compiled.fps, duration, scenes: [scene], voices: [] }, format, buildDir);
+  return writeBuild(root, { name, title: name, file: video.file, language: video.settings.language, fps: compiled.fps, duration, scenes: [scene], voices: [] }, format, buildDir);
 }
 
 /** Writes a build's HyperFrames project for one format into `<buildDir>/<format>`. The scene template comes from the tool, `root`. */
@@ -221,7 +223,7 @@ async function writeBuild(root: string, build: Build, format: FormatName, buildD
   const source = path.relative(project, build.file).split(path.sep).join("/");
   const index = `<!doctype html>
 <!-- Generated from ${source}. Edit it or the scene template, not this file. -->
-<html lang="en">
+<html lang="${build.language}">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=${width}, height=${height}" />

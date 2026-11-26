@@ -239,7 +239,7 @@ export type PagePicture = { plugin: string } | { clip: string };
  * Writes the page of `video` to `out`: its picture (the plugin's drawing, or its clip), the caption
  * font (Inter 700, each subset), the sound (`sound`, an .m4a) and the player. Returns its size, bytes.
  */
-export async function writePage(root: string, opts: { title: string; source: string; picture: PagePicture; video: PageVideo; sound: string; out: string }): Promise<number> {
+export async function writePage(root: string, opts: { title: string; language: string; source: string; picture: PagePicture; video: PageVideo; sound: string; out: string }): Promise<number> {
   const { video, picture } = opts;
   const { width, height } = video.size;
   const fonts = await fontSheet(root, FONT.pkg, FONT.weight, (file) => dataUrl(file, "font/woff2"));
@@ -253,7 +253,7 @@ export async function writePage(root: string, opts: { title: string; source: str
   const drawn = "clip" in picture ? "" : `\n  <script id="drawing">${await drawingScript(picture.plugin, "compiled" in video)}</script>`;
   const html = `<!doctype html>
 <!-- Made from ${esc(opts.source)} by the video tool (make --as web). One file: it plays offline. -->
-<html lang="en">
+<html lang="${opts.language}">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -282,7 +282,7 @@ ${await clipStyle(root, width, height)}
       ${shown}
 ${captions}
   </div></div></div>
-  <div id="controls">
+  <div id="controls" lang="en">
     <button id="play" type="button">Play</button>
     <input id="seek" type="range" min="0" max="${video.frames - 1}" step="1" value="0" aria-label="Seek" />
   </div>

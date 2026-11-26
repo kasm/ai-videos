@@ -16,7 +16,7 @@ import { listed, nearest } from "./names.ts";
 import type { Library } from "./plugin.ts";
 import { readScript } from "./read.ts";
 import { NARRATOR, type Issue, type WrittenOver, type WrittenScene, type WrittenScript, type WrittenValue } from "./scenario.ts";
-import { FORMATS, overlay, settings, slug, Speaker, type EventLimitsScript, type FormatName, type VideoScript } from "./script.ts";
+import { FORMATS, overlay, settings, slug, Speaker, voicesGiven, type EventLimitsScript, type FormatName, type VideoScript, type Voices } from "./script.ts";
 import { volumeWrong } from "./values.ts";
 
 /** The project's library, beside its package.json. */
@@ -76,7 +76,7 @@ const LibraryVoices = z.looseObject({
     .record(
       Speaker,
       z.looseObject({
-        voice: z.string({ error: "give each character its voice: one of the tool's (npm run video -- voices lists them)" }).min(1),
+        voice: voicesGiven("give each character its voice: one of the tool's (npm run video -- voices lists them), or one in each language it speaks: { en: am_puck, uk: uk_m1 }"),
         volume: libraryVolume("a character's").optional(),
       }),
       { error: NAME_FORM("a character's") },
@@ -130,7 +130,7 @@ async function readLibraryFile(dir: string): Promise<LibraryFile | undefined> {
 
 /** What the tool takes out of a library: its voices as the cast, its sounds, each with its file, a path from its folder, and the volumes of both, dB. */
 export interface LibraryParts {
-  cast: Record<string, string>;
+  cast: Record<string, Voices>;
   sounds: Record<string, string>;
   volumes: Record<string, number>;
 }
@@ -140,7 +140,7 @@ export function libraryOf(file: string, whole: Record<string, unknown>): { libra
   const { sounds: written, ...raw } = whole;
   const voices = LibraryVoices.safeParse(raw);
   if (!voices.success) throw new Error(`${file}: its characters are not valid:\n${z.prettifyError(voices.error)}`);
-  const cast: Record<string, string> = {};
+  const cast: Record<string, Voices> = {};
   const volumes: Record<string, number> = {};
   const characters: Record<string, unknown> = {};
   for (const [who, { voice, volume, ...drawn }] of Object.entries(voices.data.characters ?? {})) {
@@ -172,7 +172,7 @@ export interface Project {
   /** The library's volumes, dB, by whose they are: a script's. */
   volumes: Record<string, number>;
   /** The project's layer over the server's: package.json's "ai-videos", and the library's voices as its cast. */
-  settings: Record<string, unknown> & { cast: Record<string, string>; voice: string };
+  settings: Record<string, unknown> & { cast: Record<string, Voices>; voice: Voices };
 }
 
 /** The project of a plugin: its settings and its library. Errors name the file that holds the mistake. */

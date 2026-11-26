@@ -6,7 +6,7 @@
   "type": "module",
   "ai-videos": {
     "plugin": "./src/plugin.ts",
-    "voice": "af_heart",
+    "voice": { "en": "af_heart", "uk": "uk_f1", "ru": "ru_f1" },
     "fps": 30
   },
   "scripts": {

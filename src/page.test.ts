@@ -104,7 +104,7 @@ test("the page draws the SVG of each of the video's frames, shows its captions, 
   await writeFile(sound, Buffer.from("not really a sound"));
   const video = pageVideo({ dir: root, file, source, library, request: REQUEST, size: { width: 160, height: 90 }, format: "landscape", timeline: TIMELINE });
   const out = path.join(root, "sq.html");
-  const bytes = await writePage(ROOT, { title: "sq", source: "videos/sq.yaml", picture: { plugin: pluginFile }, video, sound, out });
+  const bytes = await writePage(ROOT, { title: "sq", language: "en", source: "videos/sq.yaml", picture: { plugin: pluginFile }, video, sound, out });
   const html = await readFile(out, "utf8");
   assert.equal(bytes, Buffer.byteLength(html));
 
@@ -208,8 +208,11 @@ test("a script's clip and its page are drawn from the compiled scenario and the 
   await writeFile(sound, Buffer.from("not really a sound"));
   const video = compiledPage({ dir: root, name: "sq", compiled, library, size, format: "landscape" });
   const out = path.join(root, "sq.html");
-  await writePage(ROOT, { title: "sq", source: "videos/sq.yaml", picture: { plugin: pluginFile }, video, sound, out });
+  await writePage(ROOT, { title: "sq", language: "uk", source: "videos/sq.yaml", picture: { plugin: pluginFile }, video, sound, out });
   const html = await readFile(out, "utf8");
+  // Its words are in the video's language, and its player's in English.
+  assert.match(html, /<html lang="uk">/);
+  assert.match(html, /<div id="controls" lang="en">/);
   const given = JSON.parse(scriptOf(html, "video"));
   assert.deepEqual(Object.keys(given).sort(), ["captions", "compiled", "fade", "format", "fps", "frames", "library", "size"]);
   const context = vm.createContext({});
@@ -252,7 +255,7 @@ test("two said at once: the page has each caption in its row, as the video does"
   await writeFile(sound, "");
   const video = compiledPage({ dir: root, name: "two", compiled, library: undefined, size: { width: 1920, height: 1080 }, format: "landscape" });
   const out = path.join(root, "two.html");
-  await writePage(ROOT, { title: "two", source: "videos/two.yaml", picture: { clip }, video, sound, out });
+  await writePage(ROOT, { title: "two", language: "en", source: "videos/two.yaml", picture: { clip }, video, sound, out });
   const html = await readFile(out, "utf8");
   assert.deepEqual([...html.matchAll(/<div id="(two-cap-\d)" class="([^"]*)" style="display: none"><p>(.*?)<\/p>/g)].map((m) => m.slice(1)), [
     ["two-cap-1", "cl-cap cl-row cl-row-1", "Here I am."],
@@ -271,7 +274,7 @@ test("a plugin that does not bundle for a page says so", async () => {
   const video = pageVideo({ dir: root, file: path.join(root, "x.yaml"), source: {}, library: undefined, request: REQUEST, size: { width: 160, height: 90 }, format: "landscape", timeline: TIMELINE });
   const sound = path.join(root, "sound.m4a");
   await writeFile(sound, "");
-  await assert.rejects(writePage(ROOT, { title: "x", source: "x.yaml", picture: { plugin: pluginFile }, video, sound, out: path.join(root, "x.html") }), /plugin\.mjs does not bundle for a web page: [\s\S]*missing\.mjs/);
+  await assert.rejects(writePage(ROOT, { title: "x", language: "en", source: "x.yaml", picture: { plugin: pluginFile }, video, sound, out: path.join(root, "x.html") }), /plugin\.mjs does not bundle for a web page: [\s\S]*missing\.mjs/);
 });
 
 test("a recorded picture's page plays the clip, inside the file, with no drawing", async () => {
@@ -284,7 +287,7 @@ test("a recorded picture's page plays the clip, inside the file, with no drawing
   await writeFile(sound, Buffer.from("not really a sound"));
   const video = pageVideo({ dir: root, file: path.join(root, "videos", "sq.yaml"), source: {}, library: undefined, request: REQUEST, size: { width: 160, height: 90 }, format: "landscape", timeline: TIMELINE });
   const out = path.join(root, "sq.html");
-  await writePage(ROOT, { title: "sq", source: "videos/sq.yaml", picture: { clip }, video, sound, out });
+  await writePage(ROOT, { title: "sq", language: "en", source: "videos/sq.yaml", picture: { clip }, video, sound, out });
   const html = await readFile(out, "utf8");
   assert.ok(html.includes(`<video id="clip" muted playsinline preload="auto" width="160" height="90" src="data:video/mp4;base64,${Buffer.from("not really a clip").toString("base64")}"></video>`));
   assert.doesNotMatch(html, /<script id="drawing"/);

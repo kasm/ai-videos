@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile, copyFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
-import { checkScript, checkedLines, type CheckedScript } from "./check.ts";
+import { checkScript, checkedLines, lineVoice, unspoken, type CheckedScript } from "./check.ts";
 import { loadClip, loadDrawn, madeFiles, readClipData, type SceneClip } from "./clip.ts";
 import { compile, compiledText, type Compiled, type Voiced } from "./compile.ts";
 import { compose, composeCompiled } from "./compose.ts";
@@ -18,7 +18,7 @@ import { compiledPage, writePage, pageVideo, type PagePicture, type PageVideo } 
 import { LOOP } from "./read.ts";
 import { hyperframes, muxSound, renderProject } from "./render.ts";
 import { NARRATOR, issuesText, linesIn, type Default } from "./scenario.ts";
-import { FORMATS, voiceOf, type EventLimitsScript, type FormatName, type LoadedVideo } from "./script.ts";
+import { FORMATS, LANGUAGES, voiceOf, type EventLimitsScript, type FormatName, type LoadedVideo } from "./script.ts";
 import { cachePaths, cacheRoot, ready, setup } from "./setup.ts";
 import { pictureOf } from "./shown.ts";
 import { compiledSounds, compiledVoices, mixKey, writeMix, writeSound } from "./sound.ts";
@@ -141,10 +141,9 @@ async function checkFile(file: string): Promise<void> {
     sameScene(video, host);
     const { repaired, plan } = await host.check(video.file, video.source, video.library);
     const script = scriptOf(video, plan, plan.limits);
-    const voices = new Set((await toolVoices()).map((voice) => voice.name));
     const said = script.scenes.flatMap((scene) => scene.narration);
-    const unspoken = said.find((line) => !voices.has(voiceOf(script, line)));
-    if (unspoken) throw new Error(`${video.file}: "${unspoken.text}" is said in ${voiceOf(script, unspoken)}, which is not one of the tool's voices`);
+    const unsaid = await unspoken(script);
+    if (unsaid) throw new Error(`${video.file}: ${unsaid}`);
     log(`Checked: ${shown}, ${count(plan.events.length, "event")} and ${count(said.length, "line")}.`);
     if (repaired.length > 0) log(`Mended by the plugin, in what it draws (the file is as written):\n${repaired.map((r) => `  - ${r}`).join("\n")}`);
   } finally {
@@ -200,8 +199,8 @@ async function playScript(video: VideoFile, fit: boolean, plugin: () => Promise<
   logDefaults(checked);
 
   begin("the voices and the compiled scenario");
-  const { voice, speed, fps, loudness, timing } = video.settings;
-  log(`Narration (${voice})`);
+  const { language, speed, fps, loudness, timing } = video.settings;
+  log(`Narration (${lineVoice(video.settings, NARRATOR) ?? "no voice"}, ${LANGUAGES[language]})`);
   const engines = enginesIn(MODELS);
   const voices: Voiced[] = [];
   /** How long each line lasts by itself, seconds, by its line in the file: none for an open one. */
@@ -216,7 +215,8 @@ async function playScript(video: VideoFile, fit: boolean, plugin: () => Promise<
       if (line.length !== "open") own.set(line.line, line.length);
       continue;
     }
-    const spokenIn = voiceOf(video.settings, line.who === NARRATOR ? {} : { speaker: line.who });
+    // The check has given each said line a voice in the video's language.
+    const spokenIn = lineVoice(video.settings, line.who)!;
     const spoken = await speak(engines(spokenIn), TTS_CACHE, { text: line.text, voice: spokenIn, speed });
     log(`  line ${line.line} (${line.who}, ${spokenIn}): ${spoken.duration.toFixed(2)}s ${spoken.cached ? "(cached)" : "(generated)"}`);
     own.set(line.line, spoken.duration);
@@ -350,7 +350,9 @@ async function playPlan(video: VideoFile, fit: boolean, plugin: () => Promise<Pl
   const files = madeFiles(video.cache, video.name, format);
 
   begin("the voices and the fit");
-  log(`Narration (${script.voice})`);
+  const unsaid = await unspoken(script);
+  if (unsaid) throw new Error(`${video.file}: ${unsaid}`);
+  log(`Narration (${voiceOf(script, {}) ?? "no voice"}, ${LANGUAGES[script.language]})`);
   const [spoken] = await narrate(script, enginesIn(MODELS), TTS_CACHE, log);
   const voiced = spoken!.map((l) => [l.text, l.speaker, l.cue, path.basename(l.audioFile), l.duration]);
   const fitKey = keyOf("fit", plan, voiced, script.fps, script.timing);
@@ -484,7 +486,7 @@ async function makePlayed(video: VideoFile, outputs: Mode[], played: Played, { s
     begin(recorded && !asVideo ? "the drawing and the page" : "the page");
     if (recorded && !asVideo) await played.draw();
     const page = `${video.out}.html`;
-    const bytes = await writePage(ROOT, { title: video.name, source: shown(video.file).split(path.sep).join("/"), ...played.page(), sound, out: page });
+    const bytes = await writePage(ROOT, { title: video.name, language: video.settings.language, source: shown(video.file).split(path.sep).join("/"), ...played.page(), sound, out: page });
     log(`Page: ${finished(page)}, ${(bytes / 1e6).toFixed(1)} MB`);
     made.push(page);
   }

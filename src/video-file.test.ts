@@ -152,6 +152,37 @@ test("settings in layers: the server's, the project's over them, the file's, the
   await assert.rejects(readVideoFile(file, "loud"), /No profile "loud": the profiles are youtube, quiet, draft/);
 });
 
+test("a language: English unless set; a voice is one, or one in each language, the narrator's and the cast's, in layers", async () => {
+  const library = `characters:\n  pip: { voice: { en: am_puck, uk: uk_m1, ru: ru_m1 }, parts: {} }\n  mo: { voice: bf_emma, parts: {} }\n`;
+  const narrator = { voice: { en: "af_heart", uk: "uk_f1" } };
+  const files = {
+    "plain.yaml": "use: cartoon\n",
+    "uk.yaml": "use: cartoon\nlanguage: uk\nvoice: { uk: uk_f2 }\ncast: { mo: uk_f3, radio: { uk: uk_m4 } }\n",
+    "own.yaml": "use: cartoon\nlanguage: ru\nvoice: ru_f5\n",
+  };
+  const root = await project("languages", narrator, files, library);
+  const read = async (name: string) => (await readVideoFile(path.join(root, "videos", name))).settings;
+  const plain = await read("plain.yaml");
+  assert.equal(plain.language, "en");
+  assert.deepEqual(plain.voice, { en: "af_heart", uk: "uk_f1" });
+  assert.deepEqual(plain.cast, { pip: { en: "am_puck", uk: "uk_m1", ru: "ru_m1" }, mo: "bf_emma" });
+  // A table merges, language by language; one voice goes over all of them.
+  const uk = await read("uk.yaml");
+  assert.equal(uk.language, "uk");
+  assert.deepEqual(uk.voice, { en: "af_heart", uk: "uk_f2" });
+  assert.deepEqual(uk.cast, { pip: { en: "am_puck", uk: "uk_m1", ru: "ru_m1" }, mo: "uk_f3", radio: { uk: "uk_m4" } });
+  assert.equal((await read("own.yaml")).voice, "ru_f5");
+  // The library's voices are no part of what the plugin gets.
+  assert.deepEqual((await readVideoFile(path.join(root, "videos", "plain.yaml"))).library?.raw, { characters: { pip: { parts: {} }, mo: { parts: {} } } });
+
+  const bad =async (name: string, settings: Record<string, unknown>, file: string, text?: string) =>
+    readVideoFile(path.join(await project(name, settings, { "a.yaml": file }, text), "videos", "a.yaml"));
+  await assert.rejects(bad("language-de", {}, "use: cartoon\nlanguage: de\n"), /a\.yaml: a setting is not valid:[\s\S]*a language is en, uk, ru[\s\S]*language/);
+  await assert.rejects(bad("voice-de", {}, "use: cartoon\nvoice: { de: af_heart }\n"), /a\.yaml: a setting is not valid:\n✖ a language is en, uk, ru, not de\n {2}→ at voice/);
+  await assert.rejects(bad("voice-number", {}, "use: cartoon\nvoice: 3\n"), /a\.yaml: a setting is not valid:\n✖ a voice is one of the tool's \(am_puck\), or one in each language: \{ en: am_puck, uk: uk_m1 \}\n {2}→ at voice/);
+  await assert.rejects(bad("library-de", {}, "use: cartoon\n", "characters:\n  pip: { voice: { de: am_puck } }\n"), /library\.yaml: its characters are not valid:\n✖ a language is en, uk, ru, not de\n {2}→ at characters\.pip\.voice/);
+});
+
 test("a mistake is reported against the file that holds it", async () => {
   const bad = await project("bad-project", { loudness: 3, formats: ["landscape"] }, { "a.yaml": "use: cartoon\n" });
   await assert.rejects(readVideoFile(path.join(bad, "videos", "a.yaml")), (e: Error) => {
@@ -398,7 +429,7 @@ test("values that do not read, and a key on top of a script that nothing reads, 
     {
       line: 2,
       message: 'nothing reads "valuse"',
-      hint: "on top of a script are use, voice, cast, speed, fps, loudness, timing, quality, outputs, values, script and scenes: did you mean values?",
+      hint: "on top of a script are use, language, voice, cast, speed, fps, loudness, timing, quality, outputs, values, script and scenes: did you mean values?",
     },
   ]);
   const [inScene] = writtenScript(["scenes:", "  - values: { pause: 1 s }", "    script: |", "      pip say: Hi.", ""].join("\n"))!.issues;

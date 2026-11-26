@@ -10,7 +10,7 @@ import { stringify } from "yaml";
 import { guideOf } from "./guide.ts";
 import type { Described } from "./host.ts";
 import { pluginOf, startPlugin } from "./make.ts";
-import { slug } from "./script.ts";
+import { slug, voiceIn } from "./script.ts";
 import { toolVoices, type Voice } from "./tts.ts";
 import { readProject } from "./video-file.ts";
 
@@ -25,9 +25,9 @@ export interface PromptParts {
   plugin: Pick<Described, "scene" | "guide" | "commands" | "script">;
   /** library.yaml as written; none when the project has none. */
   library: string | undefined;
-  /** The narrator's voice, the project's `voice`: a line no character says is said in it. */
-  narrator: string;
-  /** The library's characters' voices, by name. */
+  /** The narrator's voice, the project's `voice`: a line no character says is said in it. None when it has none in the episodes' language. */
+  narrator: string | undefined;
+  /** The library's characters' voices in the episodes' language, by name. */
   cast: Record<string, string>;
   /** The voices the tool speaks in. */
   voices: Voice[];
@@ -59,7 +59,7 @@ export function promptOf(p: PromptParts): string {
   const { story, plugin } = p;
   const lib = p.library !== undefined;
   const cast = Object.entries(p.cast);
-  const taken = new Set([p.narrator, ...cast.map(([, voice]) => voice)]);
+  const taken = new Set([...(p.narrator ? [p.narrator] : []), ...cast.map(([, voice]) => voice)]);
   // The reply's skeleton, each line with what it is, the comments in a column.
   const lines: [string, string?][] = [
     [`episode: ${story}-1`, "the episode's name"],
@@ -119,7 +119,10 @@ export function promptOf(p: PromptParts): string {
       : []),
     "## The voices",
     "",
-    `The narrator speaks in ${p.narrator}.${cast.length > 0 ? ` The library's characters speak in theirs: ${cast.map(([who, voice]) => `${who} ${voice}`).join(", ")}.` : ""}`,
+    [
+      ...(p.narrator ? [`The narrator speaks in ${p.narrator}.`] : []),
+      ...(cast.length > 0 ? [`The library's characters speak in theirs: ${cast.map(([who, voice]) => `${who} ${voice}`).join(", ")}.`] : []),
+    ].join(" "),
     "",
     "These voices are free, the best first in each group:",
     "",
@@ -160,8 +163,14 @@ export async function promptFor(file: string, log: (msg: string) => void): Promi
       text,
       plugin: host,
       library: project.libraryFile?.text,
-      narrator: project.settings.voice,
-      cast: project.settings.cast,
+      // The episodes are in English: each voice is its English one.
+      narrator: voiceIn(project.settings.voice, "en"),
+      cast: Object.fromEntries(
+        Object.entries(project.settings.cast).flatMap(([who, given]) => {
+          const voice = voiceIn(given, "en");
+          return voice === undefined ? [] : [[who, voice]];
+        }),
+      ),
       voices: await promptVoices(),
     });
   } finally {

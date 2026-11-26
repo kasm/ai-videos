@@ -1,0 +1,18 @@
+# meet.yaml in Russian: Pip waits in the meadow, Mo walks in, and they talk. Each line is said in a
+# Russian voice: the narrator's in package.json's "ai-videos", Pip's and Mo's in library.yaml. The
+# format is in CLAUDE.md ("The script").
+use: cartoon # the plugin that draws it; the voices are library.yaml's, the other settings package.json's "ai-videos"
+language: ru # its lines are in Russian
+outputs: { web: true } # its page too, beside the video
+
+scenes:
+  - background: meadow
+    places: { pip: middle, mo: off-right }
+    faces: { mo: left } # Mo comes in from the right, looking at Pip
+    script: |
+      narrator say: Пип ждёт на лугу.
+      mo walk to=right
+      & pip say: Ой, кто-то идёт! Привет! Ты кто?
+      mo say: Я Мо. Я живу за холмом.
+      pip say: А я Пип. Поиграем?
+      mo say: Да, давай поиграем!

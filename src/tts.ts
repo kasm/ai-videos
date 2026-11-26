@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import type { Language } from "./script.ts";
 import { isSupertonicVoice, SupertonicProvider, SUPERTONIC_VOICES } from "./supertonic.ts";
 
 export interface TtsRequest {
@@ -124,6 +125,9 @@ export async function kokoroVoices(): Promise<Voice[]> {
   if (!table) throw new Error("kokoro-js has no table of its voices: it is not the version package.json pins");
   return Object.entries(table).map(([name, { language, gender, overallGrade }]) => ({ name, language, gender, grade: overallGrade }));
 }
+
+/** The language a voice speaks, as a video names it: Kokoro's American and British English are English. */
+export const spokenIn = (voice: Voice): Language => voice.language.split("-")[0] as Language;
 
 /** Every voice the tool speaks in, with its language, read without a model: Kokoro's English, then Supertonic's Ukrainian and Russian. */
 export async function toolVoices(): Promise<Voice[]> {

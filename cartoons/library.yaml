@@ -1,11 +1,11 @@
 # What the cartoons name: each character, drawn once, with its voice, the backgrounds, and the sounds a
 # script plays. A video file names them; the format is in CLAUDE.md ("The library"). `voice` is the video
-# tool's (one of Kokoro's: npm run -s video -- voices lists them), and so is `sounds`; the rest is the
-# cartoon plugin's.
+# tool's, one in each language the character speaks (npm run -s video -- voices lists them), and so is
+# `sounds`; the rest is the cartoon plugin's.
 
 characters:
   pip:
-    voice: am_puck
+    voice: { en: am_puck, uk: uk_m1, ru: ru_m1 }
     shoulder: [100, -203] # the middle of the arm's upper end: the arm turns around it
     parts: # drawn in this order; written facing right; x right and y down from the point between the feet
       body:
@@ -20,7 +20,7 @@ characters:
       mouth:
         - { shape: ellipse, at: [0, -170], size: [70, 18], fill: "#5b2333" }
   mo:
-    voice: bf_emma
+    voice: { en: bf_emma, uk: uk_f2, ru: ru_f2 }
     shoulder: [85, -265]
     parts: # taller and narrower than Pip, and blue; written facing right too
       body:
@@ -35,7 +35,7 @@ characters:
       mouth:
         - { shape: ellipse, at: [0, -250], size: [60, 16], fill: "#27324f" }
   tuk: # the small one, 170 by 240, and green (darker than the grass)
-    voice: bm_fable
+    voice: { en: bm_fable, uk: uk_m2, ru: ru_m2 }
     shoulder: [75, -142]
     parts:
       body:
@@ -50,7 +50,7 @@ characters:
       mouth:
         - { shape: ellipse, at: [0, -108], size: [50, 14], fill: "#143d28" }
   mole: # round black mole with pink snout and claws, 210 by 270
-    voice: am_liam
+    voice: { en: am_liam, uk: uk_m3, ru: ru_m3 }
     shoulder: [95, -160]
     parts:
       body:
@@ -66,7 +66,7 @@ characters:
       mouth:
         - { shape: ellipse, at: [0, -132], size: [56, 14], fill: "#7a2e43" }
   rabbit: # tall grey-brown elderly rabbit with long ears, 190 by 390
-    voice: bm_george
+    voice: { en: bm_george, uk: uk_m4, ru: ru_m4 }
     shoulder: [85, -195]
     parts:
       body:
@@ -84,7 +84,7 @@ characters:
       mouth:
         - { shape: ellipse, at: [0, -165], size: [54, 14], fill: "#5b2333" }
   squirrel: # slender russet red squirrel with tufted ears and bushy tail, 240 by 310
-    voice: af_bella
+    voice: { en: af_bella, uk: uk_f3, ru: ru_f3 }
     shoulder: [85, -180]
     parts:
       body:
@@ -102,7 +102,7 @@ characters:
       mouth:
         - { shape: ellipse, at: [0, -150], size: [54, 14], fill: "#5b2333" }
   marten: # sleek brown-golden pine marten, 210 by 310
-    voice: am_eric
+    voice: { en: am_eric, uk: uk_m2, ru: ru_m2 }
     shoulder: [85, -180]
     parts:
       body:
@@ -119,7 +119,7 @@ characters:
       mouth:
         - { shape: ellipse, at: [0, -162], size: [54, 14], fill: "#5b2333" }
   badger: # broad black-and-white striped badger, 250 by 320
-    voice: bm_lewis
+    voice: { en: bm_lewis, uk: uk_m5, ru: ru_m5 }
     shoulder: [105, -185]
     parts:
       body:
@@ -136,7 +136,7 @@ characters:
       mouth:
         - { shape: ellipse, at: [0, -165], size: [64, 15], fill: "#5b2333" }
   bramble: # a small, round, brown hedgehog with prickles and a pointed snout, about 265 by 240
-    voice: bf_isabella
+    voice: { en: bf_isabella, uk: uk_f4, ru: ru_f4 }
     shoulder: [75, -94]
     parts:
       body:

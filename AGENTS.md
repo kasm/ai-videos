@@ -184,8 +184,8 @@ scenes: [ … ]
 ```
 
 - **Its keys:** `use` and the settings are the tool's; the plugin checks the rest. The settings
-  are `voice`, `cast`, `speed`, `fps`, `loudness`, `timing`, `quality` (`high` or `draft`, the
-  render), and `outputs`.
+  are `language` (see A video's language), `voice`, `cast`, `speed`, `fps`, `loudness`, `timing`,
+  `quality` (`high` or `draft`, the render), and `outputs`.
 - **Its outputs** are what `make` writes, each on or off: `outputs: { video: true, web: false }`,
   the server's. `video` is the video (see make), `web` its page (see The web page), made first
   when both are on. A project turns the pages on for all its videos with `"outputs": { "web":
@@ -275,7 +275,7 @@ scenes:
      anchor, or with nothing else in its block;
   2. what the plugin's `script.check` refuses (a name the library lacks), run only on a script
      with no mistake so far, as it follows the lines in order;
-  3. a speaker's voice that is not one of the tool's, and a sound that is played whose file is missing, or holds no
+  3. a speaker's voice that is not one of the tool's in the video's language (see A video's language), and a sound that is played whose file is missing, or holds no
      sound that ffmpeg reads (`measureSound`, `src/sound.ts`): how long each lasts is known from here on.
 
   Every mistake of a pass is shown, each with the file and its line, the line as written, what is
@@ -284,7 +284,7 @@ scenes:
 - **`check <file>`** runs the check alone: it speaks and writes nothing, needs nothing from
   `setup` (for a script that plays sounds, ffmpeg), says the defaults taken (see Values), and exits with 1 when it refuses. A video file that is not a script it takes as
   `import` takes an episode: mended, checked and planned by its plugin, every speaker with a voice
-  the tool speaks in.
+  the tool speaks in, in the video's language.
 - **`make <file>`** runs the check, speaks and measures each said line (the voice cache), and
   writes the compiled scenario, `.cache/<name>/compiled.json`, with its timing shown; `--fit` stops
   there. Then it makes what any video's outputs say, as any video's (see make), from that file, read
@@ -509,14 +509,35 @@ A video with several speakers gives each a voice. The library gives each charact
 speaker by speaker. A line's speaker comes from the plugin's plan: a text a character says names
 it as `speaker` (lowercase letters, digits and dashes); the narrator's names none.
 
-- A line's voice is its speaker's in the cast, else the video's `voice`, the narrator's
-  (`voiceOf`, `src/script.ts`). A video with no speakers needs no cast.
+- A line's voice is its speaker's in the cast, else the video's `voice`, the narrator's, in the
+  video's language (`voiceOf`, `src/script.ts`; see A video's language). A video with no speakers
+  needs no cast.
 - A speaker the cast does not name is refused when the video is made, with the line and the
   cast: it is never said in the video's voice.
 - The request passes each line's speaker to the plugin, which moves that character's mouth (see
   Fitting a clip to the voice).
 - The narration's log names the speaker and voice of each line said in another voice than the
   video's: `line 2 (pip, am_puck): 0.93s`.
+
+### A video's language
+
+A video's `language` is `en` (the server's), `uk` or `ru`, a setting as any other (see Settings in
+layers), and every line of it is said in a voice of that language (see The voices; Kokoro's
+American and British English are both `en`).
+
+- **A voice**, the video's `voice` or one of the cast's (a character's in the library, or the
+  file's `cast:`), is one, which speaks its own language, or one in each language, by its code:
+  `voice: { en: am_puck, uk: uk_m1, ru: ru_m1 }`. A table goes over a table language by language,
+  and one voice over all of them; a language the tool has not is refused.
+- **Refused** by `check`, `make` and `import`, at the line, each with a hint naming that language's
+  voices and the speaker's others: a line whose speaker has no voice in the video's language, or one
+  of another language, or one that is none of the tool's. A plan's lines are refused alike, the first
+  with its text (`unspoken`, `src/check.ts`).
+- **The build and the page** carry it as their `lang`, and the captions' font has its letters
+  (Inter's Cyrillic too).
+- The prompt still offers the English voices alone, and each character's English one (see prompt).
+
+`src/video-file.test.ts`, `src/check.test.ts` and `src/import.test.ts` show each rule.
 
 ### The voices
 
@@ -543,13 +564,14 @@ each in its own language, or the text given. `src/supertonic.test.ts` shows each
 ```yaml
 characters:
   pip:
-    voice: am_puck   # the tool's: Pip's voice, the cast's
+    voice: { en: am_puck, uk: uk_m1 }   # the tool's: Pip's voice in each language, the cast's (or one: am_puck)
     volume: -4dB     # the tool's, optional: how loud Pip is, in a script
     parts: { … }     # the rest is the plugin's
 backgrounds: { … }
 ```
 
-- **Its keys:** each character's `voice` is the tool's, and every character has one. The tool takes
+- **Its keys:** each character's `voice` is the tool's, and every character has one, or one in
+  each language it speaks (see A video's language). The tool takes
   them as the project's cast (see Settings in layers), and gives the plugin the rest (but the sounds), with the
   file's path, for `check` (see Plugins). So is its `volume`, in decibels, which it need not have: the
   level a script's own volumes go over (see Values); a plan's sound has no volumes. A mistake is
@@ -709,7 +731,8 @@ again.
   plugin's `script.draw` in place of its `frame`.
 - **The rest:** the sound (`sound.m4a`, the same track the video plays), the captions (the clip
   scene's, split, timed and styled as the video's: `sceneCaptions`, `clipStyle`) and their font
-  (Inter 700, each subset), all inside the file. It names no URL.
+  (Inter 700, each subset), all inside the file. It names no URL. Its `lang` is the video's
+  language, and its player's `en`.
 - **The player:** a play button and a seek bar, nothing more. The sound's clock picks the frame, and
   the page draws it when it changes; the stage is scaled to the window.
 
@@ -729,9 +752,9 @@ guides and commands, then closed. What it reads goes to stderr. In order:
    nothing of its `guide` and commands: its videos are written as scripts. For any other, its
    `guide`, then its commands, each with its description and its example as written.
 3. `library.yaml` as written, when the project has one.
-4. The voices: the narrator's (the project's `voice`), the library's characters', and the rest of
-   the tool's English ones (kokoro-js's), which nobody has, grouped by English and gender, best
-   first (Kokoro's grades).
+4. The voices: the narrator's (the project's `voice`), the library's characters', each its English
+   one, and the rest of the tool's English ones (kokoro-js's), which nobody has, grouped by English
+   and gender, best first (Kokoro's grades).
 5. The story, as written.
 
 It speaks and draws nothing, so it needs nothing from `setup`. `src/prompt.test.ts` shows each part.
@@ -751,10 +774,11 @@ nearest `package.json` above the file with a plugin (`src/import.ts`).
   `library.yaml` has them), and its video file: the block without those two keys, as written, its
   comments kept.
 - **The checks:** each episode is checked as `make` checks it, against the library with what the
-  reply adds, before anything is written: a new character's voice is one of the tool's, no sound is new (a sound is a file, and
+  reply adds, before anything is written: a new character's voice is one of the tool's, or each of
+  its voices one of the language it is given for, no sound is new (a sound is a file, and
   no chat has one: an episode that adds one is refused), the file's
   `use:` and settings are valid, the plugin mends and checks its source and plans it, and each line
-  has a voice the tool speaks in. An episode written as a script has the check of A script in place
+  has a voice the tool speaks in, in the episode's language. An episode written as a script has the check of A script in place
   of the plugin's mending, check and plan (`checkScript`, `src/check.ts`, which `check` and `make` run too): its sounds'
   files are measured, so ffmpeg is on the PATH. The plugin runs in its host, for this one call (see Plugins).
 - **What it writes:** `videos/<name>.yaml` for each episode it takes, and the entries the library

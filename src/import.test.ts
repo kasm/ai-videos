@@ -284,3 +284,33 @@ test("a script episode is checked as check checks it, its sounds' files too, and
   assert.match(items[2]!, /^sc-3: a mistake, at its line of the block \(the one after its fence is line 1\):\n {2}\n {2}line 4: - colour: green\n {4}no colour is named "green"\n {4}Hint: the library has red$/);
   assert.match(items[3]!, /^sc-4: a mistake, at its line of the block[^\n]*\n {2}\n {2}line 6: horn play\n {4}there is no file sounds\/horn\.wav, which library\.yaml has for horn\n/);
 });
+
+test("an episode in another language: a new character's voices each of its language, and every line said in one of the episode's", async () => {
+  const root = path.join(scratch, "languages");
+  await mkdir(path.join(root, "src"), { recursive: true });
+  await writeFile(path.join(root, "package.json"), JSON.stringify({ "ai-videos": { plugin: "src/plugin.mjs", voice: { en: "af_heart", uk: "uk_f1" } } }));
+  await writeFile(path.join(root, "src", "plugin.mjs"), PLUGIN);
+  await writeFile(path.join(root, "library.yaml"), "colours:\n  red: '#d04040'\ncharacters:\n  sq: { voice: am_puck }\n");
+  const scene = (lines: string[]) => `language: uk\nuse: square\nscenes:\n  - colour: red\n    script: |\n${lines.map((line) => `      ${line}\n`).join("")}`;
+  const reply = path.join(root, "stories", "uk.reply.md");
+  await mkdir(path.dirname(reply), { recursive: true });
+  await writeFile(
+    reply,
+    [
+      episode("uk-1", `library:\n  characters:\n    bo: { voice: { en: am_echo, uk: uk_m2 } }\n${scene(["narrator say: Це Бо.", "bo say: Привіт!"])}`),
+      episode("uk-2", `library:\n  characters:\n    al: { voice: { uk: am_echo } }\n${scene(["al say: Привіт!"])}`),
+      episode("uk-3", `library:\n  characters:\n    ed: { voice: { de: am_echo } }\n${scene(["ed say: Hallo!"])}`),
+      episode("uk-4", scene(["sq say: Привіт!"])),
+      "All episodes written.\n",
+    ].join("\n"),
+  );
+  const said: string[] = [];
+  const { refused, videos } = await importReply(reply, (m) => said.push(m));
+  assert.deepEqual(videos, [path.join(root, "videos", "uk-1.yaml")], said.join("\n"));
+  assert.match(said.join("\n"), /added bo \(am_echo, uk_m2\)/);
+  const items = refused!.split("\n- ");
+  assert.equal(items.length, 4, refused);
+  assert.match(items[1]!, /^uk-2: its new character al needs a voice: its voice in Ukrainian, am_echo, speaks English; give it one from the list/);
+  assert.match(items[2]!, /^uk-3: its new character ed needs a voice: de is no language of the tool's: they are en, uk and ru; give it one from the list/);
+  assert.match(items[3]!, /^uk-4: a mistake, at its line of the block[^\n]*\n {2}\n {2}line 7: sq say: Привіт!\n {4}sq speaks in am_puck, which is English, and the video is in Ukrainian \(language: uk\)\n {4}Hint: give sq a voice in Ukrainian, /);
+});

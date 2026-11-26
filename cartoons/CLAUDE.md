@@ -9,7 +9,7 @@ the tool's projects, and a session for it is opened in the repo's root.
 
 - `package.json`: its `"ai-videos"` names this project's plugin for the
   tool (`"plugin": "./src/plugin.ts"`), and holds the settings every
-  cartoon shares: the narrator's `voice`, the `fps`.
+  cartoon shares: the narrator's `voice`, one in each language, the `fps`.
 - `library.yaml`: what the cartoons name: each character, drawn once,
   with its voice, the backgrounds, and the sounds a script plays (The
   library, below).
@@ -172,10 +172,21 @@ cast (the tool's `AGENTS.md`, "The cast"):
 ```yaml
 characters:
   pip:
-    voice: am_puck
+    voice: { en: am_puck, uk: uk_m1, ru: ru_m1 }
     parts: …
 ```
 
+- **A cartoon's language** is English, or what its file says on top,
+  `language: uk` (or `ru`), and each line is said in its speaker's voice
+  in that language (the tool's `AGENTS.md`, "A video's language"). A
+  voice is one, which speaks its own language (`voice: am_puck`), or one in
+  each language, as above; the narrator's in `package.json` is the same.
+  A line whose speaker has no voice in the cartoon's language, or one of
+  another, is refused, with that language's voices. Every character here
+  has one in English, Ukrainian and Russian, each the same one of
+  Supertonic's in both (Pip's `m1`); Marten shares Tuk's, as the two never
+  meet. `videos/meet-uk.yaml` and `videos/meet-ru.yaml` are `meet` in
+  Ukrainian and in Russian.
 - A line's `who` is its speaker: the tool says the line in that voice,
   and what a frame shows opens that character's mouth with the line's
   track (the narrator's opens none).
@@ -185,9 +196,10 @@ characters:
   library's, for a voice only it uses.
 - A character the scene does not place is a voice off stage: it is heard,
   and no mouth moves.
-- A voice is one of the tool's (Kokoro): `npm run -s video -- voices`
-  writes samples of several into the tool's `out/voice-samples/` and lists
-  every name. `make` prints the speaker and voice of each character's line.
+- A voice is one of the tool's (Kokoro's in English, Supertonic's in
+  Ukrainian and Russian): `npm run -s video -- voices` writes samples of
+  several into the tool's `out/voice-samples/` and lists every name, by
+  language. `make` prints the speaker and voice of each character's line.
 - `videos/meet.yaml` has two characters and the narrator, three voices.
 
 The picture depends only on the compiled scenario and the library, so two
@@ -210,7 +222,7 @@ scenes, a jingle the news waits for and a rustle at a word. `make` checks
 and compiles it (`.cache/<name>/compiled.json`; `--fit` stops there), and
 makes the video and the page from that and the library's drawings. The
 tool keeps its own keys (`use`, the settings a cartoon may give over the
-project's: `voice`, `cast`, `speed`, `fps`, `loudness`, `timing`,
+project's: `language`, `voice`, `cast`, `speed`, `fps`, `loudness`, `timing`,
 `quality`, `outputs`, and a script's `values` and `script`), and every
 other key beside the scenes is refused. The tool's `AGENTS.md`, "A
 script", has the form of lines and blocks, the check, the compiled
@@ -378,7 +390,7 @@ it is reported against `library.yaml`.
 ```yaml
 characters:
   pip:
-    voice: am_puck
+    voice: { en: am_puck, uk: uk_m1, ru: ru_m1 } # or one: am_puck
     volume: -4dB # optional
     shoulder: [100, -203]
     parts:

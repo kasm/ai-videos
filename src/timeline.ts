@@ -57,10 +57,11 @@ export async function narrate(
     const lines: SpokenLine[] = [];
     for (const line of scene.narration) {
       n++;
-      const voice = voiceOf(script, line);
+      // make has checked that each line has a voice in the video's language (check.ts, unspoken).
+      const voice = voiceOf(script, line)!;
       const spoken = await speak(engines(voice), cacheDir, { text: line.text, voice, speed: script.speed });
       // A line in another voice than the video's says whose, so a cast is checked by reading.
-      const who = voice === script.voice ? "" : ` (${[line.speaker, voice].filter(Boolean).join(", ")})`;
+      const who = voice === voiceOf(script, {}) ? "" : ` (${[line.speaker, voice].filter(Boolean).join(", ")})`;
       log(`  line ${n}${who}: ${spoken.duration.toFixed(2)}s ${spoken.cached ? "(cached)" : "(generated)"}`);
       lines.push({
         n,

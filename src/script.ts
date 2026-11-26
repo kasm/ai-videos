@@ -43,15 +43,34 @@ export const FORMATS = {
 } as const;
 export type FormatName = keyof typeof FORMATS;
 
+/** The languages a video may be in, by their codes (a page's `lang`), each with its name. */
+export const LANGUAGES = { en: "English", uk: "Ukrainian", ru: "Russian" } as const;
+export type Language = keyof typeof LANGUAGES;
+const LanguageCode = z.enum(Object.keys(LANGUAGES) as [Language, ...Language[]], { error: `a language is ${Object.keys(LANGUAGES).join(", ")}` });
+
+const VOICES = `a voice is one of the tool's (am_puck), or one in each language: { en: am_puck, uk: uk_m1 }`;
+const unknownLanguage = (issue: { code?: string; keys?: string[] }) =>
+  issue.code === "unrecognized_keys" ? `a language is ${Object.keys(LANGUAGES).join(", ")}, not ${issue.keys!.join(", ")}` : undefined;
+
+/** A voice as written: one, which speaks its own language, or one in each language, by its code. `missing` is said when there is none. */
+export const voicesGiven = (missing = VOICES) =>
+  z.union([z.string().min(1), z.partialRecord(LanguageCode, z.string().min(1), { error: unknownLanguage })], { error: (issue) => (issue.input === undefined ? missing : VOICES) });
+export type Voices = z.infer<ReturnType<typeof voicesGiven>>;
+
+/** The voice a line of a video in `language` is said in, of those `given`: its one voice, whatever that speaks, or its voice in that language. None when it has none in it. */
+export const voiceIn = (given: Voices, language: Language): string | undefined => (typeof given === "string" ? given : given[language]);
+
 /**
  * The settings of what a video sounds and moves like, the server's defaults (AGENTS.md, "Settings
  * in layers"): a project and a video file set them over these (video-file.ts, FileSettings).
  */
 export const settings = {
+  /** The language its lines are in: each is said in a voice of it. */
+  language: LanguageCode.default("en"),
   /** The voice of every line that names no speaker (a narrator's). */
-  voice: z.string().default("af_heart"),
+  voice: voicesGiven().default("af_heart"),
   /** The cast: each speaker's voice, by name. A line's `speaker` is one of these. */
-  cast: z.record(Speaker, z.string().min(1)).default({}),
+  cast: z.record(Speaker, voicesGiven()).default({}),
   speed: z.number().min(0.5).max(2).default(1),
   fps: z.union([z.literal(24), z.literal(25), z.literal(30), z.literal(60)]).default(30),
   /** How loud the finished soundtrack is, in LUFS: -14 is what YouTube and most platforms play at; lower is quieter. */
@@ -77,8 +96,9 @@ export interface SceneScript {
 
 export interface VideoScript {
   title: string;
-  voice: string;
-  cast: Record<string, string>;
+  language: Language;
+  voice: Voices;
+  cast: Record<string, Voices>;
   speed: number;
   fps: 24 | 25 | 30 | 60;
   loudness: number;
@@ -86,9 +106,10 @@ export interface VideoScript {
   scenes: SceneScript[];
 }
 
-/** The voice a line is said in: its speaker's in the cast, else the video's. */
-export function voiceOf(script: Pick<VideoScript, "voice" | "cast">, line: { speaker?: string }): string {
-  return (line.speaker === undefined ? undefined : script.cast[line.speaker]) ?? script.voice;
+/** The voice a line is said in: its speaker's in the cast, else the video's, in the video's language. None when that has none in it. */
+export function voiceOf(script: Pick<VideoScript, "voice" | "cast" | "language">, line: { speaker?: string }): string | undefined {
+  const given = line.speaker !== undefined && Object.hasOwn(script.cast, line.speaker) ? script.cast[line.speaker]! : script.voice;
+  return voiceIn(given, script.language);
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>

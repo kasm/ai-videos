@@ -45,7 +45,7 @@ test("a compiled scenario's build: its clip for its frames, its captions on thei
   // A build left from a file that was not a script has a timeline and voices: they go.
   await mkdir(path.join(buildDir, "landscape", "assets", "vo"), { recursive: true });
   await writeFile(path.join(buildDir, "landscape", "timeline.json"), "{}");
-  const project = await composeCompiled(ROOT, { name: "sq", file: path.join(scratch, "videos", "sq.yaml") }, compiled, clip, "landscape", buildDir);
+  const project = await composeCompiled(ROOT, { name: "sq", file: path.join(scratch, "videos", "sq.yaml"), settings: { language: "en" } }, compiled, clip, "landscape", buildDir);
   assert.equal(project, path.join(buildDir, "landscape"));
   assert.equal(existsSync(path.join(project, "timeline.json")), false);
   assert.equal(existsSync(path.join(project, "assets", "vo")), false);
@@ -58,6 +58,7 @@ test("a compiled scenario's build: its clip for its frames, its captions on thei
   assert.doesNotMatch(index, /<audio/);
   assert.doesNotMatch(scene, /-hold"/);
   assert.match(index, /<!-- Generated from \.\.\/\.\.\/\.\.\/\.\.\/videos\/sq\.yaml\./);
+  assert.match(index, /<html lang="en">/);
 
   const boxes = [...scene.matchAll(/<div id="(sq-cap-\d)" class="clip cl-cap" data-start="([\d.]+)" data-duration="([\d.]+)" data-track-index="2"><p>(.*?)<\/p>/g)];
   assert.deepEqual(boxes.map((m) => [m[1], m[4]]), [["sq-cap-1", "Here I am, &lt;b&gt;here&lt;/b&gt;."], ["sq-cap-2", "And it stays."]]);
@@ -81,7 +82,9 @@ test("two said at once: each caption in its row, the lower one on a track of its
   const file = path.join(scratch, "two-landscape.mp4");
   await writeFile(file, Buffer.from("not really a clip"));
   const clip = { file, video: { width: 1920, height: 1080, fps: 30, duration: compiled.frames / 30 } };
-  const project = await composeCompiled(ROOT, { name: "two", file: path.join(scratch, "videos", "two.yaml") }, compiled, clip, "landscape", path.join(scratch, ".cache", "two", "build"));
+  const project = await composeCompiled(ROOT, { name: "two", file: path.join(scratch, "videos", "two.yaml"), settings: { language: "uk" } }, compiled, clip, "landscape", path.join(scratch, ".cache", "two", "build"));
+  // The build's words are in the video's language.
+  assert.match(await readFile(path.join(project, "index.html"), "utf8"), /<html lang="uk">/);
   const scene = await readFile(path.join(project, "compositions", "two.html"), "utf8");
   const boxes = [...scene.matchAll(/<div id="(two-cap-\d)" class="([^"]*)" data-start="[\d.]+" data-duration="[\d.]+" data-track-index="(\d)"><p>(.*?)<\/p>/g)].map((m) => m.slice(1));
   assert.deepEqual(boxes, [

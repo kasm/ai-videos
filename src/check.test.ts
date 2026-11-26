@@ -265,7 +265,31 @@ test("check refuses a name the plugin does not find, at its scene's line, and a 
   assert.match(blue.stderr, /^1 mistake in .*blue\.yaml:\n\n.*blue\.yaml:3: - colour: blue\n {2}no colour is named "blue"\n {2}Hint: the library has red\n$/);
   const odd = await cli(["check", await video("odd", script(["odd say: Hello."]))]);
   assert.equal(odd.code, 1);
-  assert.match(odd.stderr, /odd\.yaml:5: odd say: Hello\.\n {2}odd speaks in am_nobody, which is not one of the tool's voices\n {2}Hint: odd's voice is in library\.yaml, or the file's cast: give one that npm run -s video -- voices lists\n$/);
+  assert.match(odd.stderr, /odd\.yaml:5: odd say: Hello\.\n {2}odd speaks in am_nobody, which is not one of the tool's voices\n {2}Hint: give odd a voice in English, under it in library\.yaml, or in the file's cast; the English voices are af_heart, (\w+, )+\w+ and \w+\n$/);
+});
+
+test("check takes only voices of the video's language: a speaker's in it, the narrator's too, each refused with that language's voices", async () => {
+  // In Ukrainian, Pip speaks in its Ukrainian voice; Sq has only an English one, and the narrator the project's.
+  const uk = ["uk_f1", "uk_f2", "uk_f3", "uk_f4", "uk_f5", "uk_m1", "uk_m2", "uk_m3", "uk_m4"].join(", ") + " and uk_m5";
+  const lines = (language: string, ...rows: string[]) => script(rows).replace("use: square\n", `use: square\nlanguage: ${language}\ncast: { pip: { en: am_puck, uk: uk_m1 } }\n`);
+  const good = await cli(["check", await video("pip-uk", lines("uk", "pip say: Привіт, усім!"))]);
+  assert.equal(good.code, 0, good.stderr);
+  const english = await cli(["check", await video("sq-uk", lines("uk", "pip say: Привіт!", "sq say: Привіт.", "narrator say: Ось вони."))]);
+  assert.equal(english.code, 1);
+  assert.match(english.stderr, /^2 mistakes in .*sq-uk\.yaml:\n/);
+  assert.match(english.stderr, /sq-uk\.yaml:8: sq say: Привіт\.\n {2}sq speaks in am_puck, which is English, and the video is in Ukrainian \(language: uk\)\n {2}Hint: give sq a voice in Ukrainian, under it in library\.yaml, or in the file's cast, beside its others: voice: \{ en: am_puck, uk: … \}; the Ukrainian voices are (.*)\n/);
+  assert.equal(english.stderr.match(/Ukrainian voices are (.*)\n/)![1], uk);
+  assert.match(english.stderr, /sq-uk\.yaml:9: narrator say: Ось вони\.\n {2}the narrator speaks in af_heart, which is English, and the video is in Ukrainian \(language: uk\)\n {2}Hint: give the narrator a voice in Ukrainian, the video's voice, in package\.json's "ai-videos" or in the file, beside its others: voice: \{ en: af_heart, uk: … \}; the Ukrainian voices are uk_f1, /);
+  // In Russian Pip has none, and a voice given for a language is of it.
+  const none = await cli(["check", await video("pip-ru", lines("ru", "pip say: Привет!"))]);
+  assert.match(none.stderr, /pip-ru\.yaml:7: pip say: Привет!\n {2}pip has no voice in Russian\n {2}Hint: give pip a voice in Russian, under it in library\.yaml, or in the file's cast, beside its others: voice: \{ en: am_puck, uk: uk_m1, ru: … \}; the Russian voices are ru_f1, /);
+  const wrong = await cli(["check", await video("mixed", lines("ru", "pip say: Привет!").replace("uk: uk_m1", "ru: uk_m1"))]);
+  assert.match(wrong.stderr, /pip speaks in uk_m1, which is Ukrainian, and the video is in Russian \(language: ru\)\n {2}Hint: give pip a voice in Russian, .*, beside its others: voice: \{ en: am_puck, ru: … \}/);
+  // A plan's lines are checked alike.
+  const plan = await cli(["check", await video("plan-uk", "use: square\nlanguage: uk\nvoice: uk_f1\nwait: 1\n")]);
+  assert.match(plan.stderr, /plan-uk\.yaml: "It slides\." is said by sq, who speaks in am_puck, which is English, and the video is in Ukrainian \(language: uk\): give sq a voice in Ukrainian, /);
+  const language = await cli(["check", await video("de", lines("de", "pip say: Hallo!"))]);
+  assert.match(language.stderr, /de\.yaml: a setting is not valid:\n.*a language is en, uk, ru\n {2}→ at language/);
 });
 
 test("check refuses a sound whose file is missing, by its name, and one that holds no sound, with the lines that play it", async () => {
@@ -303,7 +327,7 @@ test("check refuses a sound whose file is missing, by its name, and one that hol
         "",
         "sounds.yaml:10: odd say: Hello.",
         "  odd speaks in am_nobody, which is not one of the tool's voices",
-        "  Hint: odd's voice is in library.yaml, or the file's cast: give one that npm run -s video -- voices lists",
+        "  Hint: give odd a voice in English, under it in library.yaml, or in the file's cast; the English voices are af_heart, af_alloy, af_aoede, af_bella, af_jessica, af_kore, af_nicole, af_nova, af_river, af_sarah, af_sky, am_adam, am_echo, am_eric, am_fenrir, am_liam, am_michael, am_onyx, am_puck, am_santa, bf_emma, bf_isabella, bm_george, bm_lewis, bf_alice, bf_lily, bm_daniel and bm_fable",
         "",
       ].join("\n"),
     );
@@ -331,7 +355,7 @@ test("check takes any other video file as its plugin checks it: mended, planned,
   const voiceless = await cli(["check", await video("voiceless", "use: square\nwait: 1\nwho: mo\n")]);
   assert.match(voiceless.stderr, /voiceless\.yaml: mo says "It slides\.", and the cast \(sq, odd\) gives mo no voice/);
   const unspoken = await cli(["check", await video("unspoken", "use: square\nwait: 1\nwho: odd\n")]);
-  assert.match(unspoken.stderr, /unspoken\.yaml: "It slides\." is said in am_nobody, which is not one of the tool's voices/);
+  assert.match(unspoken.stderr, /unspoken\.yaml: "It slides\." is said by odd, who speaks in am_nobody, which is not one of the tool's voices: give odd a voice in English, /);
   const other = await cli(["check", await video("other", "use: circle\nwait: 1\n")]);
   assert.match(other.stderr, /other\.yaml says use: circle, and the plugin .*plugin\.mjs draws square/);
   assert.match((await cli(["check"])).stderr, /"check" needs a video: its file, <name>\.yaml/);

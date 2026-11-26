@@ -36,7 +36,19 @@
   - Heard too: many words stressed wrong. Supertonic has no way to set
     stress (upstream issue #132); a trial with acute marks is in
     `out/stress-trial/`, not yet judged.
-- **Next: step 3.** Open: word stress (above).
+- Step 3 done 2026-11-26: a video's `language`, and a voice in each.
+  - Checked: the user approved `cartoons/out/meet-uk.mp4` and
+    `meet-ru.mp4`, and their `.html`. `check` of `meet-uk` with Pip given `am_puck` refused each of
+    his lines, its hint naming `uk_f1` … `uk_m5`. `make` of `meet-uk` and
+    `meet-ru` spoke their lines in Supertonic (narrator `f1`, Pip `m1`,
+    Mo `f2`), wrote the `.mp4` and the `.html`, with `lang` `uk` and `ru`,
+    and a frame of each shows its Cyrillic caption; HyperFrames' check
+    passed, with the notes English `meet` has. `make
+    cartoons/videos/hello.yaml` took every stage from the cache.
+    RayCraft's `water-switch` checked and `--fit` as before (its plan made
+    again: step 2 changed `package.json`, in its key). `npm test` (339)
+    and `npm run typecheck`, the tool's and cartoons' (66), passed.
+- **Next: step 4.** Open: word stress (above).
 
 
 ## Goal

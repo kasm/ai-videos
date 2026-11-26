@@ -9,13 +9,13 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { isMap, isScalar, parseDocument, stringify, type Pair } from "yaml";
-import { checkScript } from "./check.ts";
+import { checkScript, unspoken } from "./check.ts";
 import { pluginOf, startPlugin } from "./make.ts";
 import { listed } from "./names.ts";
 import { ALL_WRITTEN } from "./prompt.ts";
 import { issueItems, type Issue } from "./scenario.ts";
-import { slug, voiceOf } from "./script.ts";
-import { toolVoices } from "./tts.ts";
+import { LANGUAGES, slug, type Language } from "./script.ts";
+import { spokenIn, toolVoices, type Voice } from "./tts.ts";
 import { LIBRARY_FILE, libraryOf, readProject, scriptOf, videoFileOf, writtenScript, type Project } from "./video-file.ts";
 
 /** A whole YAML block of the reply: its text, and the line its fence is on, from 1. */
@@ -98,6 +98,20 @@ export interface Episode {
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+
+/** Why a new character's voice is none the tool speaks in, or nothing: one of its voices, or one in each language, each of that language. */
+function newVoiceWrong(voice: unknown, voices: Voice[]): string | undefined {
+  const of = (name: unknown) => voices.find((v) => v.name === name);
+  if (voice === undefined) return "it has none";
+  if (!isRecord(voice)) return of(voice) ? undefined : `${String(voice)} is not one the tool speaks in`;
+  for (const [language, name] of Object.entries(voice)) {
+    if (!Object.hasOwn(LANGUAGES, language)) return `${language} is no language of the tool's: they are ${listed(Object.keys(LANGUAGES))}`;
+    const known = of(name);
+    if (!known) return `${String(name)} is not one the tool speaks in`;
+    if (spokenIn(known) !== language) return `its voice in ${LANGUAGES[language as Language]}, ${known.name}, speaks ${LANGUAGES[spokenIn(known)]}`;
+  }
+  return undefined;
+}
 
 /** Where the line that holds `at` begins. */
 const lineStart = (text: string, at: number) => text.lastIndexOf("\n", at - 1) + 1;
@@ -288,7 +302,7 @@ export async function importReply(file: string, log: (msg: string) => void): Pro
   // What the reply adds to the library: the entries it lacks, from the episodes in order, the last
   // word counting. A new character's voice is the tool's to check, and a sound is a file, which no chat has.
   const project = await readProject(plugin);
-  const voices = new Set((await toolVoices()).map((v) => v.name));
+  const voices = await toolVoices();
   const has = project.libraryFile?.raw ?? {};
   const added = new Map<string, Entry>();
   const kept = new Set<string>();
@@ -300,10 +314,11 @@ export async function importReply(file: string, log: (msg: string) => void): Pro
       episodes.delete(episode.name);
       continue;
     }
-    const voiceless = episode.entries.find((e) => e.section === "characters" && !(isRecord(e.value) && typeof e.value.voice === "string" && voices.has(e.value.voice)));
+    const voiceless = episode.entries
+      .flatMap((e) => (e.section === "characters" ? [{ name: e.name, why: newVoiceWrong(isRecord(e.value) ? e.value.voice : undefined, voices) }] : []))
+      .find(({ why }) => why !== undefined);
     if (voiceless) {
-      const voice = isRecord(voiceless.value) ? voiceless.value.voice : undefined;
-      refused.set(episode.name, `its new character ${voiceless.name} needs a voice: ${voice === undefined ? "it has none" : `${String(voice)} is not one the tool speaks in`}; give it one from the list`);
+      refused.set(episode.name, `its new character ${voiceless.name} needs a voice: ${voiceless.why}; give it one from the list`);
       episodes.delete(episode.name);
       continue;
     }
@@ -349,9 +364,8 @@ export async function importReply(file: string, log: (msg: string) => void): Pro
             continue;
           }
           const { repaired, plan } = await host!.check(episode.name, video.source, withAdded.library);
-          const script = scriptOf(video, plan, plan.limits);
-          const unspoken = script.scenes.flatMap((s) => s.narration).find((line) => !voices.has(voiceOf(script, line)));
-          if (unspoken) throw new Error(`"${unspoken.text}" is said in ${voiceOf(script, unspoken)}, which is not one of the tool's voices`);
+          const unsaid = await unspoken(scriptOf(video, plan, plan.limits));
+          if (unsaid) throw new Error(unsaid);
           accepted.push({ episode, target, repaired });
         } catch (e) {
           // The reason names the episode, as the chat knows it, not the file it would have been.
@@ -365,7 +379,8 @@ export async function importReply(file: string, log: (msg: string) => void): Pro
 
   // The library first, then the episodes, each only where nothing is there yet.
   if (added.size > 0) {
-    const list = [...added.values()].map((e) => `${e.name}${isRecord(e.value) && typeof e.value.voice === "string" ? ` (${e.value.voice})` : ""}`).join(", ");
+    const voiceOf = ({ value }: Entry) => (!isRecord(value) ? undefined : isRecord(value.voice) ? Object.values(value.voice).join(", ") : typeof value.voice === "string" ? value.voice : undefined);
+    const list = [...added.values()].map((e) => `${e.name}${voiceOf(e) ? ` (${voiceOf(e)})` : ""}`).join(", ");
     if (accepted.length > 0) {
       await writeFile(libraryFile, addEntries(project.libraryFile?.text, [...added.values()]));
       log(`Library: ${shown(libraryFile)}: added ${list}`);
