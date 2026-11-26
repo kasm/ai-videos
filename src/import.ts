@@ -15,7 +15,7 @@ import { listed } from "./names.ts";
 import { ALL_WRITTEN } from "./prompt.ts";
 import { issueItems, type Issue } from "./scenario.ts";
 import { slug, voiceOf } from "./script.ts";
-import { kokoroVoices } from "./tts.ts";
+import { toolVoices } from "./tts.ts";
 import { LIBRARY_FILE, libraryOf, readProject, scriptOf, videoFileOf, writtenScript, type Project } from "./video-file.ts";
 
 /** A whole YAML block of the reply: its text, and the line its fence is on, from 1. */
@@ -288,7 +288,7 @@ export async function importReply(file: string, log: (msg: string) => void): Pro
   // What the reply adds to the library: the entries it lacks, from the episodes in order, the last
   // word counting. A new character's voice is the tool's to check, and a sound is a file, which no chat has.
   const project = await readProject(plugin);
-  const voices = new Set((await kokoroVoices()).map((v) => v.name));
+  const voices = new Set((await toolVoices()).map((v) => v.name));
   const has = project.libraryFile?.raw ?? {};
   const added = new Map<string, Entry>();
   const kept = new Set<string>();

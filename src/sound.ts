@@ -68,12 +68,26 @@ export const compiledVoices = ({ fps, scenes }: Compiled, dir: string): MixedLin
 export const compiledSounds = (compiled: Compiled, dir: string): MixedLine[] =>
   playedLines(compiled).map(({ action, sound, from, frames, volume }) => ({ file: path.join(dir, sound), start: from / compiled.fps, duration: frames / compiled.fps, volume, sound: action === LOOP ? "loop" : "once" }));
 
-/** The voices, read from their files, and the one sample rate they have. */
-async function readVoices(lines: PlacedVoice[]): Promise<{ voices: TtsAudio[]; sampleRate: number }> {
-  const voices = await Promise.all(lines.map((line) => readWav(line.file)));
-  const rates = [...new Set(voices.map((v) => v.sampleRate))];
-  if (rates.length > 1) throw new Error(`the voices come at several sample rates (${rates.join(", ")} Hz): one track needs one`);
-  return { voices, sampleRate: rates[0] ?? 24000 };
+/** The voices, read from their files. */
+const readVoices = (lines: PlacedVoice[]): Promise<TtsAudio[]> => Promise.all(lines.map((line) => readWav(line.file)));
+
+/** Samples at another sample rate, by ffmpeg's resampler. */
+async function resampled(samples: Float32Array, from: number, to: number): Promise<Float32Array> {
+  if (from === to || samples.length === 0) return samples;
+  return samplesOf(await ffmpegBytes(["-f", "f32le", "-ar", String(from), "-ac", "1", "-i", "pipe:0", "-ar", String(to), "-f", "f32le"], bytesOf(samples)));
+}
+
+/**
+ * Voices laid on one track of `duration` seconds at `sampleRate`: those of each sample rate laid
+ * together at theirs (Kokoro's 24 kHz, Supertonic's 44.1), and that resampled once and added.
+ */
+async function voiceTrack(laid: (Laid & { sampleRate: number })[], sampleRate: number, duration: number): Promise<Float32Array> {
+  const track = new Float32Array(Math.round(duration * sampleRate));
+  for (const rate of new Set(laid.map((voice) => voice.sampleRate))) {
+    const part = await resampled(mix(laid.filter((voice) => voice.sampleRate === rate), rate, duration), rate, sampleRate);
+    for (let i = 0; i < Math.min(track.length, part.length); i++) track[i]! += part[i]!;
+  }
+  return track;
 }
 
 /** A sound's file, of any format ffmpeg reads, in two channels at the mix's sample rate. Throws when there is no sound in it. */
@@ -106,12 +120,6 @@ const gainTo = (own: number, volume: number) => (Number.isFinite(own) ? 10 ** ((
 /** What a voice is multiplied by to be as loud as any other voice or sound at `volume` 0, and so much louder. */
 export const gainOf = (voice: TtsAudio, volume: number): number => gainTo(loudnessOf(voice, 2), volume);
 
-/** A track at the mix's sample rate. */
-async function resampled(samples: Float32Array, sampleRate: number): Promise<Float32Array> {
-  if (sampleRate === RATE || samples.length === 0) return samples;
-  return samplesOf(await ffmpegBytes(["-f", "f32le", "-ar", String(sampleRate), "-ac", "1", "-i", "pipe:0", "-ar", String(RATE), "-f", "f32le"], bytesOf(samples)));
-}
-
 /**
  * A script's sound, as long as the video (`duration` seconds), into `file` (.m4a): its voices, in both
  * channels, and the sounds it plays, in their own, each as loud as any other and then at its volume, brought
@@ -120,8 +128,8 @@ async function resampled(samples: Float32Array, sampleRate: number): Promise<Flo
  */
 export async function writeMix(lines: MixedLine[], duration: number, file: string, loudness: number): Promise<Levelled> {
   const said = lines.filter(({ sound }) => sound === undefined);
-  const { voices, sampleRate } = await readVoices(said);
-  const spoken = await resampled(mix(said.map(({ start, duration, volume }, i) => ({ samples: voices[i]!.samples, start, duration, gain: gainOf(voices[i]!, volume) })), sampleRate, duration), sampleRate);
+  const voices = await readVoices(said);
+  const spoken = await voiceTrack(said.map(({ start, duration, volume }, i) => ({ ...voices[i]!, start, duration, gain: gainOf(voices[i]!, volume) })), RATE, duration);
 
   const played = lines.filter(({ sound }) => sound !== undefined);
   const sounds = new Map(await Promise.all([...new Set(played.map((line) => line.file))].map(async (one) => [one, await readSound(one)] as const)));
@@ -141,10 +149,16 @@ export async function mixKey(lines: MixedLine[], duration: number, loudness: num
   return keyOf(`mix at ${RATE}`, made, duration, loudness);
 }
 
-/** A plan's sound: the voices as they are, as long as the video (`duration` seconds) and at `loudness` LUFS, into `file` (.m4a): silence when there is none. */
+/**
+ * A plan's sound: the voices as they are, as long as the video (`duration` seconds) and at `loudness`
+ * LUFS, into `file` (.m4a): silence when there is none. Voices of one sample rate are mixed at it, of
+ * several at a script's.
+ */
 export async function writeSound(lines: PlacedVoice[], duration: number, file: string, loudness: number): Promise<void> {
-  const { voices, sampleRate } = await readVoices(lines);
-  const track = mix(lines.map((line, i) => ({ samples: voices[i]!.samples, start: line.start, duration: line.duration })), sampleRate, duration);
+  const voices = await readVoices(lines);
+  const rates = [...new Set(voices.map((voice) => voice.sampleRate))];
+  const sampleRate = rates.length === 1 ? rates[0]! : rates.length === 0 ? 24000 : RATE;
+  const track = await voiceTrack(lines.map((line, i) => ({ ...voices[i]!, start: line.start, duration: line.duration })), sampleRate, duration);
   // The mix before its level, beside the sound only while it is levelled.
   const mixed = `${file}.mix.wav`;
   await writeFile(mixed, encodeWav(track, sampleRate));

@@ -1,10 +1,12 @@
 // What the tool needs on this disk to run with the network off, and `setup`, the one command that
-// fetches it: the voice model and HyperFrames' Chrome. GSAP and the fonts come with npm (bundle.ts).
-import { existsSync, readFileSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+// fetches it: the voice models and HyperFrames' Chrome. GSAP and the fonts come with npm (bundle.ts).
+import { createHash } from "node:crypto";
+import { createReadStream, existsSync, readFileSync } from "node:fs";
+import { mkdir, open, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { hyperframes, hyperframesBin, run } from "./render.ts";
+import { SUPERTONIC, SUPERTONIC_FILES, SUPERTONIC_REVISION, SupertonicProvider } from "./supertonic.ts";
 import { KokoroProvider, MODEL, MODEL_FILES, type ModelProgress } from "./tts.ts";
 
 /** The tool's caches: AI_VIDEOS_CACHE when it is set (a test, a bigger disk), else .cache/ in the tool. */
@@ -13,7 +15,7 @@ export function cacheRoot(root: string): string {
   return dir ? path.resolve(dir) : path.join(root, ".cache");
 }
 
-/** Inside the cache: the narration, the voice model (under its name), and what setup found. */
+/** Inside the cache: the narration, the voice models (each under its name), and what setup found. */
 export function cachePaths(cache: string) {
   return { tts: path.join(cache, "tts"), models: path.join(cache, "models"), record: path.join(cache, "setup.json") };
 }
@@ -34,7 +36,7 @@ function hyperframesVersion(root: string): string {
   return JSON.parse(readFileSync(path.join(root, "node_modules", "hyperframes", "package.json"), "utf8")).version;
 }
 
-/** What a command needs: the voice, to speak a line; Chrome, for anything HyperFrames draws or checks. */
+/** What a command needs: the voice (both models), to speak a line; Chrome, for anything HyperFrames draws or checks. */
 export type Need = "voice" | "browser";
 
 /** One line for each piece `needs` asks for that is not on this disk, naming it and where it should be. */
@@ -45,6 +47,10 @@ export function missing(root: string, cache: string, needs: Need[]): string[] {
     const dir = path.join(paths.models, ...MODEL.split("/"));
     const absent = MODEL_FILES.filter((file) => !existsSync(path.join(dir, file)));
     if (absent.length) lines.push(`the voice model (${MODEL}): ${absent.join(", ")} not in ${dir}`);
+    const supertonic = path.join(paths.models, ...SUPERTONIC.split("/"));
+    const files = Object.keys(SUPERTONIC_FILES);
+    const lacks = files.filter((file) => !existsSync(path.join(supertonic, file)));
+    if (lacks.length) lines.push(`the voice model (${SUPERTONIC}): ${lacks.length === files.length ? `none of its ${files.length} files` : lacks.join(", ")} in ${supertonic}`);
   }
   if (needs.includes("browser")) {
     const record = readRecord(paths.record);
@@ -88,8 +94,52 @@ function progressLog(log: (msg: string) => void) {
   };
 }
 
+/** A file's sha256, read in pieces. */
+async function hashOf(file: string): Promise<string> {
+  const hash = createHash("sha256");
+  for await (const piece of createReadStream(file)) hash.update(piece);
+  return hash.digest("hex");
+}
+
 /**
- * `setup`: fetches the voice model into the cache and has HyperFrames make sure of its Chrome, then
+ * Supertonic's files, at the revision pinned, into `dir`: each fetched into a `.part` beside it, and
+ * named only once its size and sha256 are the ones pinned. One already there is kept when it is.
+ */
+async function fetchSupertonic(dir: string, progress: (info: ModelProgress) => void): Promise<void> {
+  for (const [file, { size, sha256 }] of Object.entries(SUPERTONIC_FILES)) {
+    const target = path.join(dir, file);
+    if (existsSync(target) && (await hashOf(target)) === sha256) continue;
+    await mkdir(path.dirname(target), { recursive: true });
+    const url = `https://huggingface.co/${SUPERTONIC}/resolve/${SUPERTONIC_REVISION}/${file}`;
+    const response = await fetch(url);
+    if (!response.ok || !response.body) throw new Error(`${url}: ${response.status} ${response.statusText}`);
+    const part = `${target}.part`;
+    const out = await open(part, "w");
+    const hash = createHash("sha256");
+    let got = 0;
+    try {
+      for await (const piece of response.body) {
+        await out.write(piece);
+        hash.update(piece);
+        got += piece.length;
+        // Only a model's own progress is worth a line: its voices and settings are small.
+        if (size > 1e7) progress({ status: "progress", file, progress: (100 * got) / size });
+      }
+    } finally {
+      await out.close();
+    }
+    const digest = hash.digest("hex");
+    if (got !== size || digest !== sha256) {
+      await rm(part, { force: true });
+      throw new Error(`${url}: ${got} bytes with sha256 ${digest}, not the ${size} with ${sha256} pinned`);
+    }
+    await rename(part, target);
+    progress({ status: "done", file });
+  }
+}
+
+/**
+ * `setup`: fetches the voice models into the cache and has HyperFrames make sure of its Chrome, then
  * records where that is. What is already there is kept, so running it again only checks.
  */
 export async function setup(root: string, cache: string, log: (msg: string) => void): Promise<void> {
@@ -99,6 +149,10 @@ export async function setup(root: string, cache: string, log: (msg: string) => v
   log(`Voice model: ${MODEL} (about 325 MB the first time) in ${paths.models}`);
   const voices = await new KokoroProvider(paths.models, { download: true, progress: progressLog(log) }).voices();
   log(`  ${voices.length} voices`);
+
+  log(`\nVoice model: ${SUPERTONIC} (about 400 MB the first time) in ${paths.models}`);
+  await fetchSupertonic(path.join(paths.models, ...SUPERTONIC.split("/")), progressLog(log));
+  log(`  ${(await new SupertonicProvider(paths.models).voices()).length} voices`);
 
   log(`\nHyperFrames' Chrome`);
   if ((await hyperframes(root, root, ["browser", "ensure"])) !== 0) throw new Error("HyperFrames could not get its Chrome (above)");

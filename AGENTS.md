@@ -1,14 +1,15 @@
 # ai-videos
 
 A local animation server. A project gives it a plugin that draws (or records) its scenes, and
-keeps each video as one YAML file; a local voice (Kokoro) says its lines, the plugin's clip is
-drawn to fit them, and HyperFrames renders the clip with its captions to MP4, or the tool writes a
-web page that plays the same. Everything runs locally on Node; there is no Python in this project.
+keeps each video as one YAML file; a local voice (Kokoro, or Supertonic in Ukrainian and Russian)
+says its lines, the plugin's clip is drawn to fit them, and HyperFrames renders the clip with its
+captions to MP4, or the tool writes a web page that plays the same. Everything runs locally on
+Node; there is no Python in this project.
 
 ## Commands
 
 ```
-npm run video -- setup                        once: fetch the voice model and HyperFrames' Chrome (see Offline)
+npm run video -- setup                        once: fetch the voice models and HyperFrames' Chrome (see Offline)
 npm run video -- make <dir>/<name>.yaml       a video, from its one file (see Projects, make)
 npm run video -- make <file> --fit            only the plan and the fit, in seconds
 npm run video -- make <file> --profile quiet  the same, a profile's settings over the rest
@@ -17,7 +18,7 @@ npm run video -- story <story>.md             a story to its videos, by a web ch
 npm run -s video -- prompt <story>.md         the prompt for a web chat, on stdout (see Projects, prompt)
 npm run video -- import <reply file>          the chat's reply: its episodes as video files (see Projects, import)
 npm run -s video -- check <dir>/<name>.yaml   a video file checked, with nothing spoken or written (see A script)
-npm run video -- voices ["text"]              voice samples in out/voice-samples/
+npm run video -- voices ["text"]              the voices, and samples in out/voice-samples/ (see The voices)
 npm test                                      the tool's tests (src/*.test.ts)
 npm run typecheck
 ```
@@ -35,18 +36,18 @@ npm run -s video -- make videos/hello.yaml
 From this folder, `npm run -s video -- make cartoons/videos/hello.yaml` makes the same.
 
 What `make` writes goes into the project's folder (`.cache/<name>/`, `out/`); the voice cache and
-the voice model always stay in this tool.
+the voice models always stay in this tool.
 
 ## Layout
 
 | Path | What it is |
 | --- | --- |
 | `scenes/clip/scene.html` | The scene template (a HyperFrames sub-composition with `{{placeholders}}`): the plugin's clip, muted, with the captions over it. |
-| `src/` | The pipeline: `video-file` (the file, its settings in layers, and the `script` the pipeline reads) → the plugin in its process (`plugin`, `make`, `host`): its plan → `tts` → `timeline` (and `fit` with `mouth`) → `sound` → the drawing (`moments`, `frames`, `clip`) → `compose` (with `bundle` and `captions`) → `render`; `page`, the web page; `stages` and `lock`, a make's cache and its lock (see The cache); `setup`, what the commands need on the disk; `prompt` and `import`, a story's prompt for a web chat and its reply taken in, and `story`, the two by the clipboard and the episodes made (see prompt, import, story); `loudness`, how loud a voice or a sound is (see How loud); `read`, `scenario` with `names` and `labels`, `values` with `formula`, `plan` with `times` and `words`, `compile`, `shown` and `guide`, a video written as a script: its lines and blocks read and checked, what its values come to, when each begins and ends, compiled, what each frame of it shows, and how it is taught (see A script, Values, What happens at once), and `check`, the check of a script as `check`, `make` and `import` run it; `random`, what every random test draws from, to say how many different scripts or plans it tried. |
+| `src/` | The pipeline: `video-file` (the file, its settings in layers, and the `script` the pipeline reads) → the plugin in its process (`plugin`, `make`, `host`): its plan → `tts` (with `supertonic`) → `timeline` (and `fit` with `mouth`) → `sound` → the drawing (`moments`, `frames`, `clip`) → `compose` (with `bundle` and `captions`) → `render`; `page`, the web page; `stages` and `lock`, a make's cache and its lock (see The cache); `setup`, what the commands need on the disk; `prompt` and `import`, a story's prompt for a web chat and its reply taken in, and `story`, the two by the clipboard and the episodes made (see prompt, import, story); `loudness`, how loud a voice or a sound is (see How loud); `read`, `scenario` with `names` and `labels`, `values` with `formula`, `plan` with `times` and `words`, `compile`, `shown` and `guide`, a video written as a script: its lines and blocks read and checked, what its values come to, when each begins and ends, compiled, what each frame of it shows, and how it is taught (see A script, Values, What happens at once), and `check`, the check of a script as `check`, `make` and `import` run it; `random`, what every random test draws from, to say how many different scripts or plans it tried. |
 | `cartoons/` | A project of the tool's, in this repo: the cartoon plugin (`cartoons/src/plugin.ts`), its library, videos and stories, and its notes, `cartoons/CLAUDE.md`. Its `episode` skill is the repo's, `.claude/skills/episode/`. |
 | `out/voice-samples/` | What `voices` writes. |
 | `.cache/tts/` | Narration audio, keyed by text, voice and speed. |
-| `.cache/models/` | The voice model, fetched by `setup`. |
+| `.cache/models/` | The voice models, each under its name, fetched by `setup`. |
 | `.cache/setup.json` | Where `setup` found HyperFrames' Chrome, and for which HyperFrames. |
 
 `AI_VIDEOS_CACHE` moves the whole `.cache/` elsewhere (the tests give it an empty folder).
@@ -517,6 +518,23 @@ it as `speaker` (lowercase letters, digits and dashes); the narrator's names non
 - The narration's log names the speaker and voice of each line said in another voice than the
   video's: `line 2 (pip, am_puck): 0.93s`.
 
+### The voices
+
+The tool speaks in two local engines, behind one `TtsProvider` (`src/tts.ts`), and a voice's name
+says whose it is (`enginesIn`). Each voice has its language (`toolVoices`):
+
+- **Kokoro** (Kokoro-82M, through kokoro-js): 28 voices in American and British English, `am_puck`,
+  `bf_emma`, each with Kokoro's grade; 24 kHz.
+- **Supertonic 3** (`src/supertonic.ts`): ten voices, each in Ukrainian and in Russian, `uk_f1` to
+  `uk_f5` and `uk_m1` to `uk_m5`, and the same with `ru_`; 44.1 kHz. It is run as its example runs
+  it, in 8 steps, at 1.05 times the video's `speed`, and its noise is seeded from the line, so a line
+  is the same in every run. A line longer than 300 characters is said in parts, split between
+  sentences, 0.3 s apart. A letter it lacks stops `make`, naming it and the line; Ukrainian's
+  apostrophe (ʼ) and low quote („) are read as `'` and `"`.
+
+`voices` lists them by language and writes a sample of a few of Kokoro's and each of Supertonic's,
+each in its own language, or the text given. `src/supertonic.test.ts` shows each rule.
+
 ### The library
 
 `library.yaml`, beside the `package.json`, holds what a project's videos name, each drawn once:
@@ -712,7 +730,8 @@ guides and commands, then closed. What it reads goes to stderr. In order:
    `guide`, then its commands, each with its description and its example as written.
 3. `library.yaml` as written, when the project has one.
 4. The voices: the narrator's (the project's `voice`), the library's characters', and the rest of
-   kokoro-js's, which nobody has, grouped by English and gender, best first (Kokoro's grades).
+   the tool's English ones (kokoro-js's), which nobody has, grouped by English and gender, best
+   first (Kokoro's grades).
 5. The story, as written.
 
 It speaks and draws nothing, so it needs nothing from `setup`. `src/prompt.test.ts` shows each part.
@@ -787,7 +806,10 @@ presses Enter in the terminal when the chat's answer is copied. Windows only.
 
 Only `setup` uses the network. It fetches once what no other command may fetch:
 
-- the voice model (`onnx-community/Kokoro-82M-v1.0-ONNX`, about 325 MB), into `.cache/models/`;
+- the voice models, into `.cache/models/`: Kokoro (`onnx-community/Kokoro-82M-v1.0-ONNX`, about
+  325 MB), and Supertonic (`Supertone/supertonic-3`, about 400 MB), each file of a revision pinned
+  and checked against its sha256 (`SUPERTONIC_FILES`, `src/supertonic.ts`). Supertonic's weights are
+  under BigScience OpenRAIL-M, whose use rules have a published video say its voices are machine-made;
 - HyperFrames' Chrome (chrome-headless-shell), which HyperFrames keeps in its own cache
   (`~/.cache/hyperframes/`); `setup` records where, and for which HyperFrames, in `.cache/setup.json`.
 
@@ -796,8 +818,8 @@ build carries in `assets/vendor/` (`src/bundle.ts`), so a build names no URL, an
 bundles a web page's drawing (see The web page). Running `setup` again keeps what is there and only
 checks it.
 
-Every other command first checks that what it needs is on the disk (`src/setup.ts`): the voice
-model's files, and for anything HyperFrames draws or checks, its Chrome. A piece missing stops the
+Every other command first checks that what it needs is on the disk (`src/setup.ts`): both voice
+models' files, and for anything HyperFrames draws or checks, its Chrome. A piece missing stops the
 command before it writes anything, naming the piece and where it should be, with "run setup":
 nothing is fetched. HyperFrames gets its Chrome by path (`HYPERFRAMES_BROWSER_PATH`), so it never
 downloads one, and runs with its update check off. `src/setup.test.ts` and `src/bundle.test.ts`
@@ -822,9 +844,9 @@ YouTube and most platforms play at; -16 or -20 is quieter), its peaks 1.5 dB bel
 a voice in both channels. The video puts it with the render's picture, and the web page plays the
 same file. How it is brought there differs:
 
-- **A plan's voices** are mixed as they are, and ffmpeg's `loudnorm` brings the mix to its loudness. A
-  line's own level doesn't matter: at -14 LUFS, where a voice's peaks have no room for one gain, it is
-  evened out with the rest.
+- **A plan's voices** are mixed as they are, at their sample rate (48 kHz when they have two), and ffmpeg's
+  `loudnorm` brings the mix to its loudness. A line's own level doesn't matter: at -14 LUFS, where a voice's peaks
+  have no room for one gain, it is evened out with the rest.
 - **A script's voices and sounds** (`writeMix`) are first made as loud as each other, as Kokoro's are not (-17 LUFS
   for `am_puck`, -23 for `am_michael`): each line, and each sound's file, whole, is measured as LUFS are (`loudnessOf`,
   `loudnessIn`, `src/loudness.ts`, which say what ffmpeg's `ebur128` does; `loudnorm` says up to 0.8 LU less of
@@ -833,9 +855,10 @@ same file. How it is brought there differs:
   loudness by one gain for the whole (`levelMix`, `src/render.ts`), and a limiter, which lets go soon, takes only
   the peaks, of both channels alike; the gain makes up for what that takes, and is found in rounds. `make` says the
   gain, and how far the highest peak was lowered.
-- **A sound keeps its own quality:** the mix of a script is at 48 kHz, in two channels, where a voice (24 kHz, one
-  channel) is in both, and a sound is as ffmpeg reads its file: a stereo one keeps its two, one of another sample rate is
-  resampled, and no treble of it is lost (but what AAC takes, over 19 kHz).
+- **A sound keeps its own quality:** the mix of a script is at 48 kHz, in two channels, where a voice (Kokoro's 24 kHz
+  or Supertonic's 44.1, one channel) is in both, the voices of each sample rate resampled together, and a sound is as
+  ffmpeg reads its file: a stereo one keeps its two, one of another sample rate is resampled, and no treble of it is
+  lost (but what AAC takes, over 19 kHz).
 - So what is written quieter comes out as much quieter, and what is written louder a little less so: the
   loudness is kept, and the limiter takes more of what is loud. On Kokoro's voices at -14 LUFS, -12 dB
   comes out at -11.8, 6 at about 5, and 12 at about 10. Only differences are heard: a whole

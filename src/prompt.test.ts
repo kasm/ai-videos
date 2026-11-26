@@ -4,8 +4,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { guideOf } from "./guide.ts";
-import { ALL_WRITTEN, promptOf, type PromptParts } from "./prompt.ts";
-import { kokoroVoices } from "./tts.ts";
+import { ALL_WRITTEN, promptOf, promptVoices, type PromptParts } from "./prompt.ts";
 
 const PARTS: PromptParts = {
   story: "the-pond",
@@ -75,8 +74,8 @@ test("a project with no library gets no library: in its reply", () => {
   assert.match(prompt, /The narrator speaks in af_heart\.\n/);
 });
 
-test("the tool's voices are kokoro-js's, read without the model", async () => {
-  const voices = await kokoroVoices();
+test("the prompt offers the tool's English voices, kokoro-js's, read without the model", async () => {
+  const voices = await promptVoices();
   assert.equal(voices.length, 28);
   assert.deepEqual(voices.find((v) => v.name === "af_heart"), { name: "af_heart", language: "en-us", gender: "Female", grade: "A" });
   assert.deepEqual(new Set(voices.map((v) => v.language)), new Set(["en-us", "en-gb"]));

@@ -8,13 +8,14 @@ import path from "node:path";
 import { after, test } from "node:test";
 import { run } from "./render.ts";
 import { cachePaths, missing, ready } from "./setup.ts";
+import { SUPERTONIC, SUPERTONIC_FILES } from "./supertonic.ts";
 import { KokoroProvider, MODEL, MODEL_FILES } from "./tts.ts";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const scratch = await mkdtemp(path.join(os.tmpdir(), "ai-videos-setup-"));
 after(() => rm(scratch, { recursive: true, force: true }));
 
-const modelDir = (cache: string) => path.join(cachePaths(cache).models, ...MODEL.split("/"));
+const modelDir = (cache: string, model = MODEL) => path.join(cachePaths(cache).models, ...model.split("/"));
 const HYPERFRAMES = JSON.parse(await readFile(path.join(ROOT, "node_modules", "hyperframes", "package.json"), "utf8")).version;
 
 /** The tool's CLI, its cache in `cache`. */
@@ -32,7 +33,7 @@ async function project(name: string) {
   return dir;
 }
 
-test("make on empty caches names the voice model and Chrome, and starts nothing", async () => {
+test("make on empty caches names the voice models and Chrome, and starts nothing", async () => {
   const dir = await project("empty");
   const cache = path.join(scratch, "empty-cache");
   await mkdir(cache);
@@ -40,6 +41,7 @@ test("make on empty caches names the voice model and Chrome, and starts nothing"
   assert.equal(code, 1, stderr);
   assert.ok(stderr.includes("Missing, and not fetched:"), stderr);
   assert.ok(stderr.includes(`the voice model (${MODEL}): ${MODEL_FILES.join(", ")} not in ${modelDir(cache)}`), stderr);
+  assert.ok(stderr.includes(`the voice model (${SUPERTONIC}): none of its 17 files in ${modelDir(cache, SUPERTONIC)}`), stderr);
   assert.ok(stderr.includes(`HyperFrames' Chrome: none found by setup (no ${cachePaths(cache).record})`), stderr);
   assert.ok(stderr.includes(`Run "npm run video -- setup" once, with the network on`), stderr);
   // Nothing begun: no step logged, the cache as empty as it was, the project as it was (no .cache/ or out/).
@@ -48,11 +50,12 @@ test("make on empty caches names the voice model and Chrome, and starts nothing"
   assert.deepEqual(await readdir(dir), ["package.json", "src", "videos"]);
 });
 
-test("make --fit only speaks: it names the voice model, not Chrome", async () => {
+test("make --fit only speaks: it names the voice models, not Chrome", async () => {
   const dir = await project("fit");
   const { code, stderr } = await cli(path.join(scratch, "fit-cache"), ["make", path.join(dir, "videos", "sq.yaml"), "--fit"]);
   assert.equal(code, 1, stderr);
   assert.ok(stderr.includes(`the voice model (${MODEL})`), stderr);
+  assert.ok(stderr.includes(`the voice model (${SUPERTONIC})`), stderr);
   assert.ok(!stderr.includes("Chrome"), stderr);
 });
 
@@ -70,13 +73,23 @@ test("the voice with its model missing says so, rather than fetch it", async () 
 test("each piece is named on its own, and nothing once all are there", async () => {
   const cache = path.join(scratch, "cache");
   const model = modelDir(cache);
-  for (const file of MODEL_FILES.slice(0, -1)) {
-    await mkdir(path.dirname(path.join(model, file)), { recursive: true });
-    await writeFile(path.join(model, file), "");
-  }
-  assert.deepEqual(missing(ROOT, cache, ["voice"]), [`the voice model (${MODEL}): onnx/model.onnx not in ${model}`]);
-  await mkdir(path.join(model, "onnx"), { recursive: true });
-  await writeFile(path.join(model, "onnx", "model.onnx"), "");
+  const supertonic = modelDir(cache, SUPERTONIC);
+  const files = async (dir: string, list: string[]) => {
+    for (const file of list) {
+      await mkdir(path.dirname(path.join(dir, file)), { recursive: true });
+      await writeFile(path.join(dir, file), "");
+    }
+  };
+  await files(model, MODEL_FILES.slice(0, -1));
+  const theirs = Object.keys(SUPERTONIC_FILES);
+  await files(supertonic, theirs.filter((file) => !file.startsWith("voice_styles/M")));
+  assert.deepEqual(missing(ROOT, cache, ["voice"]), [
+    `the voice model (${MODEL}): onnx/model.onnx not in ${model}`,
+    `the voice model (${SUPERTONIC}): voice_styles/M1.json, voice_styles/M2.json, voice_styles/M3.json, voice_styles/M4.json, voice_styles/M5.json in ${supertonic}`,
+  ]);
+  await files(model, ["onnx/model.onnx"]);
+  assert.deepEqual(missing(ROOT, cache, ["voice"]), [`the voice model (${SUPERTONIC}): voice_styles/M1.json, voice_styles/M2.json, voice_styles/M3.json, voice_styles/M4.json, voice_styles/M5.json in ${supertonic}`]);
+  await files(supertonic, theirs);
   assert.deepEqual(missing(ROOT, cache, ["voice"]), []);
   assert.deepEqual(ready(ROOT, cache, ["voice"]), {});
 

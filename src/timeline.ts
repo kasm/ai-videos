@@ -1,7 +1,7 @@
 // Turns measured narration into a timeline: the voice sets the clock.
 import type { SceneClip } from "./clip.ts";
 import { voiceOf, type VideoScript } from "./script.ts";
-import { speak, type TtsProvider } from "./tts.ts";
+import { speak, type Engines } from "./tts.ts";
 
 /** A narration line, spoken and measured. */
 export interface SpokenLine {
@@ -47,7 +47,7 @@ const round = (t: number) => Math.round(t * 1000) / 1000;
 /** Speaks every line (or takes it from the cache) and measures it: one list per scene. */
 export async function narrate(
   script: VideoScript,
-  provider: TtsProvider,
+  engines: Engines,
   cacheDir: string,
   log: (msg: string) => void,
 ): Promise<SpokenLine[][]> {
@@ -58,7 +58,7 @@ export async function narrate(
     for (const line of scene.narration) {
       n++;
       const voice = voiceOf(script, line);
-      const spoken = await speak(provider, cacheDir, { text: line.text, voice, speed: script.speed });
+      const spoken = await speak(engines(voice), cacheDir, { text: line.text, voice, speed: script.speed });
       // A line in another voice than the video's says whose, so a cast is checked by reading.
       const who = voice === script.voice ? "" : ` (${[line.speaker, voice].filter(Boolean).join(", ")})`;
       log(`  line ${n}${who}: ${spoken.duration.toFixed(2)}s ${spoken.cached ? "(cached)" : "(generated)"}`);

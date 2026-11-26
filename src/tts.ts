@@ -1,8 +1,10 @@
-// Narration: text in, cached wav out. Providers are swappable behind TtsProvider.
+// Narration: text in, cached wav out. Two engines, behind TtsProvider: Kokoro for English, and
+// Supertonic (supertonic.ts) for Ukrainian and Russian; a voice's name says whose it is.
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { isSupertonicVoice, SupertonicProvider, SUPERTONIC_VOICES } from "./supertonic.ts";
 
 export interface TtsRequest {
   text: string;
@@ -98,12 +100,15 @@ export class KokoroProvider implements TtsProvider {
   }
 }
 
-/** One of the voices the tool speaks in: its name, its English (`en-us` or `en-gb`), and Kokoro's grade of it (A best). */
+/**
+ * One of the voices the tool speaks in: its name, its language (Kokoro's `en-us` or `en-gb`,
+ * Supertonic's `uk` or `ru`), and Kokoro's grade of one of its own (A best).
+ */
 export interface Voice {
   name: string;
   language: string;
   gender: "Female" | "Male";
-  grade: string;
+  grade?: string;
 }
 
 /**
@@ -118,6 +123,21 @@ export async function kokoroVoices(): Promise<Voice[]> {
     | undefined;
   if (!table) throw new Error("kokoro-js has no table of its voices: it is not the version package.json pins");
   return Object.entries(table).map(([name, { language, gender, overallGrade }]) => ({ name, language, gender, grade: overallGrade }));
+}
+
+/** Every voice the tool speaks in, with its language, read without a model: Kokoro's English, then Supertonic's Ukrainian and Russian. */
+export async function toolVoices(): Promise<Voice[]> {
+  return [...(await kokoroVoices()), ...SUPERTONIC_VOICES];
+}
+
+/** The engine that speaks a voice. */
+export type Engines = (voice: string) => TtsProvider;
+
+/** The tool's engines, their models in `modelDir`, each loaded when it first speaks: Supertonic its voices, Kokoro the rest, which refuses one it lacks. */
+export function enginesIn(modelDir: string): Engines {
+  const kokoro = new KokoroProvider(modelDir);
+  const supertonic = new SupertonicProvider(modelDir);
+  return (voice) => (isSupertonicVoice(voice) ? supertonic : kokoro);
 }
 
 const TRIM_VERSION = 1;

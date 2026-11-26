@@ -7,7 +7,7 @@ import type { PluginHost } from "./make.ts";
 import { NARRATOR, linesIn, type Checked, type CheckedLine, type Issue } from "./scenario.ts";
 import { voiceOf } from "./script.ts";
 import { measureSound } from "./sound.ts";
-import { kokoroVoices } from "./tts.ts";
+import { toolVoices } from "./tts.ts";
 import { LIBRARY_FILE, type VideoFile } from "./video-file.ts";
 
 /** A script checked: the scenario worked out, the defaults it takes, and how long each sound it plays lasts, seconds, by its file. */
@@ -45,7 +45,7 @@ async function measured(lines: CheckedLine[], dir: string): Promise<{ lengths: R
 export async function checkScript(video: VideoFile, host: PluginHost): Promise<CheckedScript | { issues: Issue[] }> {
   const checked = await host.checkScript(video.file, video.script!, video.library, Object.keys(video.settings.cast), video.settings.timing, video.volumes, video.sounds);
   if ("issues" in checked) return checked;
-  const voices = new Set((await kokoroVoices()).map((voice) => voice.name));
+  const voices = new Set((await toolVoices()).map((voice) => voice.name));
   const unspoken = checked.scenes.flatMap((scene) => linesIn(scene.items)).flatMap((line): Issue[] => {
     if (!("text" in line)) return [];
     const voice = voiceOf(video.settings, line.who === NARRATOR ? {} : { speaker: line.who });

@@ -25,7 +25,7 @@ import { compiledSounds, compiledVoices, mixKey, writeMix, writeSound } from "./
 import { PLAYING, codeKey, folderKey, inputsKey, keyOf, stagesIn, type Stages } from "./stages.ts";
 import { runStory, windowsIO } from "./story.ts";
 import { buildTimeline, narrate } from "./timeline.ts";
-import { KokoroProvider, kokoroVoices, readWav, speak } from "./tts.ts";
+import { enginesIn, readWav, speak, toolVoices } from "./tts.ts";
 import { PROFILES, formatOf, readProject, readVideoFile, scriptOf, type VideoFile } from "./video-file.ts";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
@@ -141,7 +141,7 @@ async function checkFile(file: string): Promise<void> {
     sameScene(video, host);
     const { repaired, plan } = await host.check(video.file, video.source, video.library);
     const script = scriptOf(video, plan, plan.limits);
-    const voices = new Set((await kokoroVoices()).map((voice) => voice.name));
+    const voices = new Set((await toolVoices()).map((voice) => voice.name));
     const said = script.scenes.flatMap((scene) => scene.narration);
     const unspoken = said.find((line) => !voices.has(voiceOf(script, line)));
     if (unspoken) throw new Error(`${video.file}: "${unspoken.text}" is said in ${voiceOf(script, unspoken)}, which is not one of the tool's voices`);
@@ -202,7 +202,7 @@ async function playScript(video: VideoFile, fit: boolean, plugin: () => Promise<
   begin("the voices and the compiled scenario");
   const { voice, speed, fps, loudness, timing } = video.settings;
   log(`Narration (${voice})`);
-  const provider = new KokoroProvider(MODELS);
+  const engines = enginesIn(MODELS);
   const voices: Voiced[] = [];
   /** How long each line lasts by itself, seconds, by its line in the file: none for an open one. */
   const own = new Map<number, number>();
@@ -217,7 +217,7 @@ async function playScript(video: VideoFile, fit: boolean, plugin: () => Promise<
       continue;
     }
     const spokenIn = voiceOf(video.settings, line.who === NARRATOR ? {} : { speaker: line.who });
-    const spoken = await speak(provider, TTS_CACHE, { text: line.text, voice: spokenIn, speed });
+    const spoken = await speak(engines(spokenIn), TTS_CACHE, { text: line.text, voice: spokenIn, speed });
     log(`  line ${line.line} (${line.who}, ${spokenIn}): ${spoken.duration.toFixed(2)}s ${spoken.cached ? "(cached)" : "(generated)"}`);
     own.set(line.line, spoken.duration);
     // A line begins on a frame, so its mouth is the same wherever it begins.
@@ -351,7 +351,7 @@ async function playPlan(video: VideoFile, fit: boolean, plugin: () => Promise<Pl
 
   begin("the voices and the fit");
   log(`Narration (${script.voice})`);
-  const [spoken] = await narrate(script, new KokoroProvider(MODELS), TTS_CACHE, log);
+  const [spoken] = await narrate(script, enginesIn(MODELS), TTS_CACHE, log);
   const voiced = spoken!.map((l) => [l.text, l.speaker, l.cue, path.basename(l.audioFile), l.duration]);
   const fitKey = keyOf("fit", plan, voiced, script.fps, script.timing);
   // With --fit the fit is shown, from the cache or not.
@@ -543,17 +543,23 @@ async function main() {
 
   if (command === "voices") {
     ready(ROOT, CACHE, ["voice"]);
-    const text = arg ?? "This is a sample of my voice, so you can pick the one you like.";
-    const provider = new KokoroProvider(MODELS);
+    const engines = enginesIn(MODELS);
     const dir = path.join(ROOT, "out", "voice-samples");
     await mkdir(dir, { recursive: true });
-    const wanted = ["af_heart", "af_bella", "af_nicole", "am_michael", "am_fenrir", "am_puck", "bf_emma", "bm_george", "bm_fable"];
-    const available = await provider.voices();
-    log(`All voices: ${available.join(", ")}`);
-    for (const voice of wanted.filter((v) => available.includes(v))) {
-      const spoken = await speak(provider, TTS_CACHE, { text, voice, speed: 1 });
-      await copyFile(spoken.file, path.join(dir, `${voice}.wav`));
-      log(`  ${voice}.wav`);
+    const voices = await toolVoices();
+    log("All voices, by language:");
+    for (const language of new Set(voices.map((v) => v.language))) log(`  ${language}: ${voices.filter((v) => v.language === language).map((v) => v.name).join(", ")}`);
+    // A few of Kokoro's, and each of the others, saying the text given, or a sample in its own language.
+    const sampled = ["af_heart", "af_bella", "af_nicole", "am_michael", "am_fenrir", "am_puck", "bf_emma", "bm_george", "bm_fable"];
+    const samples: Record<string, string> = {
+      en: "This is a sample of my voice, so you can pick the one you like.",
+      uk: "Це зразок мого голосу, щоб ви могли вибрати той, який вам до вподоби.",
+      ru: "Это образец моего голоса, чтобы вы могли выбрать тот, который вам нравится.",
+    };
+    for (const { name, language } of voices.filter((v) => !v.language.startsWith("en-") || sampled.includes(v.name))) {
+      const spoken = await speak(engines(name), TTS_CACHE, { text: arg ?? samples[language.slice(0, 2)]!, voice: name, speed: 1 });
+      await copyFile(spoken.file, path.join(dir, `${name}.wav`));
+      log(`  ${name}.wav ${spoken.cached ? "(cached)" : "(generated)"}`);
     }
     return log(`Samples written to ${dir}`);
   }

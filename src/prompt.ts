@@ -11,7 +11,7 @@ import { guideOf } from "./guide.ts";
 import type { Described } from "./host.ts";
 import { pluginOf, startPlugin } from "./make.ts";
 import { slug } from "./script.ts";
-import { kokoroVoices, type Voice } from "./tts.ts";
+import { toolVoices, type Voice } from "./tts.ts";
 import { readProject } from "./video-file.ts";
 
 /** The line a reply ends with once every episode is in it: import looks for it, to tell a reply cut off between two blocks. */
@@ -36,8 +36,8 @@ export interface PromptParts {
 /** A command's example as it is written in a source: `walk: { who: pip, to: middle }`. */
 const written = (name: string, example: unknown) => `${name}: ${stringify(example, { collectionStyle: "flow" }).trim()}`;
 
-/** Kokoro's grade as a number to sort by, best first: A+ before A before A-, then B. */
-const rank = (grade: string) => (grade.charCodeAt(0) - 65) * 3 + (grade[1] === "+" ? 0 : grade[1] === "-" ? 2 : 1);
+/** Kokoro's grade as a number to sort by, best first: A+ before A before A-, then B. A voice with none keeps its place. */
+const rank = (grade: string | undefined) => (grade === undefined ? 0 : (grade.charCodeAt(0) - 65) * 3 + (grade[1] === "+" ? 0 : grade[1] === "-" ? 2 : 1));
 
 const LANGUAGES: Record<string, string> = { "en-us": "American English", "en-gb": "British English" };
 
@@ -50,6 +50,9 @@ function freeVoices(voices: Voice[], taken: Set<string>): string[] {
   }
   return [...groups].map(([group, list]) => `- ${group}: ${list.toSorted((a, b) => rank(a.grade) - rank(b.grade)).map((v) => v.name).join(", ")}`);
 }
+
+/** The voices a prompt offers: the tool's English ones, as its episodes are in English. */
+export const promptVoices = async (): Promise<Voice[]> => (await toolVoices()).filter((voice) => voice.language.startsWith("en-"));
 
 /** The prompt for one story, in Markdown: the tool's part, the plugin's, the library, the voices, the story. */
 export function promptOf(p: PromptParts): string {
@@ -159,7 +162,7 @@ export async function promptFor(file: string, log: (msg: string) => void): Promi
       library: project.libraryFile?.text,
       narrator: project.settings.voice,
       cast: project.settings.cast,
-      voices: await kokoroVoices(),
+      voices: await promptVoices(),
     });
   } finally {
     host.close();

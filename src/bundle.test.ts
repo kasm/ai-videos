@@ -53,7 +53,7 @@ test("a video's build names no http URL, and holds every file it links", async (
   const defaults = Object.fromEntries(Object.entries(settings).map(([key, schema]) => [key, schema.parse(undefined)]));
   const script = { ...defaults, title: "sq", scenes: [{ id: "sq", limits: {}, narration: [{ text: "A square waits, and waits.", cue: "start" }] }] } as VideoScript;
   const clips = new Map([["sq", { clip, duration: clip.data.duration, events: clip.data.events }]]);
-  const spoken = await narrate(script, tone, path.join(scratch, "tts"), () => {});
+  const spoken = await narrate(script, () => tone, path.join(scratch, "tts"), () => {});
   const timeline = buildTimeline(script, clips, spoken, () => {});
   const project = await compose(ROOT, { slug: "sq", file: path.join(scratch, "videos", "sq.yaml"), script }, clips, timeline, "landscape", path.join(scratch, "build"));
 

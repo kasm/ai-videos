@@ -22,7 +22,21 @@
     user listened. Whisper large-v3-turbo heard them back, with 0.5–3.3 %
     of the characters wrong in Ukrainian and 0–0.5 % in Russian; F1's
     lines hashed in two runs, seeded and not.
-- **Next: step 2.**
+- Step 2 done 2026-11-26: Supertonic speaks `uk_f1`–`uk_m5` and
+  `ru_f1`–`ru_m5`, beside Kokoro.
+  - Checked: `setup` fetched its 17 files from the pinned revision, each
+    matching its sha256. `voices`, with every network call of the process
+    refused, wrote the 20 samples; Whisper heard each word for word, and
+    the user heard them speak their languages. One line said in two
+    processes gave the same samples. `make cartoons/videos/hello.yaml`
+    took its voices and its sound from the cache (its picture redrawn
+    once, `package.json` being in the drawing's key, and the same).
+    `npm test` (336, a mix at 24 and 44.1 kHz among them) and
+    `npm run typecheck` passed.
+  - Heard too: many words stressed wrong. Supertonic has no way to set
+    stress (upstream issue #132); a trial with acute marks is in
+    `out/stress-trial/`, not yet judged.
+- **Next: step 3.** Open: word stress (above).
 
 
 ## Goal

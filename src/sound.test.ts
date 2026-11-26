@@ -92,20 +92,21 @@ async function peakOf(file: string) {
 /**
  * A voice as Kokoro's are, its highest peak `level`: tones of `hz` and its multiples, all under 2 kHz, in
  * four syllables a second, some louder than others. In half of its hundredths of a second the peak is 6
- * dB over its loudness (Kokoro's narrator: 7), in a tenth 12 (12), in a hundredth 15.5 (15).
+ * dB over its loudness (Kokoro's narrator: 7), in a tenth 12 (12), in a hundredth 15.5 (15). At
+ * Kokoro's sample rate, or another's (Supertonic's 44.1 kHz).
  */
-const voiceLike = (hz: number, seconds: number, level: number) => {
+const voiceLike = (hz: number, seconds: number, level: number, sampleRate = 24000) => {
   const tones = Math.floor(2000 / hz);
   const loud = [0.5, 0.75, 0.4, 1, 0.55, 0.3, 0.65, 0.45];
-  const samples = Float32Array.from({ length: Math.round(seconds * 24000) }, (_, i) => {
-    const t = i / 24000;
+  const samples = Float32Array.from({ length: Math.round(seconds * sampleRate) }, (_, i) => {
+    const t = i / sampleRate;
     const n = Math.floor(t * 4);
     let sum = 0;
     for (let k = 1; k <= tones; k++) sum += Math.cos(2 * Math.PI * k * hz * t + 1.3 * k * k) / Math.sqrt(k);
     return loud[n % loud.length]! * Math.sin(Math.PI * (t * 4 - n)) * sum;
   });
   const highest = samples.reduce((most, s) => Math.max(most, Math.abs(s)), 0);
-  return { samples: samples.map((s) => (level * s) / highest), sampleRate: 24000 };
+  return { samples: samples.map((s) => (level * s) / highest), sampleRate };
 };
 const written = async (name: string, voice: { samples: Float32Array; sampleRate: number }) => {
   const file = path.join(scratch, name);
@@ -177,6 +178,29 @@ async function over4k(file: string) {
   const power = (list: Float32Array) => list.reduce((sum, s) => sum + s * s, 0);
   return 10 * Math.log10(power(above) / power(samples));
 }
+
+test("voices at two sample rates, Kokoro's 24 kHz and Supertonic's 44.1, are mixed in one track, each where it is laid and as loud as the other", async () => {
+  const [kokoro, supertonic] = [voiceLike(110, 2, 0.8, 24000), voiceLike(170, 2, 0.15, 44100)];
+  const files = [await written("at-24k.wav", kokoro), await written("at-44k.wav", supertonic)];
+  // Each alone, then the two at once, the second 6 dB under the first.
+  const lines = [0.5, 3, 6, 6].map((start, k) => ({ file: files[k % 2]!, start, volume: k === 3 ? -6 : 0 }));
+  const file = path.join(scratch, "two-rates.m4a");
+  assert.equal((await writeMix(lines, 9, file, -26)).lowered, 0);
+  const sound = await heard(file, 48000);
+  near(partOf(sound, 0.5, 2.5) - partOf(sound, 3, 5), 0, 0.3, "the one alone over the other alone by");
+  // Each is at its own pitch, where it is laid, and nowhere else.
+  const [low, high] = [(from: number) => levelOf(sound, 110, from, from + 2), (from: number) => levelOf(sound, 170, from, from + 2)];
+  assert.ok(low(0.5) > high(0.5) + 30 && high(3) > low(3) + 30, `${[low(0.5), high(0.5), high(3), low(3)]}`);
+  near(low(6), low(0.5), 0.3, "the first at once with the other");
+  near(high(6), high(3) - 6, 0.3, "the second at once with the other");
+
+  // A plan's sound mixes them too, at a script's sample rate.
+  const planned = path.join(scratch, "two-rates-plan.m4a");
+  await writeSound([{ file: files[0]!, start: 0.5 }, { file: files[1]!, start: 3 }], 6, planned, -16);
+  const plan = await heard(planned, 48000);
+  near(plan.samples.length / 48000, 6, 0.05, "the plan's sound lasts");
+  assert.ok(levelOf(plan, 110, 0.5, 2.5) > levelOf(plan, 170, 0.5, 2.5) + 30 && levelOf(plan, 170, 3, 5) > levelOf(plan, 110, 3, 5) + 30);
+});
 
 test("two full voices at once are not clipped, nor two at the most a volume may be: the mix has room for any peak", async () => {
   const [ann, ben] = [await written("ann.wav", voiceLike(100, 3, 0.99)), await written("ben.wav", voiceLike(125, 3, 0.99))];
