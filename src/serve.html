@@ -1,0 +1,348 @@
+<!doctype html>
+<!-- The page of `serve` (serve.ts), which fills what is in double braces: a story to its videos, in a browser. -->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>A story to its videos</title>
+<link rel="icon" href="data:," />
+<style nonce="{{nonce}}">
+  :root {
+    color-scheme: light dark;
+    --edge: light-dark(#c4c4c4, #5a5a5a);
+    --quiet: light-dark(#5c5c5c, #a8a8a8);
+    --bad: light-dark(#b3261e, #ff8a80);
+    --mark: light-dark(#1a56c4, #8ab4f8);
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; font: 16px/1.5 system-ui, sans-serif; background: Canvas; color: CanvasText; }
+  main { max-width: 52rem; margin: 0 auto; padding: 1.5rem 1.25rem 4rem; }
+  h1 { font-size: 1.5rem; margin: 0; }
+  h2 { font-size: 1.15rem; margin: 2.25rem 0 0; }
+  code { font: 0.9em ui-monospace, Consolas, monospace; }
+  label, .label { display: block; font-weight: 600; margin: 1rem 0 0.25rem; }
+  input, textarea, select, button { font: inherit; color: inherit; }
+  input, textarea, select, pre { border: 1px solid var(--edge); border-radius: 0.4rem; padding: 0.5rem 0.6rem; }
+  input, textarea, select { background: Field; }
+  input, textarea { display: block; width: 100%; }
+  textarea { resize: vertical; }
+  #prompt, #answer, #refused, pre { font: 13px/1.45 ui-monospace, Consolas, monospace; }
+  pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  #make-log { max-height: 24rem; overflow-y: auto; }
+  video { display: block; width: 100%; height: auto; border: 1px solid var(--edge); border-radius: 0.4rem; background: #000; }
+  button { padding: 0.5rem 1.1rem; border: 1px solid var(--edge); border-radius: 0.4rem; background: ButtonFace; cursor: pointer; }
+  button.main { border-color: transparent; background: var(--mark); color: Canvas; font-weight: 600; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .hint { margin: 0.25rem 0 0; color: var(--quiet); font-size: 0.9rem; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-top: 1rem; }
+  .row label { margin: 0; }
+  .said { min-height: 1.5em; margin: 0.6rem 0 0; white-space: pre-wrap; }
+  .said.bad { color: var(--bad); }
+</style>
+</head>
+<body>
+<main>
+  <h1>A story to its videos</h1>
+  <p class="hint">In the project <code>{{project}}</code>, on this machine alone.</p>
+
+  <h2>1. The story</h2>
+  <label for="name">Its name</label>
+  <input id="name" autocomplete="off" spellcheck="false" placeholder="the-race" />
+  <p class="hint">Lowercase letters, digits and dashes. The text is saved as <code>stories/&lt;name&gt;.md</code>, and its episodes are named after it.</p>
+  <label for="text">Its text</label>
+  <textarea id="text" rows="14" placeholder="Paste the story here."></textarea>
+  <div class="row">
+    <label for="language">Its episodes in</label>
+    <select id="language">{{languages}}</select>
+    <span id="told" class="hint"></span>
+  </div>
+  <div class="row">
+    <button id="save" class="main" type="button">Save, and copy its prompt</button>
+  </div>
+  <p id="saved" class="said" role="status"></p>
+
+  <h2>2. Its prompt</h2>
+  <p id="of" class="hint">The story, wrapped in what a web chat needs to write its episodes.</p>
+  <label for="prompt">The prompt</label>
+  <textarea id="prompt" rows="14" readonly spellcheck="false"></textarea>
+  <div class="row">
+    <button id="copy" type="button" disabled>Copy</button>
+  </div>
+  <p id="copied" class="said" role="status"></p>
+
+  <h2>3. The chat's answer</h2>
+  <p class="hint">Paste the prompt into a new chat, ChatGPT or any other. When it has answered, copy its whole answer with its copy button, which keeps the <code>```yaml</code> blocks, and paste it here. An episode copied by its own block's button, with no fence, is taken too.</p>
+  <label for="answer">The answer</label>
+  <textarea id="answer" rows="10" spellcheck="false" placeholder="Paste the chat's answer here."></textarea>
+  <div class="row">
+    <button id="start" class="main" type="button">Start</button>
+    <span class="hint">Adds it to <code>stories/&lt;name&gt;.reply.md</code>, and imports its episodes. With the field empty, it goes on from that file. When the chat has written every episode and none is refused, it makes them.</span>
+  </div>
+  <p id="started" class="said" role="status"></p>
+  <div id="some" class="row" hidden>
+    <button id="go-on" type="button">Make what is taken</button>
+    <span class="hint">Goes on with the episodes taken so far: for a chat that never says it is done, or an episode it cannot mend.</span>
+  </div>
+  <div id="mend" hidden>
+    <label for="refused">What was refused, for the chat</label>
+    <textarea id="refused" rows="8" readonly spellcheck="false"></textarea>
+    <div class="row">
+      <button id="copy-refused" type="button">Copy</button>
+    </div>
+    <p id="copied-refused" class="said" role="status"></p>
+  </div>
+  <div id="imported" hidden>
+    <p class="label">What the import said</p>
+    <pre id="log"></pre>
+  </div>
+
+  <h2>4. Its videos</h2>
+  <p class="hint">Each episode is made as <code>make</code> makes it, into <code>out/</code>: a stage made before comes from the cache. A page loaded again shows the makes still.</p>
+  <p id="making" class="said" role="status"></p>
+  <div id="made"></div>
+  <div id="makes" hidden>
+    <p class="label">What the makes say</p>
+    <pre id="make-log" tabindex="0"></pre>
+  </div>
+</main>
+<script nonce="{{nonce}}">
+(() => {
+  const at = (id) => document.getElementById(id);
+  const name = at("name"), text = at("text"), language = at("language"), told = at("told"), save = at("save"), saved = at("saved");
+  const of = at("of"), prompt = at("prompt"), copy = at("copy"), copied = at("copied");
+  const answer = at("answer"), start = at("start"), started = at("started");
+  const mend = at("mend"), refused = at("refused"), copyRefused = at("copy-refused"), copiedRefused = at("copied-refused");
+  const imported = at("imported"), log = at("log");
+  const some = at("some"), goOn = at("go-on");
+  const making = at("making"), made = at("made"), makes = at("makes"), makeLog = at("make-log");
+  /** Each language's name, by its code. */
+  const named = Object.fromEntries([...language.options].map((option) => [option.value, option.textContent]));
+
+  const say = (where, what, bad = false) => {
+    where.textContent = what;
+    where.classList.toggle("bad", bad);
+  };
+
+  /** Asks the server, and gives its answer: throws what it refused. */
+  async function ask(path, body) {
+    let response;
+    try {
+      response = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    } catch {
+      throw new Error("The server does not answer: is serve still running in its terminal?");
+    }
+    const answer = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(answer.error ?? `The server said ${response.status}.`);
+    return answer;
+  }
+
+  // The language is what the text's letters say, asked of the server as the text changes. It is
+  // picked again only when they come to say another, so a pick by hand stays while they say the same.
+  let lettersSay = "";
+  let asking = 0;
+  let telling = Promise.resolve();
+  const note = () => {
+    const none = text.value.trim() === "" || lettersSay === "";
+    told.textContent = none ? "" : language.value === lettersSay ? "as the text's letters say" : `the text's letters say ${named[lettersSay]}`;
+  };
+  const tell = () => {
+    const mine = ++asking;
+    telling = ask("/language", { text: text.value }).then(
+      (answer) => {
+        if (mine !== asking) return;
+        if (answer.language !== lettersSay) language.value = answer.language;
+        lettersSay = answer.language;
+        note();
+      },
+      () => {},
+    );
+  };
+  text.addEventListener("input", tell);
+  language.addEventListener("change", note);
+  // A browser may keep a field's text when the page is loaded again.
+  if (text.value.trim() !== "") tell();
+
+  /** Puts a text on the clipboard: false when the browser does not let it. */
+  async function toClipboard(value) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  /** Copies what is for the chat, and says under it where it is, and what to do with it. */
+  const forChat = async (where, value, what, then) => {
+    if (await toClipboard(value)) say(where, `${what} is on the clipboard: ${then}`);
+    else say(where, `The browser did not let ${what[0].toLowerCase()}${what.slice(1)} onto the clipboard: press Copy.`, true);
+  };
+  const promptForChat = () => forChat(copied, prompt.value, "The prompt", "paste it into a new chat, ChatGPT or any other.");
+  const refusedForChat = () => forChat(copiedRefused, refused.value, "What was refused", "paste it into the chat, and paste the chat's answer above.");
+
+  save.addEventListener("click", async () => {
+    save.disabled = true;
+    say(saved, "Saving, and writing its prompt…");
+    try {
+      await telling;
+      const got = await ask("/story", { name: name.value.trim(), text: text.value, language: language.value });
+      say(saved, got.saved ? `Saved as ${got.file}.` : `${got.file} holds this text already: nothing written.`);
+      prompt.value = got.prompt;
+      copy.disabled = false;
+      of.textContent = `Of ${got.file}, for episodes in ${named[got.language]}: ${got.prompt.length} characters.`;
+      await promptForChat();
+    } catch (e) {
+      say(saved, e.message, true);
+    }
+    save.disabled = false;
+  });
+  copy.addEventListener("click", promptForChat);
+
+  // Start and its second button wait for each other, and for the makes: the server takes one at a time.
+  const busy = { asked: false, making: false };
+  const able = () => {
+    start.disabled = goOn.disabled = busy.asked || busy.making;
+  };
+  const many = (n) => (n === 1 ? "1 episode" : `${n} episodes`);
+
+  /** A file made: its name, and under it the video, played from the server, or a link to its page. */
+  const madeOne = ({ file, as, url }) => {
+    const one = document.createElement("div");
+    const title = document.createElement("p");
+    title.className = "label";
+    const code = document.createElement("code");
+    code.textContent = file;
+    title.append(as === "web" ? "The page " : "The video ", code);
+    one.append(title);
+    if (url !== null && as === "video") {
+      const video = document.createElement("video");
+      video.controls = true;
+      video.preload = "metadata";
+      video.src = url;
+      one.append(video);
+    } else if (url !== null) {
+      const link = document.createElement("a");
+      link.href = url;
+      link.target = "_blank";
+      link.rel = "noopener";
+      link.textContent = "Open it in a new tab";
+      one.append(link);
+    }
+    return one;
+  };
+
+  // The makes: the server keeps the run, and what it said. The page asks for the rest of it twice a
+  // second while it goes, and once as it loads: so one loaded again shows the makes still.
+  let run = null; // the run shown: its id, how much of what it said is here, and how many of its files
+  let watching = false;
+  let asked = false; // to be asked, once more at least: makes have begun, or go on
+  const show = (got) => {
+    if (run?.id !== got.id) {
+      run = { id: got.id, next: 0, made: 0 };
+      makeLog.textContent = "";
+      made.replaceChildren();
+    }
+    if (got.next > got.from && got.from === run.next) {
+      // The log follows what is said while its end is in view.
+      const atEnd = makeLog.scrollHeight - makeLog.scrollTop - makeLog.clientHeight < 8;
+      makeLog.append(`${run.next === 0 ? "" : "\n"}${got.log}`);
+      run.next = got.next;
+      if (atEnd) makeLog.scrollTop = makeLog.scrollHeight;
+    }
+    makes.hidden = false;
+    for (const one of got.made.slice(run.made)) made.append(madeOne(one));
+    run.made = got.made.length;
+    busy.making = got.state === "making";
+    able();
+    const whose = `${got.story}, in ${named[got.language]}`;
+    if (got.state === "making") say(making, `Making the episodes of ${whose}…`);
+    else if (got.state === "failed") say(making, `${got.failed}\n\nStart, with the answer's field empty, goes on from the cache.`, true);
+    else say(making, got.made.length === 0 ? `Nothing was made of ${whose}: its episodes' outputs turn off both the video and the page.` : `Made, from ${whose}: ${got.made.map((one) => one.file).join(", ")}.`);
+  };
+  async function watch() {
+    asked = true;
+    if (watching) return;
+    watching = true;
+    try {
+      while (asked) {
+        asked = false;
+        const got = (await ask("/making", { run: run?.id ?? null, from: run?.next ?? 0 })).run;
+        if (got === null) continue;
+        // A page loaded again names the story the makes are of.
+        if (run === null && name.value.trim() === "") {
+          name.value = got.name;
+          language.value = got.language;
+          note();
+        }
+        show(got);
+        if (got.state !== "making") continue;
+        asked = true;
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    } catch (e) {
+      say(making, e.message, true);
+      busy.making = false;
+      able();
+    }
+    watching = false;
+  }
+  watch();
+
+  // Start: the chat's answer added to the reply's file, and the file imported. What it says is where
+  // the story is now: the episodes taken, and what the chat is to be told next, if anything. With
+  // every episode written and none refused, the server goes on to make them.
+  start.addEventListener("click", async () => {
+    busy.asked = true;
+    able();
+    say(started, answer.value.trim() === "" ? "Importing the answers there are…" : "Adding the answer, and importing it…");
+    try {
+      const got = await ask("/answer", { name: name.value.trim(), language: language.value, answer: answer.value });
+      // The answer is in the reply's file now: the field is for the next one.
+      answer.value = "";
+      const says = [
+        got.added === null ? `No new answer: going on from ${got.reply}.` : `Added to ${got.reply}: ${got.added}.`,
+        got.episodes.length === 0 ? "No episode is taken yet." : `Taken, ${many(got.episodes.length)}:\n${got.episodes.map((file) => `  ${file}`).join("\n")}`,
+      ];
+      if (!got.ended) {
+        says.push(`The chat has not said "${got.words.allWritten}". If it stopped before the end, type ${got.words.goOn} in the chat, and paste its answer here.`);
+        if (got.refused !== null) says.push("What was refused so far is below, for when the chat has written them all.");
+      } else if (got.refused !== null) says.push("Some were refused: what the chat is to mend is below.");
+      else says.push(`The chat says every episode is written, and nothing was refused${got.making ? ": making them, below" : ""}.`);
+      say(started, says.join("\n"));
+      log.textContent = got.log;
+      imported.hidden = false;
+      mend.hidden = got.refused === null;
+      say(copiedRefused, "");
+      refused.value = got.refused ?? "";
+      // With episodes taken and the reply not whole, the second button goes on with them.
+      some.hidden = got.making || got.episodes.length === 0;
+      if (got.making) watch();
+      // Cut off, the chat is told to go on first: what was refused waits for its Copy.
+      if (got.refused !== null && got.ended) await refusedForChat();
+    } catch (e) {
+      say(started, e.message, true);
+    }
+    busy.asked = false;
+    able();
+  });
+  copyRefused.addEventListener("click", refusedForChat);
+
+  // The second button, story's `done`: the episodes taken so far are made, whatever the chat has yet to say or mend.
+  goOn.addEventListener("click", async () => {
+    busy.asked = true;
+    able();
+    try {
+      const got = await ask("/make", { name: name.value.trim(), language: language.value });
+      say(started, `Going on with ${many(got.episodes.length)} of ${got.reply}: making, below.\n${got.episodes.map((file) => `  ${file}`).join("\n")}`);
+      some.hidden = true;
+      watch();
+    } catch (e) {
+      say(started, e.message, true);
+    }
+    busy.asked = false;
+    able();
+  });
+})();
+</script>
+</body>
+</html>

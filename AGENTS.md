@@ -15,6 +15,7 @@ npm run video -- make <file> --fit            only the plan and the fit, in seco
 npm run video -- make <file> --profile quiet  the same, a profile's settings over the rest
 npm run video -- make <file> --as web         its web page: one HTML file that plays offline (see The web page)
 npm run video -- story <story>.md             a story to its videos, by a web chat and the clipboard (see Projects, story)
+npm run video -- serve                        in a project: a page in a browser that wraps a story's text in its prompt, imports the chat's answers, and makes and plays its videos (see Projects, serve)
 npm run -s video -- prompt <story>.md         the prompt for a web chat, on stdout (see Projects, prompt)
 npm run -s video -- prompt <story>.md --language uk   the same for episodes in Ukrainian (or ru), and story too
 npm run video -- import <reply file>          the chat's reply: its episodes as video files (see Projects, import)
@@ -44,7 +45,7 @@ the voice models always stay in this tool.
 | Path | What it is |
 | --- | --- |
 | `scenes/clip/scene.html` | The scene template (a HyperFrames sub-composition with `{{placeholders}}`): the plugin's clip, muted, with the captions over it. |
-| `src/` | The pipeline: `video-file` (the file, its settings in layers, and the `script` the pipeline reads) → the plugin in its process (`plugin`, `make`, `host`): its plan → `tts` (with `supertonic`) → `timeline` (and `fit` with `mouth`) → `sound` → the drawing (`moments`, `frames`, `clip`) → `compose` (with `bundle` and `captions`) → `render`; `page`, the web page; `stages` and `lock`, a make's cache and its lock (see The cache); `setup`, what the commands need on the disk; `prompt` and `import`, a story's prompt for a web chat and its reply taken in, and `story`, the two by the clipboard and the episodes made (see prompt, import, story); `loudness`, how loud a voice or a sound is (see How loud); `read`, `scenario` with `names` and `labels`, `values` with `formula`, `plan` with `times` and `words`, `compile`, `shown` and `guide` (with `guide-uk` and `guide-ru`), a video written as a script: its lines and blocks read and checked, what its values come to, when each begins and ends, compiled, what each frame of it shows, and how it is taught, in each language (see A script, Values, What happens at once), and `check`, the check of a script as `check`, `make` and `import` run it; `random`, what every random test draws from, to say how many different scripts or plans it tried. |
+| `src/` | The pipeline: `video-file` (the file, its settings in layers, and the `script` the pipeline reads) → the plugin in its process (`plugin`, `make`, `host`): its plan → `tts` (with `supertonic`) → `timeline` (and `fit` with `mouth`) → `sound` → the drawing (`moments`, `frames`, `clip`) → `compose` (with `bundle` and `captions`) → `render`; `page`, the web page; `stages` and `lock`, a make's cache and its lock (see The cache); `setup`, what the commands need on the disk; `prompt` and `import`, a story's prompt for a web chat and its reply taken in, and `story`, the two by the clipboard and the episodes made (see prompt, import, story); `serve`, a story's text taken, its prompt given, the chat's answers imported and its episodes made by a page in a browser, the page being `serve.html` (see serve); `loudness`, how loud a voice or a sound is (see How loud); `read`, `scenario` with `names` and `labels`, `values` with `formula`, `plan` with `times` and `words`, `compile`, `shown` and `guide` (with `guide-uk` and `guide-ru`), a video written as a script: its lines and blocks read and checked, what its values come to, when each begins and ends, compiled, what each frame of it shows, and how it is taught, in each language (see A script, Values, What happens at once), and `check`, the check of a script as `check`, `make` and `import` run it; `random`, what every random test draws from, to say how many different scripts or plans it tried. |
 | `cartoons/` | A project of the tool's, in this repo: the cartoon plugin (`cartoons/src/plugin.ts`), its library, videos and stories, and its notes, `cartoons/CLAUDE.md`. Its `episode` skill is the repo's, `.claude/skills/episode/`. |
 | `out/voice-samples/` | What `voices` writes. |
 | `.cache/tts/` | Narration audio, keyed by text, voice and speed. |
@@ -843,6 +844,13 @@ presses Enter in the terminal when the chat's answer is copied. Windows only. Wi
   the chat (Enter pressed too soon), the answer added last, or one with no YAML block (the answer
   copied without its blocks) and no `All episodes written.` Each is said, and Enter is waited for
   again.
+- **An episode with no `yaml` fence** is given one as its answer is added, and the log says so
+  (`fenceEpisodes`, `src/import.ts`), in the two cases with one right answer. A block fenced with
+  no language that begins with `episode:`, a chat's plain code block, gets `yaml` on its fence. An
+  answer with no fence at all that begins with `episode:`, what a code block's own copy button
+  gives, gets a fence around each episode: from an `episode:` at the start of a line to the next,
+  the last one to the line `All episodes written.`, or to the answer's end. So the reply's file
+  holds YAML blocks alone; `import` reads a file as written, and mends none of it.
 - **`done`,** typed in place of Enter once the chat has answered, goes on with what there is: for a
   chat that never says `All episodes written.`, or an episode it cannot mend. Only the episodes
   taken are made; none taken stops it.
@@ -855,6 +863,90 @@ presses Enter in the terminal when the chat's answer is copied. Windows only. Wi
 - The clipboard is PowerShell's (`Set-Clipboard`, `Get-Clipboard`), its text through a file in
   UTF-8; the browser is Explorer's, which opens a page in the default one. `src/story.test.ts`
   runs the whole with a fake clipboard, keyboard, browser and make.
+
+### `serve`
+
+`npm run video -- serve`, typed in a project's folder (`cd cartoons`), starts a small web server on
+this machine and says its page's address, `http://127.0.0.1:4747` (`--port` gives another); Ctrl+C
+stops it (`src/serve.ts`, and its page, `src/serve.html`). The page is `story` with fields in place
+of the terminal and the clipboard, built step by step by `docs/plans/done/story-in-browser.md`: it
+wraps a text in its prompt, takes the chat's answers to the episodes' files, and makes and plays
+their videos:
+
+- **The story:** a field for its name and one for its text. A button saves the text as the
+  project's `stories/<name>.md`, each line ended by a line feed, shows its prompt in a second field
+  and copies it. The prompt is what `prompt` prints for that file (`promptFor`; see prompt), and
+  the terminal's `story`, `prompt` and `import` go on from the file.
+- **The chat's answer:** a third field, and Start. The answer is added to the reply's file of the
+  story and the language the page's fields name, `stories/<name>.reply.md` (in Ukrainian,
+  `<name>-uk.reply.md`), and the file is imported, as `story` does both (`answerOf`, `addAnswer`,
+  `src/story.ts`; see story, import): an episode pasted with no `yaml` fence is given one. The
+  page says what the answer brought, and what was mended in it, and which episodes are taken, each
+  by its video file, shows what the import said, and empties the field for the next answer.
+- **What the chat is told next:** after an answer cut off (no `All episodes written.`), the page
+  says to type "continue" in the chat, the prompt's word in the episodes' language. What was
+  refused, the message for the chat, it shows in a field of its own and copies; of an answer cut
+  off as well, it shows it and leaves the copying to that field's Copy button, as the chat is to
+  go on first.
+- **With the field empty,** Start imports the reply's file as it is: so a page loaded again, or a
+  story the terminal's `story` began, goes on from its file.
+- **The makes:** with the reply whole (the chat has said `All episodes written.`, and nothing is
+  refused), Start goes on to make each episode taken, as `story` makes them (`makeEpisodes`,
+  `src/story.ts`): what its outputs say, the pages first, then the videos. Each make is a process
+  of its own, `make <file> --as video` (`makeBy`), as a terminal's: it holds the video's lock, and
+  a stage made before is taken from the cache (see The cache). Start pressed again makes them
+  again, each stage from the cache.
+- **Make what is taken,** a second button, there while episodes are taken and the reply is not
+  whole, is `story`'s `done`: it imports the reply's file as it is, and makes the episodes taken so
+  far.
+- **What the makes say** shows in the page as they go, a line at a time, HyperFrames' too, and in
+  the server's terminal. The server keeps the last run, going or ended, until another begins or it
+  is stopped, and the page asks for the rest of it twice a second, and once as it loads: so a page
+  loaded again shows the makes still, and names their story.
+- **What was made:** each file is named as it is made, by its path in the project. A video plays in
+  the page, from the server, `/out/<name>.mp4`, whole or the bytes its player asks for; a web page
+  has a link that opens it in a new tab.
+- **A make that failed** stops the rest, as it stops `story`, and the page shows why: the last the
+  make said. With what was in its way mended, Start, the field empty, goes on from the cache.
+- **One run at a time:** while episodes are made, no answer is taken and no other run begun, of any
+  story, each refused with whose are being made: a make reads the library an import writes. A
+  story is saved, and gets its prompt, all the same. The page has no button that stops a make.
+- **No answer**, each said in the page, with nothing added: the prompt, or the message of what was
+  refused, pasted in place of the chat's answer, or the answer added last, pasted again (the
+  server keeps the three for each reply's file until it is stopped); a text with no YAML block
+  that does not say `All episodes written.`; no text, with no reply's file to go on from; a story
+  not saved under that name.
+- **One at a time:** a story is saved, and an answer taken, each when the one before is done: two
+  answers sent at once are added one after the other, the first imported before the second is
+  added.
+- **Its language** is told from the text's letters (`languageOf`): English, unless more of them are
+  Cyrillic than Latin; then Russian when it has more of the letters Russian alone has (ы, э, ъ, ё)
+  than of those Ukrainian alone has (і, ї, є, ґ), else Ukrainian. The page asks the server as the
+  text changes, shows the language, and the user may pick another: it is picked anew only when the
+  letters come to say another, and the page says what they say beside a pick that differs.
+- **Nothing is written over.** A name whose file holds another text is refused. One whose file
+  holds this text already writes nothing and gives its prompt again: so a story saved gets its
+  prompt in another language.
+- **Refused**, each said in the page: a name that is not lowercase letters, digits and dashes, a
+  letter first; no text; a language the plugin writes no guide in, the story staying saved.
+- **This machine alone:** it listens on 127.0.0.1, and has no login. A request is refused unless
+  its `Host` is the server's own address, so a site whose name is made to mean this machine gets
+  nothing.
+- **Its own page alone:** a request that does something, a `POST`, is refused unless its `Origin`
+  is the server's page, so another site's page saves nothing, and no answer says another site may
+  read it. The page runs its own script and style alone, named by a nonce new for each load (its
+  `Content-Security-Policy`), loads nothing but the videos it plays, from the server, and sits in
+  no frame. Of the project's files it is given only what was made, `out/<name>.mp4` and `.html`,
+  and no other site's page is: a request a browser says is another site's (`Sec-Fetch-Site`) is
+  refused, and none may embed it (`Cross-Origin-Resource-Policy`). A video's web page is given shut
+  in (`sandbox`): its script runs, and asks the server nothing.
+- **The clipboard** is the browser's, written by the page when the prompt comes, or what was
+  refused, a moment after the press. Chrome on Windows ends each line there with CRLF. Where the
+  browser refuses, the page says so, and the field's Copy button copies again.
+
+It speaks and draws nothing itself, so it starts with nothing from `setup`; its makes need what
+`make` needs (see Offline), and one that lacks a piece says so in the page. `src/serve.test.ts`
+starts it on a free port and shows each case, the makes by a fake make.
 
 ### Offline
 

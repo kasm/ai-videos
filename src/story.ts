@@ -4,7 +4,9 @@
 // added to the reply's file. That file is all the command keeps, so a run stopped half-way goes on
 // from it. What it makes is each episode's outputs (video-file.ts): the pages first, each opened
 // as the preview, then the videos. The episodes are in a language: the prompt is written in it,
-// and each language has a reply's file of its own.
+// and each language has a reply's file of its own. What is an answer, how it is added, and how the
+// episodes are made (answerOf, addAnswer, makeEpisodes), is serve's too, whose page has a field in
+// place of the clipboard.
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { existsSync } from "node:fs";
@@ -12,7 +14,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
-import { importReply, readReply } from "./import.ts";
+import { fenceEpisodes, importReply, readReply, type Reply } from "./import.ts";
 import { pluginOf } from "./make.ts";
 import { PROMPT_WORDS, episodesOf, promptFor, saysAllWritten, storyOf } from "./prompt.ts";
 import type { Language } from "./script.ts";
@@ -43,6 +45,42 @@ export const GO_ON = "done";
 export const replyFileOf = (story: string, language: Language = "en") => path.join(path.dirname(story), `${episodesOf(storyOf(story), language)}.reply.md`);
 
 /**
+ * Why a text is not the chat's next answer: it is `none`; it is what was last `given` for the chat
+ * (the prompt, or what was refused); it is the answer `added` last; or it has `no-blocks`, no YAML
+ * block, whole or cut off, and does not say that every episode is written.
+ */
+export type NoAnswer = "none" | "given" | "added" | "no-blocks";
+
+/**
+ * A text, from the clipboard or a page's field, as the chat's next answer: its lines ended by "\n",
+ * an episode with no ```yaml fence given one (import.ts, fenceEpisodes; `did` says so), and its blocks
+ * read. Or why it is none (`not`), which whoever asked for it words. `last` is what was last given
+ * for the chat, and last added from it: each is told whatever ends its lines, as a prompt holds the
+ * library as written (on Windows, with CRLF), and a field gives line feeds.
+ */
+export function answerOf(pasted: string, last: { given: string; added: string }): { text: string; read: Reply; did: string[] } | { not: NoAnswer } {
+  const lines = (text: string) => text.replace(/\r\n?/g, "\n");
+  const raw = lines(pasted);
+  if (raw.trim() === "") return { not: "none" };
+  if (raw.trim() === lines(last.given).trim()) return { not: "given" };
+  // The answer added last is the one mended: the same text pasted again is mended the same.
+  const { text, did } = fenceEpisodes(raw);
+  if (text.trim() === lines(last.added).trim()) return { not: "added" };
+  const read = readReply(text);
+  if (read.blocks.length === 0 && read.cut.length === 0 && !saysAllWritten(text)) return { not: "no-blocks" };
+  return { text, read, did };
+}
+
+/** Adds an answer to a reply's file, after the answers it holds, and gives what to say of it: how many blocks it brought, and what was mended in it. */
+export async function addAnswer(reply: string, answer: { text: string; read: Reply; did: string[] }): Promise<string> {
+  const { text, read, did } = answer;
+  const before = existsSync(reply) ? await readFile(reply, "utf8") : "";
+  const gap = before === "" ? "" : before.endsWith("\n") ? "\n" : "\n\n";
+  await writeFile(reply, `${before}${gap}${text}${text.endsWith("\n") ? "" : "\n"}`);
+  return `the answer, ${read.blocks.length} whole block${read.blocks.length === 1 ? "" : "s"}${read.cut.length > 0 ? ", and one cut off" : ""}${did.map((one) => `; ${one}`).join("")}`;
+}
+
+/**
  * Takes the story in `file` through the chat and makes its episodes in `language`: returns the
  * files made. With its reply's file in that language there already, it goes on from it: no new
  * prompt, its import first.
@@ -56,33 +94,31 @@ export async function runStory(file: string, language: Language, io: StoryIO, ma
   const reply = replyFileOf(file, language);
 
   // What was last put on the clipboard for the chat, and last added from it: either one there still is too soon.
-  let given = "";
-  let added = "";
+  const last = { given: "", added: "" };
+  const tooSoon: Record<NoAnswer, string> = {
+    none: "The clipboard holds no text: copy the chat's answer.",
+    given: "The clipboard still holds what was put there for the chat: copy the chat's answer.",
+    added: `That answer is in ${shown(reply)} already: copy the chat's next one.`,
+    "no-blocks": "The clipboard holds no YAML block: copy the chat's whole answer with its copy button, which keeps the ```yaml blocks.",
+  };
   /** Waits for the chat's answer on the clipboard, and adds it to the reply: false when GO_ON is typed instead. */
   const take = async (goOn: boolean): Promise<boolean> => {
     for (;;) {
-      const answer = await io.ask(goOn ? `Press Enter when it is copied (or type ${GO_ON} to go on with what there is): ` : "Press Enter when it is copied: ");
-      if (goOn && answer.trim().toLowerCase() === GO_ON) return false;
-      const text = (await io.paste()).replace(/\r\n?/g, "\n");
-      const read = readReply(text);
-      if (text.trim() === "") log("The clipboard holds no text: copy the chat's answer.");
-      else if (text.trim() === given.trim()) log("The clipboard still holds what was put there for the chat: copy the chat's answer.");
-      else if (text.trim() === added.trim()) log(`That answer is in ${shown(reply)} already: copy the chat's next one.`);
-      else if (read.blocks.length === 0 && read.cut.length === 0 && !saysAllWritten(text)) {
-        log("The clipboard holds no YAML block: copy the chat's whole answer with its copy button, which keeps the ```yaml blocks.");
-      } else {
-        const before = existsSync(reply) ? await readFile(reply, "utf8") : "";
-        const gap = before === "" ? "" : before.endsWith("\n") ? "\n" : "\n\n";
-        await writeFile(reply, `${before}${gap}${text}${text.endsWith("\n") ? "" : "\n"}`);
-        log(`Added to ${shown(reply)}: the answer, ${read.blocks.length} whole block${read.blocks.length === 1 ? "" : "s"}${read.cut.length > 0 ? ", and one cut off" : ""}.`);
-        added = text;
-        return true;
+      const typed = await io.ask(goOn ? `Press Enter when it is copied (or type ${GO_ON} to go on with what there is): ` : "Press Enter when it is copied: ");
+      if (goOn && typed.trim().toLowerCase() === GO_ON) return false;
+      const answer = answerOf(await io.paste(), last);
+      if ("not" in answer) {
+        log(tooSoon[answer.not]);
+        continue;
       }
+      log(`Added to ${shown(reply)}: ${await addAnswer(reply, answer)}.`);
+      last.added = answer.text;
+      return true;
     }
   };
   const give = async (text: string, what: string) => {
     await io.copy(text);
-    given = text;
+    last.given = text;
     log(`\n${what}`);
   };
 
@@ -113,22 +149,38 @@ export async function runStory(file: string, language: Language, io: StoryIO, ma
   }
   if (videos.length === 0) throw new Error(`\nStopped: no episode of ${shown(reply)} was taken, so there is nothing to make.`);
 
-  // Each episode's outputs, as its settings say: the pages first, each opened as the preview, then the videos.
-  const outputs = await Promise.all(videos.map(async (video) => ({ video, outputs: (await readVideoFile(video)).settings.outputs })));
-  for (const { video, outputs: o } of outputs) if (!o.video && !o.web) log(`${shown(video)}: its outputs turn off both the video and the page: nothing made.`);
-  const made: string[] = [];
-  for (const { video } of outputs.filter((v) => v.outputs.web)) {
-    log(`\n=== ${shown(video)}: its page\n`);
-    const page = await make(video, "web");
-    made.push(page);
-    await io.open(page);
-  }
-  for (const { video } of outputs.filter((v) => v.outputs.video)) {
-    log(`\n=== ${shown(video)}: its video\n`);
-    made.push(await make(video, "video"));
-  }
+  // Each page is opened as the preview, as it is made.
+  const made = await makeEpisodes(videos, make, shown, log, async (page, as) => {
+    if (as === "web") await io.open(page);
+  });
   log(`\nMade, from ${shown(file)}:\n${made.map((f) => `  ${shown(f)}`).join("\n")}`);
   return made;
+}
+
+/**
+ * Makes each episode's outputs, as its settings say (video-file.ts): the pages first, then the
+ * videos. Returns the files made, in that order; `made` is told each as it is there. The first make
+ * that fails stops it. `shown` names a file in the log. It is serve's too, whose page shows the makes.
+ */
+export async function makeEpisodes(
+  videos: string[],
+  make: MakeOne,
+  shown: (file: string) => string,
+  log: (msg: string) => void,
+  made: (file: string, as: "video" | "web") => void | Promise<void> = () => {},
+): Promise<string[]> {
+  const outputs = await Promise.all(videos.map(async (video) => ({ video, outputs: (await readVideoFile(video)).settings.outputs })));
+  for (const { video, outputs: o } of outputs) if (!o.video && !o.web) log(`${shown(video)}: its outputs turn off both the video and the page: nothing made.`);
+  const files: string[] = [];
+  for (const as of ["web", "video"] as const) {
+    for (const { video } of outputs.filter((v) => v.outputs[as])) {
+      log(`\n=== ${shown(video)}: its ${as === "web" ? "page" : "video"}\n`);
+      const file = await make(video, as);
+      files.push(file);
+      await made(file, as);
+    }
+  }
+  return files;
 }
 
 /** Runs a PowerShell script, and throws what it said when it fails. */

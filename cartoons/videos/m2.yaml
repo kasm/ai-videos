@@ -1,0 +1,41 @@
+use: cartoon
+values: { beat: 0.35s, pause: beat }
+scenes:
+  - background: kitchen
+    places: { maya: left, leo: right }
+    faces: { maya: left, leo: right }
+    script: |
+      tune loop volume=-22dB
+      narrator say: Maya stands at the sizzling stove while Leo searches the spice rack.
+      maya say: Pass the cumin.
+      leo say: Define cumin.
+      maya say: Small jar. Brown powder. Smells like tacos.
+      leo say: They all smell like dust and ambition.
+      leo point
+      & leo say: Paprika?
+      maya say: No, that is red. Look for a C.
+      & leo stand
+      leo say: Coriander?
+      maya say: Keep going.
+      leo say: Cardamom?
+      maya turn
+      & maya say: Leo, the onions are turning into charcoal!
+      leo jump
+      & leo say: Found it! Cumin!
+      leo turn
+      & leo walk to=right-of(maya, near)
+      & narrator say: Leo brings the jar over, and Maya shakes a cloud into the pan.
+      leo stand
+      & maya turn
+      maya say: See? Magic. Now taste this.
+      maya point
+      & narrator say: She holds out a spoon, and Leo leans in for a taste.
+      leo say: Whoa. Okay. That actually tastes like real food.
+      & maya stand
+      maya say: You sound surprised.
+      leo say: I am. Twenty minutes ago, this was a sad potato and an existential crisis.
+      maya say: Grab the bowls. Dinner is ready.
+      together:
+        leo wave
+        leo say: Coming right up!
+        maya walk to=off-left

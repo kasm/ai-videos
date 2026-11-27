@@ -5,7 +5,36 @@
 - Plan written 2026-11-27 from the user's six steps, their yes that day.
 - The user's pick that day: the page keeps what `story` keeps, in the
   project's files, not in a folder of its own.
-- Not started. **Next: step 1.**
+- Step 1 done 2026-11-27. Checked by `src/serve.test.ts`, `npm test`
+  (356 pass) and `npm run typecheck`; and in `cartoons/`, with
+  `npm run video -- serve` running, by a headless Chrome on its page:
+  `forest1.md`'s text under a new name, and a text in Ukrainian, each
+  showed what `prompt` prints for its file, the clipboard holding it,
+  and another site's page was refused. The user saved a story from
+  the page in their own browser that day.
+- Step 2 done 2026-11-27. Checked by `src/serve.test.ts` and
+  `src/story.test.ts`, `npm test` (361 pass) and `npm run typecheck`;
+  and by a headless Chrome on the page, served from a copy of
+  `cartoons/`: `the-race`'s text saved, and its chat's reply given in
+  three answers, one cut off, one with an episode refused, one mended,
+  to the `videos/the-race-1.yaml` and `-2.yaml` that `cartoons/` has,
+  which `check` takes. The user took a short text, `m2`, from the page
+  through a web chat to `cartoons/videos/m2.yaml` that day, which
+  `check` takes.
+- Step 3 done 2026-11-27. The user's
+  picks that day: each make a process of its own, and a second button,
+  "Make what is taken", for a reply that is not whole. Checked by
+  `src/serve.test.ts` (the makes by a fake make) and
+  `src/story.test.ts`, unchanged, `npm test` (367 pass) and
+  `npm run typecheck`; and by a headless Chrome on the page, served
+  from a copy of `cartoons/`: Start for `m2` made `out/m2.mp4`, the
+  makes' log shown as they went, and still in a page loaded again
+  half-way; the video played and was sought in the page; Start again
+  said "From the cache" for the sound, the clip, check and the render;
+  a make refused by a held lock showed why, and Start then went on.
+  The user made `m2`, the text they took through a web chat in step
+  2, from the page that day: `cartoons/out/m2.mp4` played in it.
+- **All three steps are done.** Nothing is next.
 
 
 ## Goal
