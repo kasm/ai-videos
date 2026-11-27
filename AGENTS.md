@@ -869,9 +869,9 @@ presses Enter in the terminal when the chat's answer is copied. Windows only. Wi
 `npm run video -- serve`, typed in a project's folder (`cd cartoons`), starts a small web server on
 this machine and says its page's address, `http://127.0.0.1:4747` (`--port` gives another); Ctrl+C
 stops it (`src/serve.ts`, and its page, `src/serve.html`). The page is `story` with fields in place
-of the terminal and the clipboard, built step by step by `docs/plans/story-in-browser.md`: it wraps
-a text in its prompt, takes the chat's answers to the episodes' files, and makes and plays their
-videos:
+of the terminal and the clipboard, built step by step by `docs/plans/done/story-in-browser.md`: it
+wraps a text in its prompt, takes the chat's answers to the episodes' files, and makes and plays
+their videos:
 
 - **The story:** a field for its name and one for its text. A button saves the text as the
   project's `stories/<name>.md`, each line ended by a line feed, shows its prompt in a second field
