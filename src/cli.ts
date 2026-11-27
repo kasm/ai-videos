@@ -65,8 +65,10 @@ Commands
                     from the reply's file when it is there (AGENTS.md, "story"). Windows only
   serve             Typed in a project's folder: a page in the browser, http://127.0.0.1:${PORT}, that
                     takes a story's text and its name, saves it as stories/<name>.md, and shows
-                    and copies its prompt, in the language of the text's letters. It answers
-                    this machine alone, until Ctrl+C (AGENTS.md, "serve")
+                    and copies its prompt, in the language of the text's letters. Then it takes
+                    each answer of the chat into <name>.reply.md, imports it, and shows and copies
+                    what was refused. It answers this machine alone, until Ctrl+C (AGENTS.md,
+                    "serve")
   prompt <story.md> The prompt for a web chat, on stdout: the tool's instructions, the format from
                     the plugin, the library and the voices, and the story (AGENTS.md, "prompt")
   import <reply>    A web chat's reply to the prompt, pasted into a file: each episode the tool and

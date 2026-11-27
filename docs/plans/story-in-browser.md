@@ -12,7 +12,16 @@
   showed what `prompt` prints for its file, the clipboard holding it,
   and another site's page was refused. The user saved a story from
   the page in their own browser that day.
-- **Next: step 2.**
+- Step 2 done 2026-11-27. Checked by `src/serve.test.ts` and
+  `src/story.test.ts`, `npm test` (361 pass) and `npm run typecheck`;
+  and by a headless Chrome on the page, served from a copy of
+  `cartoons/`: `the-race`'s text saved, and its chat's reply given in
+  three answers, one cut off, one with an episode refused, one mended,
+  to the `videos/the-race-1.yaml` and `-2.yaml` that `cartoons/` has,
+  which `check` takes. The user took a short text, `m2`, from the page
+  through a web chat to `cartoons/videos/m2.yaml` that day, which
+  `check` takes.
+- **Next: step 3.**
 
 
 ## Goal

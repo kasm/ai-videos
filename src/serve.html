@@ -20,12 +20,14 @@
   h1 { font-size: 1.5rem; margin: 0; }
   h2 { font-size: 1.15rem; margin: 2.25rem 0 0; }
   code { font: 0.9em ui-monospace, Consolas, monospace; }
-  label { display: block; font-weight: 600; margin: 1rem 0 0.25rem; }
+  label, .label { display: block; font-weight: 600; margin: 1rem 0 0.25rem; }
   input, textarea, select, button { font: inherit; color: inherit; }
-  input, textarea, select { border: 1px solid var(--edge); border-radius: 0.4rem; padding: 0.5rem 0.6rem; background: Field; }
+  input, textarea, select, pre { border: 1px solid var(--edge); border-radius: 0.4rem; padding: 0.5rem 0.6rem; }
+  input, textarea, select { background: Field; }
   input, textarea { display: block; width: 100%; }
   textarea { resize: vertical; }
-  #prompt { font: 13px/1.45 ui-monospace, Consolas, monospace; }
+  #prompt, #answer, #refused, pre { font: 13px/1.45 ui-monospace, Consolas, monospace; }
+  pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
   button { padding: 0.5rem 1.1rem; border: 1px solid var(--edge); border-radius: 0.4rem; background: ButtonFace; cursor: pointer; }
   button.main { border-color: transparent; background: var(--mark); color: Canvas; font-weight: 600; }
   button:disabled { opacity: 0.5; cursor: default; }
@@ -65,12 +67,37 @@
     <button id="copy" type="button" disabled>Copy</button>
   </div>
   <p id="copied" class="said" role="status"></p>
+
+  <h2>3. The chat's answer</h2>
+  <p class="hint">Paste the prompt into a new chat, ChatGPT or any other. When it has answered, copy its whole answer with its copy button, which keeps the <code>```yaml</code> blocks, and paste it here.</p>
+  <label for="answer">The answer</label>
+  <textarea id="answer" rows="10" spellcheck="false" placeholder="Paste the chat's answer here."></textarea>
+  <div class="row">
+    <button id="start" class="main" type="button">Start</button>
+    <span class="hint">Adds it to <code>stories/&lt;name&gt;.reply.md</code>, and imports its episodes. With the field empty, it goes on from that file.</span>
+  </div>
+  <p id="started" class="said" role="status"></p>
+  <div id="mend" hidden>
+    <label for="refused">What was refused, for the chat</label>
+    <textarea id="refused" rows="8" readonly spellcheck="false"></textarea>
+    <div class="row">
+      <button id="copy-refused" type="button">Copy</button>
+    </div>
+    <p id="copied-refused" class="said" role="status"></p>
+  </div>
+  <div id="imported" hidden>
+    <p class="label">What the import said</p>
+    <pre id="log"></pre>
+  </div>
 </main>
 <script nonce="{{nonce}}">
 (() => {
   const at = (id) => document.getElementById(id);
   const name = at("name"), text = at("text"), language = at("language"), told = at("told"), save = at("save"), saved = at("saved");
   const of = at("of"), prompt = at("prompt"), copy = at("copy"), copied = at("copied");
+  const answer = at("answer"), start = at("start"), started = at("started");
+  const mend = at("mend"), refused = at("refused"), copyRefused = at("copy-refused"), copiedRefused = at("copied-refused");
+  const imported = at("imported"), log = at("log");
   /** Each language's name, by its code. */
   const named = Object.fromEntries([...language.options].map((option) => [option.value, option.textContent]));
 
@@ -127,28 +154,65 @@
       return false;
     }
   }
-  const onClipboard = async (value) => {
-    if (await toClipboard(value)) say(copied, "The prompt is on the clipboard: paste it into a new chat, ChatGPT or any other.");
-    else say(copied, "The browser did not let the prompt onto the clipboard: press Copy.", true);
+  /** Copies what is for the chat, and says under it where it is, and what to do with it. */
+  const forChat = async (where, value, what, then) => {
+    if (await toClipboard(value)) say(where, `${what} is on the clipboard: ${then}`);
+    else say(where, `The browser did not let ${what[0].toLowerCase()}${what.slice(1)} onto the clipboard: press Copy.`, true);
   };
+  const promptForChat = () => forChat(copied, prompt.value, "The prompt", "paste it into a new chat, ChatGPT or any other.");
+  const refusedForChat = () => forChat(copiedRefused, refused.value, "What was refused", "paste it into the chat, and paste the chat's answer above.");
 
   save.addEventListener("click", async () => {
     save.disabled = true;
     say(saved, "Saving, and writing its prompt…");
     try {
       await telling;
-      const answer = await ask("/story", { name: name.value.trim(), text: text.value, language: language.value });
-      say(saved, answer.saved ? `Saved as ${answer.file}.` : `${answer.file} holds this text already: nothing written.`);
-      prompt.value = answer.prompt;
+      const got = await ask("/story", { name: name.value.trim(), text: text.value, language: language.value });
+      say(saved, got.saved ? `Saved as ${got.file}.` : `${got.file} holds this text already: nothing written.`);
+      prompt.value = got.prompt;
       copy.disabled = false;
-      of.textContent = `Of ${answer.file}, for episodes in ${named[answer.language]}: ${answer.prompt.length} characters.`;
-      await onClipboard(answer.prompt);
+      of.textContent = `Of ${got.file}, for episodes in ${named[got.language]}: ${got.prompt.length} characters.`;
+      await promptForChat();
     } catch (e) {
       say(saved, e.message, true);
     }
     save.disabled = false;
   });
-  copy.addEventListener("click", () => onClipboard(prompt.value));
+  copy.addEventListener("click", promptForChat);
+
+  // Start: the chat's answer added to the reply's file, and the file imported. What it says is where
+  // the story is now: the episodes taken, and what the chat is to be told next, if anything.
+  start.addEventListener("click", async () => {
+    start.disabled = true;
+    say(started, answer.value.trim() === "" ? "Importing the answers there are…" : "Adding the answer, and importing it…");
+    try {
+      const got = await ask("/answer", { name: name.value.trim(), language: language.value, answer: answer.value });
+      // The answer is in the reply's file now: the field is for the next one.
+      answer.value = "";
+      const many = got.episodes.length === 1 ? "1 episode" : `${got.episodes.length} episodes`;
+      const says = [
+        got.added === null ? `No new answer: going on from ${got.reply}.` : `Added to ${got.reply}: ${got.added}.`,
+        got.episodes.length === 0 ? "No episode is taken yet." : `Taken, ${many}:\n${got.episodes.map((file) => `  ${file}`).join("\n")}`,
+      ];
+      if (!got.ended) {
+        says.push(`The chat has not said "${got.words.allWritten}". If it stopped before the end, type ${got.words.goOn} in the chat, and paste its answer here.`);
+        if (got.refused !== null) says.push("What was refused so far is below, for when the chat has written them all.");
+      } else if (got.refused !== null) says.push("Some were refused: what the chat is to mend is below.");
+      else says.push("The chat says every episode is written, and nothing was refused.");
+      say(started, says.join("\n"));
+      log.textContent = got.log;
+      imported.hidden = false;
+      mend.hidden = got.refused === null;
+      say(copiedRefused, "");
+      refused.value = got.refused ?? "";
+      // Cut off, the chat is told to go on first: what was refused waits for its Copy.
+      if (got.refused !== null && got.ended) await refusedForChat();
+    } catch (e) {
+      say(started, e.message, true);
+    }
+    start.disabled = false;
+  });
+  copyRefused.addEventListener("click", refusedForChat);
 })();
 </script>
 </body>
