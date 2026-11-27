@@ -198,6 +198,10 @@ characters:
   Supertonic's in both (Pip's `m1`); Marten shares Tuk's, as the two never
   meet. `videos/meet-uk.yaml` and `videos/meet-ru.yaml` are `meet` in
   Ukrainian and in Russian.
+- **A word the voice stresses wrong**, in Ukrainian or Russian, is marked
+  in its line: an acute (U+0301) right after its stressed vowel, `за́мок`
+  or `замо́к`. The voice reads the mark, and the captions leave it out
+  (the tool's `AGENTS.md`, "A word's stress").
 - A line's `who` is its speaker: the tool says the line in that voice,
   and what a frame shows opens that character's mouth with the line's
   track (the narrator's opens none).

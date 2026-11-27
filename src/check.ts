@@ -1,14 +1,15 @@
 // The check of a video written as a script (AGENTS.md, "A script"), the only pass that refuses, as
 // `check`, `make` and `import` run it: the tool's and the plugin's (scenario.ts), then each speaker's
 // voice one the tool speaks in, in the video's language, known with no model on the disk, its words
-// none in Cyrillic letters when that language is English, and each sound that is played a file that
-// ffmpeg reads. A plan's lines have the same voice check (unspoken).
+// none in Cyrillic letters when that language is English, each stress they mark a vowel's, and each
+// sound that is played a file that ffmpeg reads. A plan's lines have the same voice check (unspoken).
 import path from "node:path";
 import type { PluginHost } from "./make.ts";
 import { listed } from "./names.ts";
 import { NARRATOR, linesIn, type Checked, type CheckedLine, type Issue } from "./scenario.ts";
 import { LANGUAGES, voiceIn, type VideoScript, type Voices } from "./script.ts";
 import { measureSound } from "./sound.ts";
+import { STRESS, mismarked } from "./stress.ts";
 import { spokenIn, toolVoices, type Voice } from "./tts.ts";
 import { LIBRARY_FILE, type VideoFile } from "./video-file.ts";
 
@@ -60,12 +61,29 @@ function unreadable(video: Voicing, text: string): { wrong: string; hint: string
   };
 }
 
+/**
+ * Why a line's words mark a stress that is none, or nothing: a word of Ukrainian or Russian whose
+ * mark is not right after a vowel (stress.ts). The voice would read it as it could, and the captions
+ * would show it.
+ */
+function unstressable(text: string): { wrong: string; hint: string } | undefined {
+  const word = mismarked(text);
+  if (word === undefined) return undefined;
+  return {
+    wrong: `has a stress mark in "${word}" that is not right after a vowel`,
+    hint: `a word's stress is an acute (U+0301) right after its stressed vowel, one for a stress: за${STRESS}мок`,
+  };
+}
+
+/** Why a line's words cannot be said as written, in the video's language, or nothing. */
+const unwritable = (video: Voicing, text: string) => unreadable(video, text) ?? unstressable(text);
+
 /** The first line of a plan's script that cannot be said in its speaker's voice, as a mistake to throw; nothing when each can. */
 export async function unspoken(script: VideoScript): Promise<string | undefined> {
   const voices = await toolVoices();
   for (const line of script.scenes.flatMap((scene) => scene.narration)) {
     const who = line.speaker ?? NARRATOR;
-    const why = unsayable(script, who, voices) ?? unreadable(script, line.text);
+    const why = unsayable(script, who, voices) ?? unwritable(script, line.text);
     if (why) return `"${line.text}" is said by ${who === NARRATOR ? `the ${NARRATOR}` : who}, who ${why.wrong}: ${why.hint}`;
   }
   return undefined;
@@ -108,7 +126,7 @@ export async function checkScript(video: VideoFile, host: PluginHost): Promise<C
   if ("issues" in checked) return checked;
   const voices = await toolVoices();
   const unsaid = checked.scenes.flatMap((scene) => linesIn(scene.items)).flatMap((line): Issue[] => {
-    const why = "text" in line ? (unsayable(video.settings, line.who, voices) ?? unreadable(video.settings, line.text)) : undefined;
+    const why = "text" in line ? (unsayable(video.settings, line.who, voices) ?? unwritable(video.settings, line.text)) : undefined;
     return why ? [{ line: line.line, message: `${line.who === NARRATOR ? `the ${NARRATOR}` : line.who} ${why.wrong}`, hint: why.hint }] : [];
   });
   const { lengths, issues } = await measured(checkedLines(checked), video.plugin.dir);

@@ -45,7 +45,7 @@ the voice models always stay in this tool.
 | Path | What it is |
 | --- | --- |
 | `scenes/clip/scene.html` | The scene template (a HyperFrames sub-composition with `{{placeholders}}`): the plugin's clip, muted, with the captions over it. |
-| `src/` | The pipeline: `video-file` (the file, its settings in layers, and the `script` the pipeline reads) → the plugin in its process (`plugin`, `make`, `host`): its plan → `tts` (with `supertonic`) → `timeline` (and `fit` with `mouth`) → `sound` → the drawing (`moments`, `frames`, `clip`) → `compose` (with `bundle` and `captions`) → `render`; `page`, the web page; `stages` and `lock`, a make's cache and its lock (see The cache); `setup`, what the commands need on the disk; `prompt` and `import`, a story's prompt for a web chat and its reply taken in, and `story`, the two by the clipboard and the episodes made (see prompt, import, story); `serve`, a story's text taken, its prompt given, the chat's answers imported and its episodes made by a page in a browser, the page being `serve.html` (see serve); `loudness`, how loud a voice or a sound is (see How loud); `read`, `scenario` with `names` and `labels`, `values` with `formula`, `plan` with `times` and `words`, `compile`, `shown` and `guide` (with `guide-uk` and `guide-ru`), a video written as a script: its lines and blocks read and checked, what its values come to, when each begins and ends, compiled, what each frame of it shows, and how it is taught, in each language (see A script, Values, What happens at once), and `check`, the check of a script as `check`, `make` and `import` run it; `random`, what every random test draws from, to say how many different scripts or plans it tried. |
+| `src/` | The pipeline: `video-file` (the file, its settings in layers, and the `script` the pipeline reads) → the plugin in its process (`plugin`, `make`, `host`): its plan → `tts` (with `supertonic`) → `timeline` (and `fit` with `mouth`) → `sound` → the drawing (`moments`, `frames`, `clip`) → `compose` (with `bundle` and `captions`) → `render`; `page`, the web page; `stages` and `lock`, a make's cache and its lock (see The cache); `setup`, what the commands need on the disk; `prompt` and `import`, a story's prompt for a web chat and its reply taken in, and `story`, the two by the clipboard and the episodes made (see prompt, import, story); `serve`, a story's text taken, its prompt given, the chat's answers imported and its episodes made by a page in a browser, the page being `serve.html` (see serve); `loudness`, how loud a voice or a sound is (see How loud); `stress`, a word's stress marked in a line (see A word's stress); `read`, `scenario` with `names` and `labels`, `values` with `formula`, `plan` with `times` and `words`, `compile`, `shown` and `guide` (with `guide-uk` and `guide-ru`), a video written as a script: its lines and blocks read and checked, what its values come to, when each begins and ends, compiled, what each frame of it shows, and how it is taught, in each language (see A script, Values, What happens at once), and `check`, the check of a script as `check`, `make` and `import` run it; `random`, what every random test draws from, to say how many different scripts or plans it tried. |
 | `cartoons/` | A project of the tool's, in this repo: the cartoon plugin (`cartoons/src/plugin.ts`), its library, videos and stories, and its notes, `cartoons/CLAUDE.md`. Its `episode` skill is the repo's, `.claude/skills/episode/`. |
 | `out/voice-samples/` | What `voices` writes. |
 | `.cache/tts/` | Narration audio, keyed by text, voice and speed. |
@@ -253,7 +253,7 @@ scenes:
   written in: joined rows have no header, so they are no block here.
 - **An anchor**, an `@` and a moment, is the last thing before the colon, and begins a line or a block
   at that moment in place of its block's rule: `a.start`, `a.end`, `a.50%` or `a.word(mole)`, then
-  seconds more or less, a formula: `+ 0.5s`, `- beat / 2`. A word is as the line says it, and one place of it: several in a row
+  seconds more or less, a formula: `+ 0.5s`, `- beat / 2`. A word is as the line says it, with its stress mark or without (see A word's stress), and one place of it: several in a row
   (`a.word(the mole)`) where one is said twice. When it is said is estimated from the text alone
   (`sharesOf`, `src/words.ts`): a letter weighs 1, a comma 4 and a sentence's end 6, which is off by
   0.08 s on average, and at most 0.21, where the cached voices make a pause.
@@ -283,7 +283,8 @@ scenes:
      anchor, or with nothing else in its block;
   2. what the plugin's `script.check` refuses (a name the library lacks), run only on a script
      with no mistake so far, as it follows the lines in order;
-  3. a speaker's voice that is not one of the tool's in the video's language (see A video's language), and a sound that is played whose file is missing, or holds no
+  3. a speaker's voice that is not one of the tool's in the video's language (see A video's language), a stress mark that is
+     not right after a vowel (see A word's stress), and a sound that is played whose file is missing, or holds no
      sound that ffmpeg reads (`measureSound`, `src/sound.ts`): how long each lasts is known from here on.
 
   Every mistake of a pass is shown, each with the file and its line, the line as written, what is
@@ -358,7 +359,7 @@ scenes:
   video's sound is the tool's one track (see How loud), silent when nothing is said or played. A sound is no part of
   the picture either: what is played, when and how loud, draws nothing.
 - **The guide** to writing a script (`guideOf`, `src/guide.ts`) is the tool's part (a line's form,
-  `say`, blocks, joining, channels, anchors, values, sounds, what is refused), the plugin's `script.guide`, the actions
+  `say`, a word's stress, blocks, joining, channels, anchors, values, sounds, what is refused), the plugin's `script.guide`, the actions
   and the constructions, each with its description and example, an action with its channels and whether it is fitted or open, and the plugin's names for numbers. Each part's examples are compiled by a test. It is
   made in a language, and all of it is in it but the code: the tool's part in English, Ukrainian or Russian
   (`src/guide-uk.ts`, `src/guide-ru.ts`, the same rows in its examples, only the words in their language), and
@@ -569,6 +570,29 @@ says whose it is (`enginesIn`). Each voice has its language (`toolVoices`):
 
 `voices` lists them by language and writes a sample of a few of Kokoro's and each of Supertonic's,
 each in its own language, or the text given. `src/supertonic.test.ts` shows each rule.
+
+### A word's stress
+
+Supertonic picks each word's stress itself, and gets some wrong. A line of a video in Ukrainian or
+Russian, a script's or a plan's, may mark a word's: a combining acute (U+0301) right after the
+stressed vowel, `за́мок` or `замо́к` (`src/stress.ts`).
+
+- **The voice** gets the line's text as written, its marks too, and Supertonic reads a mark as the
+  word's stress (measured: `docs/plans/word-stress.md`). So the compiled scenario's `text` and a
+  request's have them. A marked line is another line to the voice cache, and one marked all through
+  lasts 4 to 6 % longer.
+- **Nothing shows it:** the captions, the video's and the page's, are the text without its marks
+  (`captionsOf`), split and timed by what they show. `ai-videos/plugin` exports `unstressed`, a
+  text as it is shown, for a plugin's tests.
+- **A word** has none (`src/words.ts`): an anchor names it with the mark or without,
+  `a.word(замок)`, and where it is said is estimated from the text without them.
+- **Refused** by `check`, `make` and `import`, at the line, with the word (`mismarked`): a mark that
+  is not right after a vowel, so one after a consonant, or a second one after a vowel. A word may
+  have two stresses, each after its own vowel. A mark on another alphabet's letter is that letter's
+  own (a Latin é), and no stress.
+- **The guide** says how a word is marked, in each language (see A script).
+
+`src/stress.test.ts` and `src/check.test.ts` show each rule.
 
 ### The library
 

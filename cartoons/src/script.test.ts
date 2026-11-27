@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
-import { NARRATOR, SAY, checkScenario, compile, isBlock, linesIn, pictureOf, plainValues, readScript, shownAt, type Compiled, type Issue, type ScriptItem, type Voiced, type WrittenScript, type WrittenValue } from "ai-videos/plugin";
+import { NARRATOR, SAY, checkScenario, compile, isBlock, linesIn, pictureOf, plainValues, readScript, shownAt, unstressed, type Compiled, type Issue, type ScriptItem, type Voiced, type WrittenScript, type WrittenValue } from "ai-videos/plugin";
 import { parse } from "yaml";
 import { scriptStaging } from "./picture.ts";
 import plugin from "./plugin.ts";
@@ -150,15 +150,17 @@ test("every cartoon of videos/ and the guide's example in each language compile 
     const compiled = compile(checked.scenes, voices, SETTINGS, "../../videos/a-cartoon.yaml", LENGTHS, checked.over);
     const cast = Object.keys(parse(text).cast ?? {});
     const names = new Set([NARRATOR, "scene", SAY, "play", "loop", ...Object.keys(sounds), ...cast, ...Object.keys(plugin.script.actions), ...Object.keys(library.raw.characters), ...Object.keys(library.raw.backgrounds)]);
-    const texts = new Set(said.map((line) => line.text));
+    const texts = said.map((line) => line.text ?? "");
+    // What a caption shows has no stress, which a line may mark for its voice.
+    const shown = texts.map(unstressed);
     const files = new Set(["../../videos/a-cartoon.yaml", ...voices.map((voice) => voice.file)]);
     for (const [at, value] of leaves(compiled)) {
       const where = at.join(".");
       if (typeof value === "number") assert.ok(Number.isFinite(value), where);
       else if (typeof value !== "string") assert.fail(`${where} is ${value}`);
       else if (where === "format" || where === "made.by") assert.match(value, /^ai-videos[ -]compiled?$/);
-      // A caption's is a line's, or a piece of one.
-      else if (at.at(-1) === "text") assert.ok([...texts].some((text) => text?.includes(value)), `${where}: ${value}`);
+      // A line's is as written, and a caption's is a line's, or a piece of one, as it is shown.
+      else if (at.at(-1) === "text") assert.ok((at.includes("captions") ? shown : texts).some((text) => text.includes(value)), `${where}: ${value}`);
       else if (at.at(-1) === "file" || where === "made.from") assert.ok(files.has(value), `${where}: ${value}`);
       else if (at.at(-1) === "sound") assert.ok(Object.values(sounds).includes(value), `${where}: ${value}`);
       else assert.ok(names.has(value), `${where} is a name: ${value}`);
