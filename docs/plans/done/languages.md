@@ -80,7 +80,8 @@
     changed the plugin's folder); RayCraft's `water-switch` checked.
     `npm test` (348) and `npm run typecheck`, the tool's and cartoons'
     (67), passed.
-- **Every step is done.** Open: word stress (above).
+- **The plan is done.** Open: word stress (above), for a plan of its
+  own.
 
 
 ## Goal
