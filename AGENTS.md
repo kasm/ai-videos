@@ -15,6 +15,7 @@ npm run video -- make <file> --fit            only the plan and the fit, in seco
 npm run video -- make <file> --profile quiet  the same, a profile's settings over the rest
 npm run video -- make <file> --as web         its web page: one HTML file that plays offline (see The web page)
 npm run video -- story <story>.md             a story to its videos, by a web chat and the clipboard (see Projects, story)
+npm run video -- serve                        in a project: a page in a browser that wraps a story's text in its prompt (see Projects, serve)
 npm run -s video -- prompt <story>.md         the prompt for a web chat, on stdout (see Projects, prompt)
 npm run -s video -- prompt <story>.md --language uk   the same for episodes in Ukrainian (or ru), and story too
 npm run video -- import <reply file>          the chat's reply: its episodes as video files (see Projects, import)
@@ -44,7 +45,7 @@ the voice models always stay in this tool.
 | Path | What it is |
 | --- | --- |
 | `scenes/clip/scene.html` | The scene template (a HyperFrames sub-composition with `{{placeholders}}`): the plugin's clip, muted, with the captions over it. |
-| `src/` | The pipeline: `video-file` (the file, its settings in layers, and the `script` the pipeline reads) → the plugin in its process (`plugin`, `make`, `host`): its plan → `tts` (with `supertonic`) → `timeline` (and `fit` with `mouth`) → `sound` → the drawing (`moments`, `frames`, `clip`) → `compose` (with `bundle` and `captions`) → `render`; `page`, the web page; `stages` and `lock`, a make's cache and its lock (see The cache); `setup`, what the commands need on the disk; `prompt` and `import`, a story's prompt for a web chat and its reply taken in, and `story`, the two by the clipboard and the episodes made (see prompt, import, story); `loudness`, how loud a voice or a sound is (see How loud); `read`, `scenario` with `names` and `labels`, `values` with `formula`, `plan` with `times` and `words`, `compile`, `shown` and `guide` (with `guide-uk` and `guide-ru`), a video written as a script: its lines and blocks read and checked, what its values come to, when each begins and ends, compiled, what each frame of it shows, and how it is taught, in each language (see A script, Values, What happens at once), and `check`, the check of a script as `check`, `make` and `import` run it; `random`, what every random test draws from, to say how many different scripts or plans it tried. |
+| `src/` | The pipeline: `video-file` (the file, its settings in layers, and the `script` the pipeline reads) → the plugin in its process (`plugin`, `make`, `host`): its plan → `tts` (with `supertonic`) → `timeline` (and `fit` with `mouth`) → `sound` → the drawing (`moments`, `frames`, `clip`) → `compose` (with `bundle` and `captions`) → `render`; `page`, the web page; `stages` and `lock`, a make's cache and its lock (see The cache); `setup`, what the commands need on the disk; `prompt` and `import`, a story's prompt for a web chat and its reply taken in, and `story`, the two by the clipboard and the episodes made (see prompt, import, story); `serve`, a story's text taken and its prompt given by a page in a browser, the page being `serve.html` (see serve); `loudness`, how loud a voice or a sound is (see How loud); `read`, `scenario` with `names` and `labels`, `values` with `formula`, `plan` with `times` and `words`, `compile`, `shown` and `guide` (with `guide-uk` and `guide-ru`), a video written as a script: its lines and blocks read and checked, what its values come to, when each begins and ends, compiled, what each frame of it shows, and how it is taught, in each language (see A script, Values, What happens at once), and `check`, the check of a script as `check`, `make` and `import` run it; `random`, what every random test draws from, to say how many different scripts or plans it tried. |
 | `cartoons/` | A project of the tool's, in this repo: the cartoon plugin (`cartoons/src/plugin.ts`), its library, videos and stories, and its notes, `cartoons/CLAUDE.md`. Its `episode` skill is the repo's, `.claude/skills/episode/`. |
 | `out/voice-samples/` | What `voices` writes. |
 | `.cache/tts/` | Narration audio, keyed by text, voice and speed. |
@@ -855,6 +856,42 @@ presses Enter in the terminal when the chat's answer is copied. Windows only. Wi
 - The clipboard is PowerShell's (`Set-Clipboard`, `Get-Clipboard`), its text through a file in
   UTF-8; the browser is Explorer's, which opens a page in the default one. `src/story.test.ts`
   runs the whole with a fake clipboard, keyboard, browser and make.
+
+### `serve`
+
+`npm run video -- serve`, typed in a project's folder (`cd cartoons`), starts a small web server on
+this machine and says its page's address, `http://127.0.0.1:4747` (`--port` gives another); Ctrl+C
+stops it (`src/serve.ts`, and its page, `src/serve.html`). The page is to be `story` with fields in
+place of the terminal and the clipboard, and `docs/plans/story-in-browser.md` builds it step by
+step. So far it wraps a text in its prompt:
+
+- **The story:** a field for its name and one for its text. A button saves the text as the
+  project's `stories/<name>.md`, each line ended by a line feed, shows its prompt in a second field
+  and copies it. The prompt is what `prompt` prints for that file (`promptFor`; see prompt), and
+  the terminal's `story`, `prompt` and `import` go on from the file.
+- **Its language** is told from the text's letters (`languageOf`): English, unless more of them are
+  Cyrillic than Latin; then Russian when it has more of the letters Russian alone has (ы, э, ъ, ё)
+  than of those Ukrainian alone has (і, ї, є, ґ), else Ukrainian. The page asks the server as the
+  text changes, shows the language, and the user may pick another: it is picked anew only when the
+  letters come to say another, and the page says what they say beside a pick that differs.
+- **Nothing is written over.** A name whose file holds another text is refused. One whose file
+  holds this text already writes nothing and gives its prompt again: so a story saved gets its
+  prompt in another language.
+- **Refused**, each said in the page: a name that is not lowercase letters, digits and dashes, a
+  letter first; no text; a language the plugin writes no guide in, the story staying saved.
+- **This machine alone:** it listens on 127.0.0.1, and has no login. A request is refused unless
+  its `Host` is the server's own address, so a site whose name is made to mean this machine gets
+  nothing.
+- **Its own page alone:** a request that does something, a `POST`, is refused unless its `Origin`
+  is the server's page, so another site's page saves nothing, and no answer says another site may
+  read it. The page runs its own script and style alone, named by a nonce new for each load (its
+  `Content-Security-Policy`), loads nothing, and sits in no frame.
+- **The clipboard** is the browser's, written by the page when the prompt comes, a moment after
+  the press. Chrome on Windows ends each line there with CRLF. Where the browser refuses, the page
+  says so, and its Copy button copies again.
+
+It speaks and draws nothing, so it needs nothing from `setup`. `src/serve.test.ts` starts it on a
+free port and shows each case.
 
 ### Offline
 

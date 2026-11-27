@@ -5,7 +5,14 @@
 - Plan written 2026-11-27 from the user's six steps, their yes that day.
 - The user's pick that day: the page keeps what `story` keeps, in the
   project's files, not in a folder of its own.
-- Not started. **Next: step 1.**
+- Step 1 done 2026-11-27. Checked by `src/serve.test.ts`, `npm test`
+  (356 pass) and `npm run typecheck`; and in `cartoons/`, with
+  `npm run video -- serve` running, by a headless Chrome on its page:
+  `forest1.md`'s text under a new name, and a text in Ukrainian, each
+  showed what `prompt` prints for its file, the clipboard holding it,
+  and another site's page was refused. The user saved a story from
+  the page in their own browser that day.
+- **Next: step 2.**
 
 
 ## Goal

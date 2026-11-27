@@ -19,6 +19,7 @@ import { LOOP } from "./read.ts";
 import { hyperframes, muxSound, renderProject } from "./render.ts";
 import { NARRATOR, issuesText, linesIn, type Default } from "./scenario.ts";
 import { FORMATS, LANGUAGES, voiceOf, type EventLimitsScript, type FormatName, type Language, type LoadedVideo } from "./script.ts";
+import { PORT, serve } from "./serve.ts";
 import { cachePaths, cacheRoot, ready, setup } from "./setup.ts";
 import { pictureOf } from "./shown.ts";
 import { compiledSounds, compiledVoices, mixKey, writeMix, writeSound } from "./sound.ts";
@@ -62,6 +63,10 @@ Commands
                     answer copied back into <name>.reply.md (<name>-uk.reply.md for Ukrainian) and
                     imported, what was refused copied for the chat, then each episode made. Goes on
                     from the reply's file when it is there (AGENTS.md, "story"). Windows only
+  serve             Typed in a project's folder: a page in the browser, http://127.0.0.1:${PORT}, that
+                    takes a story's text and its name, saves it as stories/<name>.md, and shows
+                    and copies its prompt, in the language of the text's letters. It answers
+                    this machine alone, until Ctrl+C (AGENTS.md, "serve")
   prompt <story.md> The prompt for a web chat, on stdout: the tool's instructions, the format from
                     the plugin, the library and the voices, and the story (AGENTS.md, "prompt")
   import <reply>    A web chat's reply to the prompt, pasted into a file: each episode the tool and
@@ -78,6 +83,9 @@ Options, for make
 Options, for prompt and story
   --language <${Object.keys(LANGUAGES).join("|")}>           The episodes' language, English when left out: the prompt is
                                   written in it, and its episodes are <name>-uk-1 and on
+
+Options, for serve
+  --port <number>                 The port its page is at, ${PORT} when left out
 `;
 
 /**
@@ -538,11 +546,13 @@ async function main() {
       profile: { type: "string" },
       as: { type: "string" },
       language: { type: "string" },
+      port: { type: "string" },
       help: { type: "boolean", short: "h", default: false },
     },
   });
   const [command, arg] = positionals;
   if (values.help || !command) return log(HELP);
+  if (values.port !== undefined && command !== "serve") throw new Error("--port is for serve");
   if (command !== "make" && (values.fit || values.profile !== undefined || values.as !== undefined)) {
     throw new Error("--fit, --profile and --as are for make");
   }
@@ -602,6 +612,15 @@ async function main() {
     Object.assign(process.env, ready(ROOT, CACHE, outputs.video ? ["voice", "browser"] : ["voice"]));
     await runStory(story, language, windowsIO(), async (video, as) => (await makeFile(video, { fit: false, profile: undefined, as }))[0]!, log);
     return;
+  }
+
+  if (command === "serve") {
+    if (arg) throw new Error(`"serve" takes no file: it is typed in a project's folder, and its page takes the story (cd cartoons)`);
+    const port = values.port === undefined ? PORT : Number(values.port);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error(`--port ${values.port}: a port is a number from 1 to 65535`);
+    // It goes on answering until it is stopped.
+    const { url, dir } = await serve(CALLER, port, log);
+    return log(`Project: ${dir}\nThe page: ${url}\nIt answers this machine alone. Ctrl+C stops it.`);
   }
 
   if (command === "check") {
