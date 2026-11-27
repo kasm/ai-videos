@@ -21,7 +21,19 @@
   which `check` takes. The user took a short text, `m2`, from the page
   through a web chat to `cartoons/videos/m2.yaml` that day, which
   `check` takes.
-- **Next: step 3.**
+- Step 3 built 2026-11-27, the user's own run still to come. Their
+  picks that day: each make a process of its own, and a second button,
+  "Make what is taken", for a reply that is not whole. Checked by
+  `src/serve.test.ts` (the makes by a fake make) and
+  `src/story.test.ts`, unchanged, `npm test` (367 pass) and
+  `npm run typecheck`; and by a headless Chrome on the page, served
+  from a copy of `cartoons/`: Start for `m2` made `out/m2.mp4`, the
+  makes' log shown as they went, and still in a page loaded again
+  half-way; the video played and was sought in the page; Start again
+  said "From the cache" for the sound, the clip, check and the render;
+  a make refused by a held lock showed why, and Start then went on.
+- **Next: the user's run of step 3**, a text from the page through
+  ChatGPT to a video that plays in the page. Then the plan is done.
 
 
 ## Goal

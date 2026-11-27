@@ -4,8 +4,9 @@
 // added to the reply's file. That file is all the command keeps, so a run stopped half-way goes on
 // from it. What it makes is each episode's outputs (video-file.ts): the pages first, each opened
 // as the preview, then the videos. The episodes are in a language: the prompt is written in it,
-// and each language has a reply's file of its own. What is an answer, and how it is added
-// (answerOf, addAnswer), is serve's too, whose page has a field in place of the clipboard.
+// and each language has a reply's file of its own. What is an answer, how it is added, and how the
+// episodes are made (answerOf, addAnswer, makeEpisodes), is serve's too, whose page has a field in
+// place of the clipboard.
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { existsSync } from "node:fs";
@@ -148,22 +149,38 @@ export async function runStory(file: string, language: Language, io: StoryIO, ma
   }
   if (videos.length === 0) throw new Error(`\nStopped: no episode of ${shown(reply)} was taken, so there is nothing to make.`);
 
-  // Each episode's outputs, as its settings say: the pages first, each opened as the preview, then the videos.
-  const outputs = await Promise.all(videos.map(async (video) => ({ video, outputs: (await readVideoFile(video)).settings.outputs })));
-  for (const { video, outputs: o } of outputs) if (!o.video && !o.web) log(`${shown(video)}: its outputs turn off both the video and the page: nothing made.`);
-  const made: string[] = [];
-  for (const { video } of outputs.filter((v) => v.outputs.web)) {
-    log(`\n=== ${shown(video)}: its page\n`);
-    const page = await make(video, "web");
-    made.push(page);
-    await io.open(page);
-  }
-  for (const { video } of outputs.filter((v) => v.outputs.video)) {
-    log(`\n=== ${shown(video)}: its video\n`);
-    made.push(await make(video, "video"));
-  }
+  // Each page is opened as the preview, as it is made.
+  const made = await makeEpisodes(videos, make, shown, log, async (page, as) => {
+    if (as === "web") await io.open(page);
+  });
   log(`\nMade, from ${shown(file)}:\n${made.map((f) => `  ${shown(f)}`).join("\n")}`);
   return made;
+}
+
+/**
+ * Makes each episode's outputs, as its settings say (video-file.ts): the pages first, then the
+ * videos. Returns the files made, in that order; `made` is told each as it is there. The first make
+ * that fails stops it. `shown` names a file in the log. It is serve's too, whose page shows the makes.
+ */
+export async function makeEpisodes(
+  videos: string[],
+  make: MakeOne,
+  shown: (file: string) => string,
+  log: (msg: string) => void,
+  made: (file: string, as: "video" | "web") => void | Promise<void> = () => {},
+): Promise<string[]> {
+  const outputs = await Promise.all(videos.map(async (video) => ({ video, outputs: (await readVideoFile(video)).settings.outputs })));
+  for (const { video, outputs: o } of outputs) if (!o.video && !o.web) log(`${shown(video)}: its outputs turn off both the video and the page: nothing made.`);
+  const files: string[] = [];
+  for (const as of ["web", "video"] as const) {
+    for (const { video } of outputs.filter((v) => v.outputs[as])) {
+      log(`\n=== ${shown(video)}: its ${as === "web" ? "page" : "video"}\n`);
+      const file = await make(video, as);
+      files.push(file);
+      await made(file, as);
+    }
+  }
+  return files;
 }
 
 /** Runs a PowerShell script, and throws what it said when it fails. */

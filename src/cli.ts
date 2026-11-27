@@ -19,7 +19,7 @@ import { LOOP } from "./read.ts";
 import { hyperframes, muxSound, renderProject } from "./render.ts";
 import { NARRATOR, issuesText, linesIn, type Default } from "./scenario.ts";
 import { FORMATS, LANGUAGES, voiceOf, type EventLimitsScript, type FormatName, type Language, type LoadedVideo } from "./script.ts";
-import { PORT, serve } from "./serve.ts";
+import { PORT, makeBy, serve } from "./serve.ts";
 import { cachePaths, cacheRoot, ready, setup } from "./setup.ts";
 import { pictureOf } from "./shown.ts";
 import { compiledSounds, compiledVoices, mixKey, writeMix, writeSound } from "./sound.ts";
@@ -67,8 +67,9 @@ Commands
                     takes a story's text and its name, saves it as stories/<name>.md, and shows
                     and copies its prompt, in the language of the text's letters. Then it takes
                     each answer of the chat into <name>.reply.md, imports it, and shows and copies
-                    what was refused. It answers this machine alone, until Ctrl+C (AGENTS.md,
-                    "serve")
+                    what was refused. With every episode written it makes each, as make does,
+                    shows what the makes say as they go, and plays the videos. It answers this
+                    machine alone, until Ctrl+C (AGENTS.md, "serve")
   prompt <story.md> The prompt for a web chat, on stdout: the tool's instructions, the format from
                     the plugin, the library and the voices, and the story (AGENTS.md, "prompt")
   import <reply>    A web chat's reply to the prompt, pasted into a file: each episode the tool and
@@ -621,7 +622,8 @@ async function main() {
     const port = values.port === undefined ? PORT : Number(values.port);
     if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error(`--port ${values.port}: a port is a number from 1 to 65535`);
     // It goes on answering until it is stopped.
-    const { url, dir } = await serve(CALLER, port, log);
+    // Each make is this command again, a process of its own: its log is the page's, a line at a time.
+    const { url, dir } = await serve(CALLER, port, log, makeBy([process.execPath, ...process.execArgv, process.argv[1]!]));
     return log(`Project: ${dir}\nThe page: ${url}\nIt answers this machine alone. Ctrl+C stops it.`);
   }
 

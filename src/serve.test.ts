@@ -2,8 +2,11 @@
 // saved and wrapped in the prompt that `prompt` prints for its file, in English and, told by its
 // letters, in Ukrainian; a name another text has refused, with nothing written over; the chat's
 // answers added to the reply's file and imported, one cut off and continued, an episode refused
-// and then mended, to the files `story` writes (story.test.ts); and a request that is not its own
-// page's (another site's, or at another name for this machine) refused.
+// and then mended, to the files `story` writes (story.test.ts); a reply that is whole made, by a
+// fake make: its pages first, what the makes say as they go, each file given to the page, whole or
+// a range of it, a make that failed and Start again, and the episodes taken so far made; a make as
+// a process of its own, by a fake command; and a request that is not its own page's (another
+// site's, or at another name for this machine) refused.
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -12,7 +15,7 @@ import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
 import { promptFor } from "./prompt.ts";
-import { languageOf, serve } from "./serve.ts";
+import { languageOf, makeBy, serve, type Make } from "./serve.ts";
 
 const fence = "```";
 const scratch = await mkdtemp(path.join(os.tmpdir(), "ai-videos-serve-"));
@@ -55,8 +58,27 @@ await writeFile(path.join(root, "src", "plugin.mjs"), PLUGIN);
 // The library as a checkout on Windows has it, its lines ended by CRLF: so the prompt, which holds it as written, has both endings.
 await writeFile(path.join(root, "library.yaml"), "colours:\r\n  red: '#d04040'\r\n");
 
+/**
+ * A make that writes a few bytes as the file it makes, and says what it was asked: it waits for
+ * `hold`, and fails for an episode named in `fail`, as a make whose check found errors.
+ */
+const fake = { calls: [] as string[], fail: new Set<string>(), hold: Promise.resolve() };
+const FAILED = "The make stopped (exit code 1). The last it said:\nStopped: check found errors (above).";
+const make: Make = async (video, as, say) => {
+  const name = path.basename(video, ".yaml");
+  fake.calls.push(`${name} ${as}`);
+  say(`Video: ${name}, as ${as === "web" ? "a web page" : "a video"}`);
+  await fake.hold;
+  if (fake.fail.has(name)) throw new Error(`${FAILED}\n`);
+  const file = path.join(root, "out", `${name}.${as === "web" ? "html" : "mp4"}`);
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(file, `the ${as} of ${name}`);
+  say(`Written: ${name}`);
+  return file;
+};
+
 const said: string[] = [];
-const serving = await serve(root, 0, (m) => said.push(m));
+const serving = await serve(root, 0, (m) => said.push(m), make);
 const port = new URL(serving.url).port;
 // The plugin's process leaves the project's folder a moment after it is closed: on Windows the folder is busy until then.
 after(async () => {
@@ -77,8 +99,24 @@ function call(opts: { method?: string; path?: string; headers?: Record<string, s
   });
 }
 
-/** What the server gives its page: why it refused, or what /language, /story or /answer did. */
+/** The makes of a story's episodes, as /making gives them: what they said from `from` on. */
+interface Run {
+  id: string;
+  name: string;
+  language: string;
+  story: string;
+  state: "making" | "made" | "failed";
+  made: { file: string; as: string; url: string | null }[];
+  failed: string | null;
+  from: number;
+  next: number;
+  log: string;
+}
+
+/** What the server gives its page: why it refused, or what /language, /story, /answer, /make or /making did. */
 interface Answered {
+  making?: boolean;
+  run?: Run | null;
   error?: string;
   language?: string;
   file?: string;
@@ -97,6 +135,18 @@ interface Answered {
 async function ask(where: string, body: unknown, headers: Record<string, string> = {}) {
   const { status, body: answer } = await call({ method: "POST", path: where, headers: { Origin: serving.url, "Content-Type": "application/json", ...headers }, body: JSON.stringify(body) });
   return { status, answer: JSON.parse(answer) as Answered };
+}
+
+/** The run there is, with all it said: asked as a page loaded again asks. */
+const runNow = async () => (await ask("/making", { run: null, from: 0 })).answer.run!;
+
+/** The run, once its makes have ended. */
+async function ended(): Promise<Run> {
+  for (;;) {
+    const run = await runNow();
+    if (run.state !== "making") return run;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
 }
 
 const story = (name: string) => path.join(root, "stories", `${name}.md`);
@@ -118,7 +168,7 @@ test("the page: a field for the story's name, one for its text, its language, it
   const { status, headers, body } = await call({});
   assert.equal(status, 200);
   assert.equal(headers["content-type"], "text/html; charset=utf-8");
-  for (const field of ['<input id="name"', '<textarea id="text"', '<select id="language">', '<textarea id="prompt"', '<button id="save"', '<button id="copy"', '<textarea id="answer"', '<button id="start"', '<textarea id="refused"', '<button id="copy-refused"', '<pre id="log">']) {
+  for (const field of ['<input id="name"', '<textarea id="text"', '<select id="language">', '<textarea id="prompt"', '<button id="save"', '<button id="copy"', '<textarea id="answer"', '<button id="start"', '<textarea id="refused"', '<button id="copy-refused"', '<pre id="log">', '<button id="go-on"', '<div id="made">', '<pre id="make-log"']) {
     assert.ok(body.includes(field), field);
   }
   assert.ok(body.includes('<select id="language"><option value="en">English</option><option value="uk">Ukrainian</option><option value="ru">Russian</option></select>'));
@@ -127,7 +177,7 @@ test("the page: a field for the story's name, one for its text, its language, it
   // Its script and its style are named by a nonce, new for each page, and nothing else runs or loads.
   const nonce = /script-src 'nonce-([^']+)'/.exec(headers["content-security-policy"] as string)![1]!;
   assert.ok(body.includes(`<script nonce="${nonce}">`) && body.includes(`<style nonce="${nonce}">`));
-  assert.match(headers["content-security-policy"] as string, /^default-src 'none'; .*connect-src 'self'; .*frame-ancestors 'none'$/);
+  assert.match(headers["content-security-policy"] as string, /^default-src 'none'; .*media-src 'self'; connect-src 'self'; .*frame-ancestors 'none'$/);
   assert.ok(!(await call({})).body.includes(nonce));
 });
 
@@ -220,7 +270,7 @@ test("the chat's answers: one cut off and continued, an episode refused and then
   const first = `Here they are.\n\n${episode("sq-1", "red")}\n${fence}yaml\nepisode: sq-2\nuse: sq`;
   const one = await answers(first.replace(/\n/g, "\r\n"));
   assert.equal(one.status, 200);
-  assert.deepEqual(did(one.answer), { reply: "stories/sq.reply.md", added: "the answer, 1 whole block, and one cut off", episodes: ["videos/sq-1.yaml"], refused: null, ended: false, words });
+  assert.deepEqual(did(one.answer), { reply: "stories/sq.reply.md", added: "the answer, 1 whole block, and one cut off", episodes: ["videos/sq-1.yaml"], refused: null, ended: false, words, making: false });
   assert.match(one.answer.log!, /^Reply: stories\/sq\.reply\.md: 1 whole block\n {2}The block at line 9 is cut off: not counted\.\n[\s\S]*\nvideos\/sq-1\.yaml: written$/);
   assert.match(said.join("\n"), /\nAdded to stories\/sq\.reply\.md: the answer, 1 whole block, and one cut off\.\nReply: stories\/sq\.reply\.md: 1 whole block\n/);
   // The same answer again is no next one.
@@ -229,18 +279,19 @@ test("the chat's answers: one cut off and continued, an episode refused and then
   // The second ends the reply, and its episode names a colour the library lacks: refused, as the message for the chat.
   const second = `${episode("sq-2", "green")}\nAll episodes written.\nI left out the field.\n`;
   const two = await answers(second);
-  assert.deepEqual(did({ ...two.answer, refused: null }), { reply: "stories/sq.reply.md", added: "the answer, 1 whole block", episodes: ["videos/sq-1.yaml"], refused: null, ended: true, words });
+  assert.deepEqual(did({ ...two.answer, refused: null }), { reply: "stories/sq.reply.md", added: "the answer, 1 whole block", episodes: ["videos/sq-1.yaml"], refused: null, ended: true, words, making: false });
   assert.match(two.answer.refused!, /^The tool refused these episodes\. Send each again, its block whole and mended:\n\n- sq-2: no colour is named green/);
   assert.match(two.answer.log!, /\nvideos\/sq-1\.yaml: there already, as imported\nRefused: sq-2: no colour is named green$/);
   assert.ok(!existsSync(video("sq-2")));
   // That message in place of the chat's answer is none either.
   assert.deepEqual(await answers(two.answer.refused!), { status: 400, answer: { error: "This is what the page gave for the chat, and not the chat's answer: copy the chat's answer, and paste it." } });
 
-  // Mended, it is taken.
+  // Mended, it is taken: the reply is whole, and its episodes' makes begin.
   const mended = episode("sq-2", "red");
   const three = await answers(mended);
-  const all = { reply: "stories/sq.reply.md", episodes: ["videos/sq-1.yaml", "videos/sq-2.yaml"], refused: null, ended: true, words };
+  const all = { reply: "stories/sq.reply.md", episodes: ["videos/sq-1.yaml", "videos/sq-2.yaml"], refused: null, ended: true, words, making: true };
   assert.deepEqual(did(three.answer), { ...all, added: "the answer, 1 whole block" });
+  assert.equal((await ended()).state, "made");
 
   // The files are those story writes (story.test.ts): the reply's is the three answers, one after another.
   const replied = `${first}\n\n${second}\n${mended}`;
@@ -254,6 +305,7 @@ test("the chat's answers: one cut off and continued, an episode refused and then
   assert.match(again.answer.log!, /\nvideos\/sq-1\.yaml: there already, as imported\nvideos\/sq-2\.yaml: there already, as imported$/);
   assert.match(said.join("\n"), /\nNo new answer: going on from stories\/sq\.reply\.md\.\nReply: /);
   assert.equal(await readFile(reply("sq"), "utf8"), replied);
+  await ended();
 });
 
 test("a story in Ukrainian: its answers in its own reply's file, cut off and refused at once, and the prompt's words for the chat", async () => {
@@ -264,13 +316,14 @@ test("a story in Ukrainian: its answers in its own reply's file, cut off and ref
   // Cut off in its second block, and its first episode refused: the page gets both.
   const first = `Ось вони.\n\n${ukrainian("kvadraty-uk-1", "green")}\n${fence}yaml\nepisode: kvadraty-uk-2\nuse: sq`;
   const one = await answers(first);
-  assert.deepEqual(did({ ...one.answer, refused: null }), { reply: "stories/kvadraty-uk.reply.md", added: "the answer, 1 whole block, and one cut off", episodes: [], refused: null, ended: false, words });
+  assert.deepEqual(did({ ...one.answer, refused: null }), { reply: "stories/kvadraty-uk.reply.md", added: "the answer, 1 whole block, and one cut off", episodes: [], refused: null, ended: false, words, making: false });
   assert.match(one.answer.refused!, /^The tool refused these episodes\. Send each again, its block whole and mended:\n\n- kvadraty-uk-1: a mistake, at its line of the block[\s\S]*no colour is named green/);
 
   // Its line in Ukrainian ends it.
   const second = `${ukrainian("kvadraty-uk-1", "red")}\n${ukrainian("kvadraty-uk-2", "red")}\nУсі епізоди написано.\n`;
   const two = await answers(second);
-  assert.deepEqual(did(two.answer), { reply: "stories/kvadraty-uk.reply.md", added: "the answer, 2 whole blocks", episodes: ["videos/kvadraty-uk-1.yaml", "videos/kvadraty-uk-2.yaml"], refused: null, ended: true, words });
+  assert.deepEqual(did(two.answer), { reply: "stories/kvadraty-uk.reply.md", added: "the answer, 2 whole blocks", episodes: ["videos/kvadraty-uk-1.yaml", "videos/kvadraty-uk-2.yaml"], refused: null, ended: true, words, making: true });
+  await ended();
   assert.equal(await readFile(reply("kvadraty-uk"), "utf8"), `${first}\n\n${second}`);
   assert.ok(!existsSync(reply("kvadraty")));
   assert.equal(await readFile(video("kvadraty-uk-2"), "utf8"), "use: square\nlanguage: uk\nscenes:\n  - colour: red\n    script: |\n      narrator say: Два квадрати зустрілися.\n");
@@ -284,10 +337,11 @@ test("an episode with no yaml fence is read as one: a code block's own copy, and
 
   // The episode alone, as its code block's copy button gives it: taken, and the chat has not said it is done.
   const one = await answers(body("bare-1"));
-  assert.deepEqual(did(one.answer), { reply: "stories/bare.reply.md", added: "the answer, 1 whole block; its episode had no ```yaml fence, and was given one", episodes: ["videos/bare-1.yaml"], refused: null, ended: false, words });
+  assert.deepEqual(did(one.answer), { reply: "stories/bare.reply.md", added: "the answer, 1 whole block; its episode had no ```yaml fence, and was given one", episodes: ["videos/bare-1.yaml"], refused: null, ended: false, words, making: false });
   // In a fence with no language, with the chat's last line after it.
   const two = await answers(`${fence}\n${body("bare-2")}${fence}\n\nAll episodes written.\n`);
-  assert.deepEqual(did(two.answer), { reply: "stories/bare.reply.md", added: "the answer, 1 whole block; its block's fence had no language, and was given yaml", episodes: ["videos/bare-1.yaml", "videos/bare-2.yaml"], refused: null, ended: true, words });
+  assert.deepEqual(did(two.answer), { reply: "stories/bare.reply.md", added: "the answer, 1 whole block; its block's fence had no language, and was given yaml", episodes: ["videos/bare-1.yaml", "videos/bare-2.yaml"], refused: null, ended: true, words, making: true });
+  await ended();
   // Pasted again as it was, it is the answer added last.
   assert.equal((await answers(`${fence}\n${body("bare-2")}${fence}\n\nAll episodes written.\n`)).status, 400);
 
@@ -298,7 +352,8 @@ test("an episode with no yaml fence is read as one: a code block's own copy, and
 
 test("two answers at once are taken one after the other: the second is added when the first is imported", async () => {
   await ask("/story", { name: "pair", text: "A pair of squares.", language: "en" });
-  const [a, b] = [`${episode("pair-1", "red")}`, `${episode("pair-2", "red")}\nAll episodes written.\n`];
+  // Neither says the reply is whole: episodes being made would refuse the other.
+  const [a, b] = [`${episode("pair-1", "red")}`, `${episode("pair-2", "red")}\nThat is the second.\n`];
   const from = said.length;
   const both = await Promise.all([a, b].map((answer) => ask("/answer", { name: "pair", language: "en", answer })));
   assert.deepEqual(both.map(({ status }) => status), [200, 200]);
@@ -310,6 +365,164 @@ test("two answers at once are taken one after the other: the second is added whe
   const added = log.flatMap((line, i) => (line.includes("Added to stories/pair.reply.md") ? [i] : []));
   assert.equal(added.length, 2);
   assert.ok(log.slice(added[0], added[1]).some((line) => /^videos\/pair-\d\.yaml: written$/.test(line)), log.join("\n"));
+});
+
+test("a reply that is whole has its episodes made: the pages first, what the makes say as they go, and each file given to the page", async () => {
+  await ask("/story", { name: "show", text: "A square shows itself.", language: "en" });
+  // Its first episode has a page too, by its own outputs.
+  const paged = `${fence}yaml\nepisode: show-1\nuse: square\noutputs: { web: true }\ncolour: red\n${fence}\n`;
+  let release!: () => void;
+  fake.hold = new Promise((resolve) => (release = resolve));
+  const from = fake.calls.length;
+  const started = await ask("/answer", { name: "show", language: "en", answer: `${paged}\n${episode("show-2", "red")}\nAll episodes written.\n` });
+  assert.deepEqual([started.status, started.answer.making, started.answer.episodes], [200, true, ["videos/show-1.yaml", "videos/show-2.yaml"]]);
+
+  // The first make waits: the run is going, and what it said so far is the page's.
+  while (fake.calls.length === from) await new Promise((resolve) => setTimeout(resolve, 5));
+  const going = await runNow();
+  const begun = "Making, from stories/show.md: videos/show-1.yaml, videos/show-2.yaml\n\n=== videos/show-1.yaml: its page\n\nVideo: show-1, as a web page";
+  assert.deepEqual(going, { id: going.id, name: "show", language: "en", story: "stories/show.md", state: "making", made: [], failed: null, from: 0, next: 3, log: begun });
+  assert.match(going.id, /^[0-9a-f]{16}$/);
+  // A page that has it asks for what came after; one that names another run gets it all.
+  assert.deepEqual((await ask("/making", { run: going.id, from: 3 })).answer.run, { ...going, from: 3, log: "" });
+  assert.deepEqual((await ask("/making", { run: going.id, from: 1 })).answer.run, { ...going, from: 1, log: begun.slice(begun.indexOf("\n") + 1) });
+  assert.deepEqual((await ask("/making", { run: "0123456789abcdef", from: 3 })).answer.run, going);
+  // Meanwhile no answer is taken, of this story or another, and no other makes begun; a story is saved all the same.
+  const busy = { error: "The episodes of stories/show.md are being made: wait for them to end. What their makes say is in the page, below." };
+  assert.deepEqual(await ask("/answer", { name: "show", language: "en", answer: "" }), { status: 409, answer: busy });
+  assert.deepEqual(await ask("/answer", { name: "sq", language: "en", answer: episode("sq-3", "red") }), { status: 409, answer: busy });
+  assert.deepEqual(await ask("/make", { name: "sq", language: "en" }), { status: 409, answer: busy });
+  assert.equal((await ask("/story", { name: "meanwhile", text: "A square waits its turn.", language: "en" })).status, 200);
+  assert.ok(!(await readFile(reply("sq"), "utf8")).includes("sq-3"));
+
+  // Let go, they are made, the page before the videos, as story makes them.
+  release();
+  const done = await ended();
+  assert.deepEqual(fake.calls.slice(from), ["show-1 web", "show-1 video", "show-2 video"]);
+  assert.equal(done.state, "made");
+  assert.equal(
+    done.log,
+    `${begun}\nWritten: show-1\n\n=== videos/show-1.yaml: its video\n\nVideo: show-1, as a video\nWritten: show-1\n\n=== videos/show-2.yaml: its video\n\nVideo: show-2, as a video\nWritten: show-2\n\nMade, from stories/show.md:\n  out/show-1.html\n  out/show-1.mp4\n  out/show-2.mp4`,
+  );
+  // What the makes say is the server's log too: here what they said once let go, with nothing between.
+  assert.ok(said.join("\n").endsWith(done.log.slice(begun.length)), said.slice(-12).join("\n"));
+  assert.deepEqual(done.made.map(({ file, as }) => [file, as]), [["out/show-1.html", "web"], ["out/show-1.mp4", "video"], ["out/show-2.mp4", "video"]]);
+  for (const { file, url } of done.made) assert.match(url!, new RegExp(`^/${file.replace(".", "\\.")}\\?at=\\d+$`));
+
+  // A video is given whole, or the bytes its player asks for, and to this page alone.
+  const [page, video] = done.made.map(({ url }) => url!) as [string, string];
+  const whole = await call({ path: video });
+  assert.deepEqual([whole.status, whole.body, whole.headers["content-type"], whole.headers["content-length"]], [200, "the video of show-1", "video/mp4", "19"]);
+  assert.deepEqual([whole.headers["accept-ranges"], whole.headers["cross-origin-resource-policy"], whole.headers["cache-control"]], ["bytes", "same-origin", "no-store"]);
+  const ranges = [
+    ["bytes=4-8", 206, "video", "bytes 4-8/19"],
+    ["bytes=13-", 206, "show-1", "bytes 13-18/19"],
+    ["bytes=-6", 206, "show-1", "bytes 13-18/19"],
+    ["bytes=4-99", 206, "video of show-1", "bytes 4-18/19"],
+    ["bytes=19-", 416, "", "bytes */19"],
+    ["bytes=8-4", 416, "", "bytes */19"],
+    ["lines=1-2", 416, "", "bytes */19"],
+  ] as const;
+  for (const [range, status, body, of] of ranges) {
+    const part = await call({ path: video, headers: { Range: range } });
+    assert.deepEqual([part.status, part.body, part.headers["content-range"]], [status, body, of], range);
+  }
+  assert.equal((await call({ path: video, headers: { "Sec-Fetch-Site": "same-origin" } })).status, 200);
+  for (const site of ["cross-site", "same-site"]) {
+    const theirs = await call({ path: video, headers: { "Sec-Fetch-Site": site } });
+    assert.deepEqual([theirs.status, JSON.parse(theirs.body)], [403, { error: `This server gives its files to its own page alone: a request from another site's page (${site}) is refused.` }]);
+  }
+  assert.equal((await call({ path: video, headers: { Host: `example.com:${port}` } })).status, 403);
+  // Its page is opened with none of the server's page's rights.
+  const opened = await call({ path: page });
+  assert.deepEqual([opened.status, opened.body, opened.headers["content-type"], opened.headers["content-security-policy"]], [200, "the web of show-1", "text/html; charset=utf-8", "sandbox allow-scripts"]);
+  // Nothing else of the project is given: a file not made, or none of out/'s videos and pages.
+  assert.deepEqual(JSON.parse((await call({ path: "/out/show-3.mp4" })).body), { error: "There is no out/show-3.mp4: Start makes it." });
+  for (const other of ["/out/show-3.mp4", "/out/../package.json", "/out/%2e%2e/package.json", "/out/sub/show-1.mp4", "/videos/show-1.yaml", "/library.yaml", "/out/show-1.mp4/"]) {
+    assert.equal((await call({ path: other })).status, 404, other);
+  }
+  assert.equal((await call({ method: "POST", path: video, headers: { Origin: serving.url } })).status, 405);
+});
+
+test("a make that failed says why, and Start again goes on with them all", async () => {
+  await ask("/story", { name: "fall", text: "A square falls over.", language: "en" });
+  fake.fail.add("fall-1");
+  const from = fake.calls.length;
+  const first = await ask("/answer", { name: "fall", language: "en", answer: `${episode("fall-1", "red")}\n${episode("fall-2", "red")}\nAll episodes written.\n` });
+  assert.equal(first.answer.making, true);
+  // The first that fails stops them, as it stops story.
+  const failed = await ended();
+  const why = `videos/fall-1.yaml: its video is not made. ${FAILED}`;
+  assert.deepEqual([failed.state, failed.failed, failed.made], ["failed", why, []]);
+  assert.ok(failed.log.endsWith(`\n\n=== videos/fall-1.yaml: its video\n\nVideo: fall-1, as a video\n\nStopped: ${why}`), failed.log);
+  assert.deepEqual(fake.calls.slice(from), ["fall-1 video"]);
+
+  // What was in its way gone, Start with no answer imports the file as it is, and makes them: a run of its own.
+  fake.fail.clear();
+  const again = await ask("/answer", { name: "fall", language: "en", answer: "" });
+  assert.deepEqual([again.answer.added, again.answer.making], [null, true]);
+  const made = await ended();
+  assert.notEqual(made.id, failed.id);
+  assert.deepEqual([made.state, made.failed, made.made.map(({ file }) => file)], ["made", null, ["out/fall-1.mp4", "out/fall-2.mp4"]]);
+  assert.deepEqual(fake.calls.slice(from), ["fall-1 video", "fall-1 video", "fall-2 video"]);
+});
+
+test("the episodes taken so far are made when asked, though the reply is not whole; none taken is nothing to make", async () => {
+  await ask("/story", { name: "half", text: "Half a square.", language: "en" });
+  const from = fake.calls.length;
+  // One taken and one refused: nothing is made by itself.
+  const one = await ask("/answer", { name: "half", language: "en", answer: `${episode("half-1", "red")}\n${episode("half-2", "green")}\nAll episodes written.\n` });
+  assert.deepEqual([one.answer.episodes, one.answer.refused === null, one.answer.making], [["videos/half-1.yaml"], false, false]);
+  assert.deepEqual(await ask("/make", { name: "half", language: "en" }), { status: 200, answer: { reply: "stories/half.reply.md", episodes: ["videos/half-1.yaml"] } });
+  const made = await ended();
+  assert.deepEqual([made.name, made.state, made.made.map(({ file }) => file)], ["half", "made", ["out/half-1.mp4"]]);
+  assert.deepEqual(fake.calls.slice(from), ["half-1 video"]);
+  assert.match(said.join("\n"), /\nGoing on with the episodes taken so far, from stories\/half\.reply\.md\.\nReply: stories\/half\.reply\.md: 2 whole blocks\n/);
+
+  // With none taken, or no answer yet, or no story, there is nothing to make: the run shown stays the last one.
+  await ask("/story", { name: "nil", text: "No square at all.", language: "en" });
+  assert.deepEqual(await ask("/make", { name: "nil", language: "en" }), { status: 404, answer: { error: "There is no stories/nil.reply.md: an episode is taken from the chat's answer first." } });
+  await ask("/answer", { name: "nil", language: "en", answer: episode("nil-1", "green") });
+  assert.deepEqual(await ask("/make", { name: "nil", language: "en" }), { status: 400, answer: { error: "No episode of stories/nil.reply.md is taken, so there is nothing to make." } });
+  assert.deepEqual(await ask("/make", { name: "nobody", language: "en" }), { status: 404, answer: { error: "There is no stories/nobody.md: an episode is taken from the chat's answer first." } });
+  assert.equal((await ask("/make", { name: "half", language: "de" })).status, 400);
+  assert.equal((await ask("/make", { name: "half" })).status, 400);
+  assert.equal((await ask("/making", { run: null })).status, 400);
+  assert.equal((await ask("/make", { name: "half", language: "en" }, { Origin: "https://example.com" })).status, 403);
+  assert.equal((await ask("/making", { run: null, from: 0 }, { Origin: "https://example.com" })).status, 403);
+  assert.equal((await runNow()).id, made.id);
+  assert.deepEqual(fake.calls.slice(from), ["half-1 video"]);
+});
+
+test("a make as a process of its own: what it says a line at a time, the file it wrote, and one that fails, with the last it said", async () => {
+  // In place of the tool's command line: it says what it was asked, on both of its outputs, and fails for a video named bad.
+  const command = path.join(scratch, "command.mjs");
+  const lines = [
+    "const [, , make, video, flag, as] = process.argv;",
+    'console.log("asked: " + [make, flag, as].join(" "));',
+    'console.error("\\x1B[33mof " + video + "\\x1B[0m");',
+    'if (video.includes("bad")) {',
+    '  console.error("\\nStopped: no colour is named bad.");',
+    "  process.exit(1);",
+    "}",
+  ];
+  await writeFile(command, lines.join("\n"));
+  const apart = makeBy([process.execPath, command]);
+  await mkdir(path.join(root, "videos"), { recursive: true });
+  const [good, bad] = [video("apart"), video("bad")];
+  for (const file of [good, bad]) await writeFile(file, "use: square\ncolour: red\n");
+
+  const heard: string[] = [];
+  assert.equal(await apart(good, "video", (line) => heard.push(line)), path.join(root, "out", "apart.mp4"));
+  assert.equal(await apart(good, "web", (line) => heard.push(line)), path.join(root, "out", "apart.html"));
+  // Its two outputs come as they come; what a terminal would colour is plain.
+  assert.deepEqual(heard.toSorted(), ["asked: make --as video", "asked: make --as web", `of ${good}`, `of ${good}`]);
+  await assert.rejects(apart(bad, "video", () => {}), (e: Error) => {
+    assert.match(e.message, /^The make stopped \(exit code 1\)\. The last it said:\n/);
+    assert.deepEqual(e.message.split("\n").slice(1).toSorted(), ["Stopped: no colour is named bad.", "asked: make --as video", `of ${bad}`]);
+    return true;
+  });
+  await assert.rejects(makeBy([path.join(scratch, "no-node-here")])(good, "video", () => {}), /ENOENT/);
 });
 
 test("an answer for a story that is not saved, or with no name or language of the tool's, is refused, with nothing written", async () => {
@@ -355,9 +568,9 @@ test("a request from another site's page is refused, and one at another name for
 });
 
 test("a port that is taken is said, and a folder that is no project", async () => {
-  await assert.rejects(serve(root, Number(port), () => {}), new RegExp(`^Error: Port ${port} is taken: serve may be running already \\(http://127\\.0\\.0\\.1:${port}\\)\\. Stop that one, or give this one another port: --port ${Number(port) + 1}$`));
+  await assert.rejects(serve(root, Number(port), () => {}, make), new RegExp(`^Error: Port ${port} is taken: serve may be running already \\(http://127\\.0\\.0\\.1:${port}\\)\\. Stop that one, or give this one another port: --port ${Number(port) + 1}$`));
   const none = path.join(scratch, "none");
   await mkdir(none, { recursive: true });
   await writeFile(path.join(none, "package.json"), "{}");
-  await assert.rejects(serve(none, 0, () => {}), /none: no package\.json here, or above, names a plugin \("ai-videos": \{ "plugin" \}\)\. serve is typed in a project's folder/);
+  await assert.rejects(serve(none, 0, () => {}, make), /none: no package\.json here, or above, names a plugin \("ai-videos": \{ "plugin" \}\)\. serve is typed in a project's folder/);
 });
