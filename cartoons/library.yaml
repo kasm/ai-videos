@@ -161,6 +161,39 @@ characters:
         - { shape: ellipse, at: [58, -139], size: [14, 18], fill: "#1c1917" }
       mouth:
         - { shape: ellipse, at: [20, -80], size: [46, 12], fill: "#5b2333" }
+  maya: # young woman with dark hair and coral apron, 210 by 380
+    voice: { en: af_nicole }
+    shoulder: [90, -230]
+    parts:
+      body:
+        - { shape: rect, at: [-15, -270], size: [170, 200], round: 85, fill: "#2b211e" }
+        - { shape: rect, at: [0, -190], size: [200, 380], round: 95, fill: "#e07a5f" }
+        - { shape: rect, at: [10, -140], size: [150, 220], round: 30, fill: "#f4f1de" }
+      arm:
+        - { shape: rect, at: [90, -165], size: [40, 150], round: 20, fill: "#d49a6a" }
+      eyes:
+        - { shape: ellipse, at: [-38, -285], size: [42, 50], fill: "#ffffff" }
+        - { shape: ellipse, at: [38, -285], size: [42, 50], fill: "#ffffff" }
+        - { shape: ellipse, at: [-26, -282], size: [18, 22], fill: "#1f1a17" }
+        - { shape: ellipse, at: [50, -282], size: [18, 22], fill: "#1f1a17" }
+      mouth:
+        - { shape: ellipse, at: [0, -220], size: [58, 16], fill: "#8c2f39" }
+  leo: # young man with tousled brown hair and teal shirt, 220 by 400
+    voice: { en: am_fenrir }
+    shoulder: [95, -240]
+    parts:
+      body:
+        - { shape: rect, at: [0, -345], size: [185, 90], round: 45, fill: "#4a3321" }
+        - { shape: rect, at: [0, -200], size: [210, 400], round: 100, fill: "#3d5a80" }
+      arm:
+        - { shape: rect, at: [95, -170], size: [44, 160], round: 22, fill: "#e0ac69" }
+      eyes:
+        - { shape: ellipse, at: [-40, -295], size: [44, 52], fill: "#ffffff" }
+        - { shape: ellipse, at: [40, -295], size: [44, 52], fill: "#ffffff" }
+        - { shape: ellipse, at: [-28, -292], size: [18, 24], fill: "#1d2d44" }
+        - { shape: ellipse, at: [52, -292], size: [18, 24], fill: "#1d2d44" }
+      mouth:
+        - { shape: ellipse, at: [0, -228], size: [62, 16], fill: "#6b2737" }
 
 backgrounds:
   meadow: # the plain meadow: the sky, the sun and the grass
@@ -228,6 +261,15 @@ backgrounds:
       - { shape: ellipse, at: [960, 520], size: [1480, 860], fill: "#593722" }
       - { shape: ellipse, at: [1520, 420], size: [260, 260], fill: "#f7c85c" }
       - { shape: rect, at: [960, 950], size: [1920, 260], fill: "#6e472b" }
+  kitchen: # warm home kitchen with counter, stove, and spice rack
+    fill: "#f7ede2"
+    shapes:
+      - { shape: rect, at: [1480, 420], size: [340, 260], fill: "#d4a373" }
+      - { shape: rect, at: [1480, 360], size: [300, 24], fill: "#faedcd" }
+      - { shape: rect, at: [1480, 470], size: [300, 24], fill: "#faedcd" }
+      - { shape: rect, at: [420, 680], size: [420, 280], fill: "#adb5bd" }
+      - { shape: rect, at: [420, 530], size: [320, 40], fill: "#495057" }
+      - { shape: rect, at: [960, 950], size: [1920, 260], fill: "#bc8a5f" }
 
 sounds: # a script plays them; each its file, from this folder, and how loud it is (sounds/make.mjs made these)
   tune: { file: sounds/tune.flac, volume: -20dB } # eight quiet seconds of music, to be looped
