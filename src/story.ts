@@ -13,7 +13,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
-import { importReply, readReply, type Reply } from "./import.ts";
+import { fenceEpisodes, importReply, readReply, type Reply } from "./import.ts";
 import { pluginOf } from "./make.ts";
 import { PROMPT_WORDS, episodesOf, promptFor, saysAllWritten, storyOf } from "./prompt.ts";
 import type { Language } from "./script.ts";
@@ -52,28 +52,31 @@ export type NoAnswer = "none" | "given" | "added" | "no-blocks";
 
 /**
  * A text, from the clipboard or a page's field, as the chat's next answer: its lines ended by "\n",
- * and its blocks read. Or why it is none (`not`), which whoever asked for it words. `last` is what
- * was last given for the chat, and last added from it: each is told whatever ends its lines, as a
- * prompt holds the library as written (on Windows, with CRLF), and a field gives line feeds.
+ * an episode with no ```yaml fence given one (import.ts, fenceEpisodes; `did` says so), and its blocks
+ * read. Or why it is none (`not`), which whoever asked for it words. `last` is what was last given
+ * for the chat, and last added from it: each is told whatever ends its lines, as a prompt holds the
+ * library as written (on Windows, with CRLF), and a field gives line feeds.
  */
-export function answerOf(pasted: string, last: { given: string; added: string }): { text: string; read: Reply } | { not: NoAnswer } {
+export function answerOf(pasted: string, last: { given: string; added: string }): { text: string; read: Reply; did: string[] } | { not: NoAnswer } {
   const lines = (text: string) => text.replace(/\r\n?/g, "\n");
-  const text = lines(pasted);
-  if (text.trim() === "") return { not: "none" };
-  if (text.trim() === lines(last.given).trim()) return { not: "given" };
+  const raw = lines(pasted);
+  if (raw.trim() === "") return { not: "none" };
+  if (raw.trim() === lines(last.given).trim()) return { not: "given" };
+  // The answer added last is the one mended: the same text pasted again is mended the same.
+  const { text, did } = fenceEpisodes(raw);
   if (text.trim() === lines(last.added).trim()) return { not: "added" };
   const read = readReply(text);
   if (read.blocks.length === 0 && read.cut.length === 0 && !saysAllWritten(text)) return { not: "no-blocks" };
-  return { text, read };
+  return { text, read, did };
 }
 
-/** Adds an answer to a reply's file, after the answers it holds, and gives what to say of it: how many blocks it brought. */
-export async function addAnswer(reply: string, answer: { text: string; read: Reply }): Promise<string> {
-  const { text, read } = answer;
+/** Adds an answer to a reply's file, after the answers it holds, and gives what to say of it: how many blocks it brought, and what was mended in it. */
+export async function addAnswer(reply: string, answer: { text: string; read: Reply; did: string[] }): Promise<string> {
+  const { text, read, did } = answer;
   const before = existsSync(reply) ? await readFile(reply, "utf8") : "";
   const gap = before === "" ? "" : before.endsWith("\n") ? "\n" : "\n\n";
   await writeFile(reply, `${before}${gap}${text}${text.endsWith("\n") ? "" : "\n"}`);
-  return `the answer, ${read.blocks.length} whole block${read.blocks.length === 1 ? "" : "s"}${read.cut.length > 0 ? ", and one cut off" : ""}`;
+  return `the answer, ${read.blocks.length} whole block${read.blocks.length === 1 ? "" : "s"}${read.cut.length > 0 ? ", and one cut off" : ""}${did.map((one) => `; ${one}`).join("")}`;
 }
 
 /**

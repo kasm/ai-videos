@@ -276,6 +276,26 @@ test("a story in Ukrainian: its answers in its own reply's file, cut off and ref
   assert.equal(await readFile(video("kvadraty-uk-2"), "utf8"), "use: square\nlanguage: uk\nscenes:\n  - colour: red\n    script: |\n      narrator say: Два квадрати зустрілися.\n");
 });
 
+test("an episode with no yaml fence is read as one: a code block's own copy, and a block fenced with no language", async () => {
+  await ask("/story", { name: "bare", text: "A bare square.", language: "en" });
+  const answers = (answer: string) => ask("/answer", { name: "bare", language: "en", answer });
+  const words = { allWritten: "All episodes written.", goOn: "continue" };
+  const body = (name: string) => `episode: ${name}\nuse: square\ncolour: red\n`;
+
+  // The episode alone, as its code block's copy button gives it: taken, and the chat has not said it is done.
+  const one = await answers(body("bare-1"));
+  assert.deepEqual(did(one.answer), { reply: "stories/bare.reply.md", added: "the answer, 1 whole block; its episode had no ```yaml fence, and was given one", episodes: ["videos/bare-1.yaml"], refused: null, ended: false, words });
+  // In a fence with no language, with the chat's last line after it.
+  const two = await answers(`${fence}\n${body("bare-2")}${fence}\n\nAll episodes written.\n`);
+  assert.deepEqual(did(two.answer), { reply: "stories/bare.reply.md", added: "the answer, 1 whole block; its block's fence had no language, and was given yaml", episodes: ["videos/bare-1.yaml", "videos/bare-2.yaml"], refused: null, ended: true, words });
+  // Pasted again as it was, it is the answer added last.
+  assert.equal((await answers(`${fence}\n${body("bare-2")}${fence}\n\nAll episodes written.\n`)).status, 400);
+
+  // The reply's file holds each as a YAML block, so import reads it as any reply.
+  assert.equal(await readFile(reply("bare"), "utf8"), `${episode("bare-1", "red")}\n${episode("bare-2", "red")}\nAll episodes written.\n`);
+  assert.equal(await readFile(video("bare-2"), "utf8"), "use: square\ncolour: red\n");
+});
+
 test("two answers at once are taken one after the other: the second is added when the first is imported", async () => {
   await ask("/story", { name: "pair", text: "A pair of squares.", language: "en" });
   const [a, b] = [`${episode("pair-1", "red")}`, `${episode("pair-2", "red")}\nAll episodes written.\n`];

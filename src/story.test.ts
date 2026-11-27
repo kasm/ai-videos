@@ -190,8 +190,14 @@ test("what was given for the chat, or added from it, is no next answer, whatever
   // Any other text with a block, or one that says it is done, is an answer, its lines ended by line feeds.
   const next = answerOf(episode("sq-2", "red").replace(/\n/g, "\r\n"), last);
   assert.ok("text" in next);
-  assert.deepEqual([next.text, next.read.blocks.length, next.read.cut.length], [episode("sq-2", "red"), 1, 0]);
+  assert.deepEqual([next.text, next.read.blocks.length, next.read.cut.length, next.did], [episode("sq-2", "red"), 1, 0, []]);
   assert.ok("text" in answerOf("all episodes written", last));
+  // An episode with no ```yaml fence, as a code block's own copy button gives it, is given one, and is an answer.
+  const bare = answerOf("episode: sq-2\r\nuse: square\r\ncolour: red\r\n", last);
+  assert.ok("text" in bare);
+  assert.deepEqual([bare.text, bare.read.blocks.length, bare.did], [episode("sq-2", "red"), 1, ["its episode had no ```yaml fence, and was given one"]]);
+  // Pasted again, it is the answer added last, as it was mended.
+  assert.deepEqual(answerOf("episode: sq-2\nuse: square\ncolour: red\n", { given: "", added: bare.text }), { not: "added" });
 });
 
 /** An episode in Ukrainian, written as a script: the narrator says a line on a square of a colour. */

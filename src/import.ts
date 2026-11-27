@@ -73,6 +73,73 @@ export function readReply(text: string): Reply {
   return { blocks, cut, ended: saysAllWritten(outside.join("\n")) };
 }
 
+/** The line an episode's block begins with: its name. */
+const EPISODE = /^episode:(\s|$)/;
+
+/**
+ * One answer of a chat with each of its episodes in a YAML block, where the chat, or the way it was
+ * copied, left the fence out: its lines ended by "\n", and in `did` what was mended. Two cases, each
+ * with one right answer:
+ * - a block fenced with no language that begins with `episode:` (a chat's plain code block): its
+ *   fence is given `yaml`;
+ * - a text with no fence at all that begins with `episode:` (what a code block's own copy button
+ *   gives): each episode gets a fence, from an `episode:` at the start of a line to the next, the last
+ *   one to the line that says every episode is written, or to the text's end.
+ * Any other text is as it was. It is for one answer by itself: in a reply's file, where the answers
+ * follow each other, a fence left out could be another answer's, so readReply reads a file as written.
+ */
+export function fenceEpisodes(answer: string): { text: string; did: string[] } {
+  const lines = answer.replace(/\r\n?/g, "\n").split("\n");
+  const same = { text: lines.join("\n"), did: [] };
+
+  if (!lines.some((line) => FENCE.test(line))) {
+    const first = lines.findIndex((line) => line.trim() !== "");
+    if (first < 0 || !EPISODE.test(lines[first]!)) return same;
+    // Where the chat says it is done, on a line of its own: a script's lines are indented.
+    const said = lines.findIndex((line, i) => i > first && !/^\s/.test(line) && saysAllWritten(line));
+    const end = said < 0 ? lines.length : said;
+    const out = lines.slice(0, first);
+    let block: string[] = [];
+    let count = 0;
+    const close = () => {
+      while (block.at(-1)?.trim() === "") block.pop();
+      out.push("```yaml", ...block, "```", "");
+      count++;
+    };
+    for (const line of lines.slice(first, end)) {
+      if (EPISODE.test(line) && block.length > 0) {
+        close();
+        block = [];
+      }
+      block.push(line);
+    }
+    close();
+    return { text: [...out, ...lines.slice(end)].join("\n"), did: [count === 1 ? "its episode had no ```yaml fence, and was given one" : `its ${count} episodes had no \`\`\`yaml fence, and each was given one`] };
+  }
+
+  // The blocks are followed as readReply follows them; one with no language is told by its first line.
+  const out = [...lines];
+  let open: { at: number; fence: string; yaml: boolean | undefined } | undefined;
+  let count = 0;
+  for (const [i, line] of lines.entries()) {
+    const fence = FENCE.exec(line);
+    if (open) {
+      const close = line.trim();
+      if (close.length >= open.fence.length && close === open.fence[0]!.repeat(close.length)) open = undefined;
+      else if (open.yaml && fence && isYaml(fence[3]!)) open = { at: i, fence: fence[2]!, yaml: true };
+      else if (open.yaml === undefined && line.trim() !== "") {
+        open.yaml = EPISODE.test(line.trim());
+        if (open.yaml) {
+          out[open.at] = `${lines[open.at]!.trimEnd()}yaml`;
+          count++;
+        }
+      }
+    } else if (fence) open = { at: i, fence: fence[2]!, yaml: fence[3] === "" ? undefined : isYaml(fence[3]!) };
+  }
+  if (count === 0) return same;
+  return { text: out.join("\n"), did: [count === 1 ? "its block's fence had no language, and was given yaml" : `its ${count} blocks' fences had no language, and were given yaml`] };
+}
+
 /** One thing a block adds to the library: its section (`characters`), its name, and its text as written there. */
 export interface Entry {
   section: string;

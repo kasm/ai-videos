@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
-import { addEntries, episodeOf, importReply, readReply } from "./import.ts";
+import { addEntries, episodeOf, fenceEpisodes, importReply, readReply } from "./import.ts";
 import { encodeWav } from "./tts.ts";
 
 const fence = "```";
@@ -49,6 +49,40 @@ test("the reply's whole YAML blocks count; one cut off, or begun again, does not
   assert.equal(readReply(`I will end with "All episodes written."\n${fence}yaml\nepisode: a-1\n${fence}\n`).ended, false);
   // A block indented in the message is read as if it were not.
   assert.deepEqual(readReply(`1. One:\n   ${fence}yaml\n   episode: a-1\n   use: x\n   ${fence}\n`).blocks, [{ line: 2, text: "episode: a-1\nuse: x\n" }]);
+});
+
+test("an answer's episode with no yaml fence is given one: a block fenced with no language, and a text that is episodes alone", () => {
+  // A chat's plain code block that begins with episode: gets its language. Any other block is as it was.
+  const plain = ["Here it is.", fence, "episode: a-1", "use: x", fence, fence, "not an episode", fence, `${fence}text`, "episode: a-9", fence, "", "All episodes written.", ""];
+  const named = fenceEpisodes(plain.join("\r\n"));
+  assert.deepEqual(named, { text: plain.with(1, `${fence}yaml`).join("\n"), did: ["its block's fence had no language, and was given yaml"] });
+  assert.deepEqual(readReply(named.text), { blocks: [{ line: 2, text: "episode: a-1\nuse: x\n" }], cut: [], ended: true });
+  // Two of them, one indented in a list; and one cut off, which is a block begun.
+  const two = fenceEpisodes(`1. One:\n   ${fence}\n\n   episode: a-1\n   ${fence}\n2. Two:\n${fence}\nepisode: a-2\n${fence}\n`);
+  assert.deepEqual(two, { text: `1. One:\n   ${fence}yaml\n\n   episode: a-1\n   ${fence}\n2. Two:\n${fence}yaml\nepisode: a-2\n${fence}\n`, did: ["its 2 blocks' fences had no language, and were given yaml"] });
+  const cutOff = fenceEpisodes(`${fence}\nepisode: a-1\nscenes: [`);
+  assert.equal(cutOff.text, `${fence}yaml\nepisode: a-1\nscenes: [`);
+  assert.deepEqual([readReply(cutOff.text).blocks.length, readReply(cutOff.text).cut], [0, [1]]);
+
+  // A text with no fence that begins with episode: the episode ends where the chat says it is done, on a
+  // line of its own (a script's line may say the words), and the rest stays outside.
+  const bare = ["episode: a-1", "use: x", "scenes:", "  - script: |", "      narrator say: All episodes written, said the mole.", "", "      narrator say: The end.", "", "", "All episodes written.", "", "I left out the boat.", ""];
+  const fenced = fenceEpisodes(bare.join("\n"));
+  assert.deepEqual(fenced, {
+    text: [`${fence}yaml`, ...bare.slice(0, 7), fence, "", ...bare.slice(9)].join("\n"),
+    did: ["its episode had no ```yaml fence, and was given one"],
+  });
+  assert.deepEqual(readReply(fenced.text), { blocks: [{ line: 1, text: `${bare.slice(0, 7).join("\n")}\n` }], cut: [], ended: true });
+  // Several, to the text's end, as a code block's own copy button gives them: each from its episode: to the next.
+  assert.deepEqual(fenceEpisodes("\nepisode: a-1\nuse: x\n\nepisode: a-2\nuse: x\n"), {
+    text: `\n${fence}yaml\nepisode: a-1\nuse: x\n${fence}\n\n${fence}yaml\nepisode: a-2\nuse: x\n${fence}\n`,
+    did: ["its 2 episodes had no ```yaml fence, and each was given one"],
+  });
+
+  // As it was: blocks fenced as YAML, words alone, an episode after other words, and one beside a fenced block.
+  for (const same of [`${fence}yaml\nepisode: a-1\n${fence}\n`, "Sure! The squares meet.", "", "Here it is:\nepisode: a-1\nuse: x\n", `episode: a-1\nuse: x\n${fence}yaml\nepisode: a-2\n${fence}\n`]) {
+    assert.deepEqual(fenceEpisodes(same), { text: same, did: [] });
+  }
 });
 
 const BLOCK = `# The first one

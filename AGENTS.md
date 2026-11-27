@@ -844,6 +844,13 @@ presses Enter in the terminal when the chat's answer is copied. Windows only. Wi
   the chat (Enter pressed too soon), the answer added last, or one with no YAML block (the answer
   copied without its blocks) and no `All episodes written.` Each is said, and Enter is waited for
   again.
+- **An episode with no `yaml` fence** is given one as its answer is added, and the log says so
+  (`fenceEpisodes`, `src/import.ts`), in the two cases with one right answer. A block fenced with
+  no language that begins with `episode:`, a chat's plain code block, gets `yaml` on its fence. An
+  answer with no fence at all that begins with `episode:`, what a code block's own copy button
+  gives, gets a fence around each episode: from an `episode:` at the start of a line to the next,
+  the last one to the line `All episodes written.`, or to the answer's end. So the reply's file
+  holds YAML blocks alone; `import` reads a file as written, and mends none of it.
 - **`done`,** typed in place of Enter once the chat has answered, goes on with what there is: for a
   chat that never says `All episodes written.`, or an episode it cannot mend. Only the episodes
   taken are made; none taken stops it.
@@ -872,9 +879,9 @@ step. So far it wraps a text in its prompt, and takes the chat's answers to the 
 - **The chat's answer:** a third field, and Start. The answer is added to the reply's file of the
   story and the language the page's fields name, `stories/<name>.reply.md` (in Ukrainian,
   `<name>-uk.reply.md`), and the file is imported, as `story` does both (`answerOf`, `addAnswer`,
-  `src/story.ts`; see story, import). The page says what the answer brought and which episodes are
-  taken, each by its video file, shows what the import said, and empties the field for the next
-  answer.
+  `src/story.ts`; see story, import): an episode pasted with no `yaml` fence is given one. The
+  page says what the answer brought, and what was mended in it, and which episodes are taken, each
+  by its video file, shows what the import said, and empties the field for the next answer.
 - **What the chat is told next:** after an answer cut off (no `All episodes written.`), the page
   says to type "continue" in the chat, the prompt's word in the episodes' language. What was
   refused, the message for the chat, it shows in a field of its own and copies; of an answer cut
