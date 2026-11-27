@@ -16,10 +16,8 @@
   - A sentence marked all through lasts 4 to 6 % longer.
   - Not yet heard by the user. The samples, the log and the two scripts
     are in `out/stress-probe/`.
-- Step 1 built 2026-11-27, and waits for the user's ear: its "Done
-  when" has them mark a word in a Russian video and in a Ukrainian one,
-  and hear each right.
-  - Checked so far: `src/stress.test.ts` finds the mark in what the
+- Step 1 done 2026-11-27, on the user's word that day.
+  - Checked: `src/stress.test.ts` finds the mark in what the
     voice is asked to say, of a plan's line and of a script's, and in no
     caption; `src/check.test.ts` takes a marked word, anchored at too,
     and refuses a mark that is not right after a vowel. `npm test` (374)
@@ -27,11 +25,11 @@
   - Two try cartoons, in Ukrainian and in Russian, their lines marked,
     were checked and made as pages, then deleted: each `compiled.json`
     kept its lines' marks, Supertonic said them, and no caption of
-    `cartoons/out/stress-try-uk.html` and `-ru.html` has one. Not heard
-    by the user yet.
+    `cartoons/out/stress-try-uk.html` and `-ru.html` has one.
   - RayCraft's `water-switch` and cartoons' `hello` and `meet-uk`
     checked as before.
-- **Next: the user's part of step 1; then step 2.**
+  - No video of the user's own holds a mark yet.
+- **Next: step 2.**
 
 
 ## Goal
