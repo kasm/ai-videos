@@ -1,6 +1,6 @@
 // A word's stress, as a line of a video in Ukrainian or Russian may mark it (AGENTS.md, "A word's
 // stress"): a combining acute (U+0301) right after the stressed vowel, за́мок. Supertonic reads the mark
-// as the word's stress, as was measured (docs/plans/word-stress.md), so the voice gets a line's text
+// as the word's stress, as was measured (docs/plans/done/word-stress.md), so the voice gets a line's text
 // as written. What is shown, and what a word is found by, is the text without its marks.
 //
 // It needs none of the tool's packages.

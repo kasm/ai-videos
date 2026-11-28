@@ -7,9 +7,9 @@
 //
 // Any other word has no mark, and the voice stresses it itself: it gets nearly all of them right, and reads
 // some of them wrong once they have a mark (сего́дня with its г, коне́чно with its чн, a ё as е), as a video
-// marked all through showed (docs/plans/word-stress.md). So RUAccent's dictionary of every word's stress is
-// left out, with its network for the words that lacks, the one that says which words get no stress, and
-// what puts back a ё written as е.
+// marked all through showed (docs/plans/done/word-stress.md). So RUAccent's dictionary of every word's
+// stress is left out, with its network for the words that lacks, the one that says which words get no
+// stress, and what puts back a ё written as е.
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { gunzipSync } from "node:zlib";

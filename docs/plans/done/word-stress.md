@@ -96,8 +96,8 @@
   - Each video as it was before any mark is in
     `cartoons/out/before-stress/`; the trial's scripts, and the page the
     user listened by, are in `out/stress-sources/`.
-- **Next: nothing. The three steps are done; the plan goes to
-  `docs/plans/done/` on the user's word.**
+- **All three steps are done.** Open: no video was made with the
+  network off (above).
 
 
 ## Goal

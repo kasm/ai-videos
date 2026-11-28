@@ -2,10 +2,9 @@
 
 ## The plan
 
-The current plan is `docs/plans/word-stress.md`: a word's stress in a
-Ukrainian or Russian video, set by a mark in its line, and by the tool
-itself. Its `## Now` names the next step; read the rest only when a task
-needs it. Finished plans are in `docs/plans/done/`.
+No plan is current; finished ones are in `docs/plans/done/`. A current
+plan is in `docs/plans/`: its `## Now` names the next step; read the rest
+only when a task needs it.
 
 - **One session, one step.** First restate the step and its "Done when"
   to the user. Its design is worked out in chat, not written into the

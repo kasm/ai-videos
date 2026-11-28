@@ -584,7 +584,7 @@ word in the line, or the tool marks it (`src/marks.ts`).
 - **The tool's marks:** a word of two vowels or more with no mark of the writer's is given one by its
   language's source, read from this disk alone (see Offline): in Ukrainian each word, in Russian a
   homograph alone. A word the writer marked is as written, and so is a line in English. How the
-  sources were picked and tried is in `docs/plans/word-stress.md`.
+  sources were picked and tried is in `docs/plans/done/word-stress.md`.
   - **Ukrainian** (`src/stress-uk.ts`): lang-uk's dictionary (ukrainian-word-stress, MIT), a marisa
     trie of 2.9 million forms, read by `src/marisa.ts`. A form with one stress has it, and one with
     two, either of them right (за́вжди́), has one of the two. A form the dictionary has under two
@@ -608,9 +608,9 @@ word in the line, or the tool marks it (`src/marks.ts`).
   says them when the sources' files are on the disk, and else that it did not look; `import` says
   none.
 - **The voice** gets the line with its marks, the writer's and the tool's, and Supertonic reads a
-  mark as the word's stress (measured: `docs/plans/word-stress.md`). So the compiled scenario's
-  `text` and a request's are the line as it is said. A marked line is another line to the voice
-  cache, and one marked all through lasts 4 to 6 % longer.
+  mark as the word's stress (measured: `docs/plans/done/word-stress.md`). So the compiled
+  scenario's `text` and a request's are the line as it is said. A marked line is another line to
+  the voice cache, and one marked all through lasts 4 to 6 % longer.
 - **A mark is no sure thing.** The voice follows it mostly, not always, and a marked word may be read
   worse. Heard in a Russian video with a mark in every word: the wrong stresses mended, and of 150
   marked words eight spoiled, each rightly marked: a ё read as е (Серё́га), сего́дня and друго́го
