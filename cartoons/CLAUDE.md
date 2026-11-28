@@ -198,6 +198,15 @@ characters:
   Supertonic's in both (Pip's `m1`); Marten shares Tuk's, as the two never
   meet. `videos/meet-uk.yaml` and `videos/meet-ru.yaml` are `meet` in
   Ukrainian and in Russian.
+- **A word's stress** is marked by the tool before the voice says the
+  line: in Ukrainian each word, in Russian only a homograph (дела́,
+  де́ла), read from its sentence. `check` and `make` list the words it
+  was not sure of, each as it is said: `гнізда́ (or гні́зда): line 12`.
+  One that is said wrong is marked in its line: an acute (U+0301) right
+  after its stressed vowel, `за́мок` or `замо́к`, which the tool then
+  keeps. Mark no word that is said right: a mark may spoil how its word
+  is read. The voice reads the mark, and the captions leave it out (the
+  tool's `AGENTS.md`, "A word's stress").
 - A line's `who` is its speaker: the tool says the line in that voice,
   and what a frame shows opens that character's mouth with the line's
   track (the narrator's opens none).

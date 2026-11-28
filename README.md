@@ -35,7 +35,8 @@ music under it all ([all-at-once.yaml](cartoons/videos/all-at-once.yaml)).
 
 - [Node.js](https://nodejs.org) 24 or newer (it is developed on 24).
 - [ffmpeg](https://ffmpeg.org) on the PATH, with ffprobe, which comes with it.
-- About 1.5 GB of disk, for the packages, the voice model and a headless Chrome.
+- About 2.3 GB of disk, for the packages, the voice models, what marks a word's stress in
+  Ukrainian and Russian, and a headless Chrome.
 
 The tool is developed on Windows, and one command, `story`, works only there.
 
@@ -50,7 +51,8 @@ npm ci
 npm run -s video -- setup
 ```
 
-`setup` fetches the voice model (about 325 MB) and the Chrome that
+`setup` fetches the voice models, with the dictionaries and models that mark a word's stress in
+Ukrainian and Russian (about 1.1 GB in all), and the Chrome that
 [HyperFrames](https://hyperframes.heygen.com) renders with. After it, every command runs
 with the network off. npm may warn about install scripts "not yet covered by allowScripts"; you can
 ignore that.

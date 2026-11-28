@@ -1,10 +1,13 @@
 // What the tool needs on this disk to run with the network off, and `setup`, the one command that
-// fetches it: the voice models and HyperFrames' Chrome. GSAP and the fonts come with npm (bundle.ts).
+// fetches it: the voice models, what marks a word's stress in Ukrainian and Russian (marks.ts), and
+// HyperFrames' Chrome. GSAP and the fonts come with npm (bundle.ts).
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync, readFileSync } from "node:fs";
 import { mkdir, open, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
+import { STRESS_FILES, markerIn } from "./marks.ts";
+import { pinnedDir, type Pinned } from "./pinned.ts";
 import { hyperframes, hyperframesBin, run } from "./render.ts";
 import { SUPERTONIC, SUPERTONIC_FILES, SUPERTONIC_REVISION, SupertonicProvider } from "./supertonic.ts";
 import { KokoroProvider, MODEL, MODEL_FILES, type ModelProgress } from "./tts.ts";
@@ -36,8 +39,30 @@ function hyperframesVersion(root: string): string {
   return JSON.parse(readFileSync(path.join(root, "node_modules", "hyperframes", "package.json"), "utf8")).version;
 }
 
-/** What a command needs: the voice (both models), to speak a line; Chrome, for anything HyperFrames draws or checks. */
+/**
+ * What a command needs: the voice (both models, and what marks a word's stress in Ukrainian and Russian),
+ * to speak a line; Chrome, for anything HyperFrames draws or checks.
+ */
 export type Need = "voice" | "browser";
+
+/** Supertonic's files, as any others that are pinned. */
+const SUPERTONIC_PINNED: Pinned = {
+  what: "the voice model",
+  name: SUPERTONIC,
+  url: (file) => `https://huggingface.co/${SUPERTONIC}/resolve/${SUPERTONIC_REVISION}/${file}`,
+  files: SUPERTONIC_FILES,
+};
+
+/** A line for pinned files of which some are not in the models' folder, naming them; none when all are. */
+function lacking(models: string, pinned: Pinned): string[] {
+  const dir = pinnedDir(models, pinned);
+  const files = Object.keys(pinned.files);
+  const lacks = files.filter((file) => !existsSync(path.join(dir, file)));
+  return lacks.length ? [`${pinned.what} (${pinned.name}): ${lacks.length === files.length ? `none of its ${files.length} files` : lacks.join(", ")} in ${dir}`] : [];
+}
+
+/** Whether what marks a word's stress is on this disk: `check` says the words it was not sure of only then. */
+export const marksReady = (cache: string): boolean => STRESS_FILES.every((pinned) => lacking(cachePaths(cache).models, pinned).length === 0);
 
 /** One line for each piece `needs` asks for that is not on this disk, naming it and where it should be. */
 export function missing(root: string, cache: string, needs: Need[]): string[] {
@@ -47,10 +72,7 @@ export function missing(root: string, cache: string, needs: Need[]): string[] {
     const dir = path.join(paths.models, ...MODEL.split("/"));
     const absent = MODEL_FILES.filter((file) => !existsSync(path.join(dir, file)));
     if (absent.length) lines.push(`the voice model (${MODEL}): ${absent.join(", ")} not in ${dir}`);
-    const supertonic = path.join(paths.models, ...SUPERTONIC.split("/"));
-    const files = Object.keys(SUPERTONIC_FILES);
-    const lacks = files.filter((file) => !existsSync(path.join(supertonic, file)));
-    if (lacks.length) lines.push(`the voice model (${SUPERTONIC}): ${lacks.length === files.length ? `none of its ${files.length} files` : lacks.join(", ")} in ${supertonic}`);
+    for (const pinned of [SUPERTONIC_PINNED, ...STRESS_FILES]) lines.push(...lacking(paths.models, pinned));
   }
   if (needs.includes("browser")) {
     const record = readRecord(paths.record);
@@ -102,15 +124,16 @@ async function hashOf(file: string): Promise<string> {
 }
 
 /**
- * Supertonic's files, at the revision pinned, into `dir`: each fetched into a `.part` beside it, and
- * named only once its size and sha256 are the ones pinned. One already there is kept when it is.
+ * Pinned files, at their revision, into their folder of `models`: each fetched into a `.part` beside
+ * it, and named only once its size and sha256 are the ones pinned. One already there is kept when it is.
  */
-async function fetchSupertonic(dir: string, progress: (info: ModelProgress) => void): Promise<void> {
-  for (const [file, { size, sha256 }] of Object.entries(SUPERTONIC_FILES)) {
+async function fetchPinned(models: string, pinned: Pinned, progress: (info: ModelProgress) => void): Promise<void> {
+  const dir = pinnedDir(models, pinned);
+  for (const [file, { size, sha256 }] of Object.entries(pinned.files)) {
     const target = path.join(dir, file);
     if (existsSync(target) && (await hashOf(target)) === sha256) continue;
     await mkdir(path.dirname(target), { recursive: true });
-    const url = `https://huggingface.co/${SUPERTONIC}/resolve/${SUPERTONIC_REVISION}/${file}`;
+    const url = pinned.url(file);
     const response = await fetch(url);
     if (!response.ok || !response.body) throw new Error(`${url}: ${response.status} ${response.statusText}`);
     const part = `${target}.part`;
@@ -139,8 +162,9 @@ async function fetchSupertonic(dir: string, progress: (info: ModelProgress) => v
 }
 
 /**
- * `setup`: fetches the voice models into the cache and has HyperFrames make sure of its Chrome, then
- * records where that is. What is already there is kept, so running it again only checks.
+ * `setup`: fetches the voice models and what marks a word's stress into the cache, and has HyperFrames
+ * make sure of its Chrome, then records where that is. What is already there is kept, so running it
+ * again only checks.
  */
 export async function setup(root: string, cache: string, log: (msg: string) => void): Promise<void> {
   const paths = cachePaths(cache);
@@ -151,8 +175,17 @@ export async function setup(root: string, cache: string, log: (msg: string) => v
   log(`  ${voices.length} voices`);
 
   log(`\nVoice model: ${SUPERTONIC} (about 400 MB the first time) in ${paths.models}`);
-  await fetchSupertonic(path.join(paths.models, ...SUPERTONIC.split("/")), progressLog(log));
+  await fetchPinned(paths.models, SUPERTONIC_PINNED, progressLog(log));
   log(`  ${(await new SupertonicProvider(paths.models).voices()).length} voices`);
+
+  log(`\nWord stress, in Ukrainian and Russian (about 390 MB the first time) in ${paths.models}`);
+  for (const pinned of STRESS_FILES) {
+    await fetchPinned(paths.models, pinned, progressLog(log));
+    log(`  ${pinned.what}: ${pinned.name}`);
+  }
+  // Each source marks what it knows: its files are read, as the commands will read them.
+  const mark = markerIn(paths.models);
+  for (const [language, words] of [["uk", "галявина"], ["ru", "старинный замок"]] as const) log(`  ${language}: ${(await mark(words, language)).text}`);
 
   log(`\nHyperFrames' Chrome`);
   if ((await hyperframes(root, root, ["browser", "ensure"])) !== 0) throw new Error("HyperFrames could not get its Chrome (above)");

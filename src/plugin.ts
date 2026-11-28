@@ -23,6 +23,8 @@ export type { Construction, Span, Worked } from "./formula.ts";
 export { plainValues } from "./values.ts";
 export { compile } from "./compile.ts";
 export type { Compiled, CompiledCaption, CompiledLine, CompiledScene, CompileSettings, Said, Sounded, Voiced } from "./compile.ts";
+/** A line's text as its captions show it, without the stresses it marks for its voice (AGENTS.md, "A word's stress"): for a plugin's tests. */
+export { unstressed } from "./stress.ts";
 /** What each frame of a compiled scenario shows, as the host gives it to a plugin's `script.draw`: for a plugin's tests. */
 export { pictureOf, shownAt } from "./shown.ts";
 export type { CompiledPicture, Shown, ShownAction } from "./shown.ts";

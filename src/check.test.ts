@@ -306,6 +306,27 @@ test("check refuses words in Cyrillic letters in a video in English: one that do
   assert.match(plan.stderr, /plan-cyrillic\.yaml: "Привіт\." is said by sq, who says it in Cyrillic letters, which no English voice reads, and the video is in English: it says no other language: a video in Ukrainian or Russian says so on top/);
 });
 
+test("check takes a word's stress, a mark right after a vowel, and refuses a mark that is not: a plan's lines alike", async () => {
+  const lines = (...rows: string[]) => script(rows).replace("use: square\n", "use: square\nlanguage: uk\nvoice: uk_f1\ncast: { pip: uk_m1, sq: uk_m2 }\n");
+  // A word is anchored at with its mark or without.
+  const good = await cli(["check", await video("stress", lines("[a] narrator say: Це стари\u0301й за\u0301мок.", "pip say @ a.word(замок): Так?", "sq say @ a.word(стари\u0301й): Ні."))]);
+  assert.equal(good.code, 0, good.stderr);
+  const stray = await cli(["check", await video("stray", lines("narrator say: Це за\u0301мок.", "pip say: Це замок\u0301."))]);
+  assert.equal(stray.code, 1);
+  assert.match(stray.stderr, /^1 mistake in .*stray\.yaml:\n/);
+  assert.ok(
+    stray.stderr.includes(
+      'stray.yaml:9: pip say: Це замок\u0301.\n  pip has a stress mark in "замок\u0301" that is not right after a vowel\n  Hint: a word\'s stress is an acute (U+0301) right after its stressed vowel, one for a stress: за\u0301мок\n',
+    ),
+    stray.stderr,
+  );
+  const plan = await cli(["check", await video("plan-stray", "use: square\nlanguage: uk\nvoice: uk_f1\ncast: { sq: uk_m2 }\nwait: 1\nsays: Це замок\u0301.\n")]);
+  assert.equal(plan.code, 1);
+  assert.ok(plan.stderr.includes('plan-stray.yaml: "Це замок\u0301." is said by sq, who has a stress mark in "замок\u0301" that is not right after a vowel: a word\'s stress is an acute (U+0301) right after'), plan.stderr);
+  const marked = await cli(["check", await video("plan-stress", "use: square\nlanguage: uk\nvoice: uk_f1\ncast: { sq: uk_m2 }\nwait: 1\nsays: Це за\u0301мок.\n")]);
+  assert.equal(marked.code, 0, marked.stderr);
+});
+
 test("check refuses a sound whose file is missing, by its name, and one that holds no sound, with the lines that play it", async () => {
   // The library's bell has its file, and so has the tune; the gong's is missing, and the words are none.
   const library = `${LIBRARY}sounds:\n  bell: { file: sounds/bell.wav }\n  gong: { file: sounds/gong.flac }\n  words: { file: sounds/words.wav }\n  tune: { file: sounds/tune.wav, volume: -20dB }\n`;

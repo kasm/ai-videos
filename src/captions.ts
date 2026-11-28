@@ -1,4 +1,6 @@
 // A line split into captions. Lines are known text, so no speech recognition is involved.
+import { unstressed } from "./stress.ts";
+
 const MAX_CHARS = 84; // a longer line is split
 const ROW_CHARS = 56; // and one in a small row, of two at once: so many fit the width of a landscape stage
 
@@ -41,10 +43,12 @@ function evenly(clause: string, max: number): string[] {
 
 /**
  * A line as captions: pieces that fit one each, timed in proportion to their length from `start` (seconds,
- * or frames). In a small `row` a piece is one row long; any other may take two.
+ * or frames). In a small `row` a piece is one row long; any other may take two. A word's stress, which
+ * the line may mark for its voice (stress.ts), is in none of them.
  */
 export function captionsOf(text: string, start: number, duration: number, row = false): { text: string; start: number; end: number }[] {
-  const chunks = row ? chunk(text, ROW_CHARS).flatMap((c) => evenly(c, ROW_CHARS)) : chunk(text, MAX_CHARS);
+  const shown = unstressed(text);
+  const chunks = row ? chunk(shown, ROW_CHARS).flatMap((c) => evenly(c, ROW_CHARS)) : chunk(shown, MAX_CHARS);
   const total = chunks.reduce((sum, c) => sum + c.length, 0);
   let t = start;
   return chunks.map((c) => {

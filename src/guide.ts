@@ -53,6 +53,7 @@ narrator ${SAY}: Then somebody calls: hello, is anyone there?
 
 - The lines happen in order, one after another: a line begins when everything above it has ended, after a short pause. So what is written above a line is over before the line is said.
 - A character's line is said in that character's voice, and the narrator's in the video's.
+- In a video in Ukrainian or Russian, a word the voice might stress wrong may have its stress marked: an acute right after the stressed vowel, as in за́мок or замо́к. The voice reads the mark, and the captions leave it out.
 - Write only what a line has: an action the list does not have, a value it does not take, or a name nobody has is refused, with the line and a hint.
 - A row that begins with \`#\` is a note: the tool passes over it, and over an empty row.
 
@@ -295,6 +296,7 @@ scenes:
 - Two rows on one channel of one character, directly in one \`together:\` or joined by \`&\`, the later with no start of its own.
 - In an \`ending together:\`, a row that has a time of its own, by an \`@\` or by \`arrive\`; a block, or a row joined by \`&\`; and two rows on one channel of one character. Anchor the whole block, and write a block beside it, in a \`together:\` around both.
 - A \`volume\` that is not in decibels, and one for an action: only what is said or played has one.
+- A stress mark that is not right after a vowel.
 - A sound that the library does not have, one whose file is not there, and anything but sounds in the cartoon's own script.
 - A value that nothing reads, values that read each other in a circle, and two of \`takes\`, \`speed\` and \`arrive\` set for one action on one level.
 - The length of a block, or of an action that is fitted to words or open: those are known only once everything has its place.

@@ -1,5 +1,6 @@
 // Turns measured narration into a timeline: the voice sets the clock.
 import type { SceneClip } from "./clip.ts";
+import type { Marker, Unsure } from "./marks.ts";
 import { voiceOf, type VideoScript } from "./script.ts";
 import { speak, type Engines } from "./tts.ts";
 
@@ -7,7 +8,10 @@ import { speak, type Engines } from "./tts.ts";
 export interface SpokenLine {
   /** 1-based position in the whole video. */
   n: number;
+  /** Its words as the voice was given them: the tool's stress marks in them (marks.ts). */
   text: string;
+  /** The words of it whose stress the tool was not sure of. */
+  unsure: Unsure[];
   /** Who says it, when the script names a speaker. */
   speaker?: string;
   cue?: string;
@@ -44,12 +48,16 @@ export interface Timeline {
 
 const round = (t: number) => Math.round(t * 1000) / 1000;
 
-/** Speaks every line (or takes it from the cache) and measures it: one list per scene. */
+/**
+ * Speaks every line (or takes it from the cache) and measures it: one list per scene. A line is said as
+ * `mark` marks it: the tool's marker, which gives each word of a line in Ukrainian or Russian its stress.
+ */
 export async function narrate(
   script: VideoScript,
   engines: Engines,
   cacheDir: string,
   log: (msg: string) => void,
+  mark: Marker,
 ): Promise<SpokenLine[][]> {
   let n = 0;
   const scenes: SpokenLine[][] = [];
@@ -59,13 +67,15 @@ export async function narrate(
       n++;
       // make has checked that each line has a voice in the video's language (check.ts, unspoken).
       const voice = voiceOf(script, line)!;
-      const spoken = await speak(engines(voice), cacheDir, { text: line.text, voice, speed: script.speed });
+      const { text, unsure } = await mark(line.text, script.language);
+      const spoken = await speak(engines(voice), cacheDir, { text, voice, speed: script.speed });
       // A line in another voice than the video's says whose, so a cast is checked by reading.
       const who = voice === voiceOf(script, {}) ? "" : ` (${[line.speaker, voice].filter(Boolean).join(", ")})`;
       log(`  line ${n}${who}: ${spoken.duration.toFixed(2)}s ${spoken.cached ? "(cached)" : "(generated)"}`);
       lines.push({
         n,
-        text: line.text,
+        text,
+        unsure,
         ...(line.speaker ? { speaker: line.speaker } : {}),
         cue: line.cue,
         audioFile: spoken.file,

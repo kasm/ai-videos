@@ -7,7 +7,8 @@ import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
 import { run } from "./render.ts";
-import { cachePaths, missing, ready } from "./setup.ts";
+import { STRESS_FILES } from "./marks.ts";
+import { cachePaths, marksReady, missing, ready } from "./setup.ts";
 import { SUPERTONIC, SUPERTONIC_FILES } from "./supertonic.ts";
 import { KokoroProvider, MODEL, MODEL_FILES } from "./tts.ts";
 
@@ -42,6 +43,7 @@ test("make on empty caches names the voice models and Chrome, and starts nothing
   assert.ok(stderr.includes("Missing, and not fetched:"), stderr);
   assert.ok(stderr.includes(`the voice model (${MODEL}): ${MODEL_FILES.join(", ")} not in ${modelDir(cache)}`), stderr);
   assert.ok(stderr.includes(`the voice model (${SUPERTONIC}): none of its 17 files in ${modelDir(cache, SUPERTONIC)}`), stderr);
+  for (const pinned of STRESS_FILES) assert.ok(stderr.includes(`${pinned.what} (${pinned.name}): none of its ${Object.keys(pinned.files).length} files in ${modelDir(cache, pinned.name)}`), stderr);
   assert.ok(stderr.includes(`HyperFrames' Chrome: none found by setup (no ${cachePaths(cache).record})`), stderr);
   assert.ok(stderr.includes(`Run "npm run video -- setup" once, with the network on`), stderr);
   // Nothing begun: no step logged, the cache as empty as it was, the project as it was (no .cache/ or out/).
@@ -83,14 +85,32 @@ test("each piece is named on its own, and nothing once all are there", async () 
   await files(model, MODEL_FILES.slice(0, -1));
   const theirs = Object.keys(SUPERTONIC_FILES);
   await files(supertonic, theirs.filter((file) => !file.startsWith("voice_styles/M")));
+  // What marks a word's stress is part of the voice: each language's sources.
+  const stress = STRESS_FILES.map((pinned) => `${pinned.what} (${pinned.name}): none of its ${Object.keys(pinned.files).length} files in ${modelDir(cache, pinned.name)}`);
+  assert.deepEqual(stress.map((line) => line.split(":")[0]), [
+    "the Ukrainian stress dictionary (lang-uk/ukrainian-word-stress)",
+    "the Ukrainian stress model (TigreGotico/stressonnx-models)",
+    "the Russian homographs and their model (ruaccent/accentuator)",
+  ]);
   assert.deepEqual(missing(ROOT, cache, ["voice"]), [
     `the voice model (${MODEL}): onnx/model.onnx not in ${model}`,
     `the voice model (${SUPERTONIC}): voice_styles/M1.json, voice_styles/M2.json, voice_styles/M3.json, voice_styles/M4.json, voice_styles/M5.json in ${supertonic}`,
+    ...stress,
   ]);
   await files(model, ["onnx/model.onnx"]);
-  assert.deepEqual(missing(ROOT, cache, ["voice"]), [`the voice model (${SUPERTONIC}): voice_styles/M1.json, voice_styles/M2.json, voice_styles/M3.json, voice_styles/M4.json, voice_styles/M5.json in ${supertonic}`]);
+  assert.deepEqual(missing(ROOT, cache, ["voice"]), [`the voice model (${SUPERTONIC}): voice_styles/M1.json, voice_styles/M2.json, voice_styles/M3.json, voice_styles/M4.json, voice_styles/M5.json in ${supertonic}`, ...stress]);
   await files(supertonic, theirs);
+  assert.deepEqual(missing(ROOT, cache, ["voice"]), stress);
+  assert.ok(!marksReady(cache));
+  // One of them with a file missing names the file.
+  const [dictionary, ...others] = STRESS_FILES;
+  await files(modelDir(cache, dictionary!.name), ["LICENSE"]);
+  for (const pinned of others) await files(modelDir(cache, pinned.name), Object.keys(pinned.files));
+  assert.deepEqual(missing(ROOT, cache, ["voice"]), [`the Ukrainian stress dictionary (lang-uk/ukrainian-word-stress): ukrainian_word_stress/data/stress.trie in ${modelDir(cache, dictionary!.name)}`]);
+  assert.ok(!marksReady(cache));
+  await files(modelDir(cache, dictionary!.name), Object.keys(dictionary!.files));
   assert.deepEqual(missing(ROOT, cache, ["voice"]), []);
+  assert.ok(marksReady(cache));
   assert.deepEqual(ready(ROOT, cache, ["voice"]), {});
 
   const record = cachePaths(cache).record;
