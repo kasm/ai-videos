@@ -9,6 +9,7 @@ import { captionsOf } from "./captions.ts";
 import { compile, saidLines } from "./compile.ts";
 import { sceneCaptions } from "./compose.ts";
 import { GUIDE_WORDS } from "./guide.ts";
+import { unmarked } from "./marks.ts";
 import type { VideoScript } from "./script.ts";
 import { STRESS, mismarked, unstressed } from "./stress.ts";
 import { modelText } from "./supertonic.ts";
@@ -77,7 +78,7 @@ test("the voice reads the mark, and no caption shows it: a plan's line", async (
     timing: { lead: 0.6, gap: 0.4, tail: 1, moves: { slowest: 0.5, fastest: 2 } },
     scenes: [{ id: "one", limits: {}, narration: [{ text }] }],
   };
-  const [lines] = await narrate(script, () => voice, scratch, () => {});
+  const [lines] = await narrate(script, () => voice, scratch, () => {}, unmarked);
   assert.deepEqual(asked, [{ text, voice: "uk_f1", speed: 1 }]);
   const captions = sceneCaptions({ id: "one", start: 0, duration: 3, lines: lines!.map((line) => ({ ...line, start: 0.6, localStart: 0.6 })) });
   assert.deepEqual(captions.map((caption) => caption.text), ["Це замок, а не замок."]);

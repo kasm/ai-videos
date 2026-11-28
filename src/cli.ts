@@ -11,6 +11,7 @@ import { drawnTo, fitClip, requestDocument, requestText, type Fit } from "./fit.
 import { Call, pluginOf, startPlugin, type PluginHost } from "./make.ts";
 import { importReply } from "./import.ts";
 import { lock } from "./lock.ts";
+import { markerIn, unsureRows, type Marked, type Unsure } from "./marks.ts";
 import { mouthTrack } from "./mouth.ts";
 import { listed } from "./names.ts";
 import { promptFor } from "./prompt.ts";
@@ -20,11 +21,12 @@ import { hyperframes, muxSound, renderProject } from "./render.ts";
 import { NARRATOR, issuesText, linesIn, type Default } from "./scenario.ts";
 import { FORMATS, LANGUAGES, voiceOf, type EventLimitsScript, type FormatName, type Language, type LoadedVideo } from "./script.ts";
 import { PORT, makeBy, serve } from "./serve.ts";
-import { cachePaths, cacheRoot, ready, setup } from "./setup.ts";
+import { cachePaths, cacheRoot, marksReady, ready, setup } from "./setup.ts";
 import { pictureOf } from "./shown.ts";
 import { compiledSounds, compiledVoices, mixKey, writeMix, writeSound } from "./sound.ts";
 import { PLAYING, codeKey, folderKey, inputsKey, keyOf, stagesIn, type Stages } from "./stages.ts";
 import { runStory, windowsIO } from "./story.ts";
+import { STRESS } from "./stress.ts";
 import { buildTimeline, narrate } from "./timeline.ts";
 import { enginesIn, readWav, speak, toolVoices } from "./tts.ts";
 import { PROFILES, formatOf, readProject, readVideoFile, scriptOf, type VideoFile } from "./video-file.ts";
@@ -47,8 +49,9 @@ A video is one file, <name>.yaml, in a project whose package.json names the plug
 (AGENTS.md, "A video file"). A path is relative to where the command is run.
 
 Commands
-  setup             Fetch once what the other commands need: the voice model and HyperFrames'
-                    Chrome. The only command that uses the network (AGENTS.md, "Offline")
+  setup             Fetch once what the other commands need: the voice models, what marks a
+                    word's stress in Ukrainian and Russian, and HyperFrames' Chrome. The only
+                    command that uses the network (AGENTS.md, "Offline")
   make <file.yaml>  A video: its plan, the voices and the fit, the sound, then what its outputs
                     turn on: its page (off by default), and the drawing, check and the video, each
                     stage from the cache when what it is made from is unchanged. Writes the
@@ -58,7 +61,8 @@ Commands
                     place of the plan and the fit, and made from that (AGENTS.md, "A script")
   check <file.yaml> A video file checked, with nothing spoken or written: a script's mistakes each
                     with its line and a hint, or the defaults it takes; any other file as its
-                    plugin checks it. Needs nothing from setup (AGENTS.md, "A script")
+                    plugin checks it. Needs nothing from setup; with setup's files there, it
+                    lists the words whose stress the tool was not sure of (AGENTS.md, "A script")
   story <story.md>  A story to its videos, by a web chat and the clipboard: the prompt copied, each
                     answer copied back into <name>.reply.md (<name>-uk.reply.md for Ukrainian) and
                     imported, what was refused copied for the chat, then each episode made. Goes on
@@ -136,9 +140,35 @@ function logDefaults({ defaults }: { defaults: Default[] }): void {
 }
 
 /**
+ * The words whose stress the tool was not sure of (marks.ts), a row for each as it is said, with the
+ * lines that say it. Nothing when it was sure of all.
+ */
+function logUnsure(lines: { line: number; unsure: Unsure[] }[]): void {
+  const rows = unsureRows(lines);
+  if (rows.length === 0) return;
+  const one = rows.length === 1;
+  log(`Word stress: the tool was not sure of ${count(rows.length, "word")}, ${one ? "" : "each "}here as it is said. A mark in its line settles ${one ? "it" : "one"} (за${STRESS}мок):`);
+  for (const row of rows) log(`  ${row}`);
+}
+
+/**
+ * `check`'s look at the stresses of a video in Ukrainian or Russian: the words the tool is not sure of,
+ * when what marks them is on this disk; else it says that it did not look.
+ */
+async function checkStress(language: Language, said: { line: number; text: string }[]): Promise<void> {
+  if (language === "en") return;
+  if (!marksReady(CACHE)) return log(`Word stress was not looked at: what marks it is not on this disk (npm run video -- setup).`);
+  const mark = markerIn(MODELS);
+  const marked: { line: number; unsure: Unsure[] }[] = [];
+  for (const { line, text } of said) marked.push({ line, unsure: (await mark(text, language)).unsure });
+  logUnsure(marked);
+}
+
+/**
  * `check <file>`: a video file checked, with nothing spoken and nothing written. A script by the
  * check above; any other file as import checks an episode: mended, checked and planned by its
- * plugin, every speaker with a voice the tool speaks in.
+ * plugin, every speaker with a voice the tool speaks in. Then the words whose stress the tool is not
+ * sure of, when what marks them is on this disk.
  */
 async function checkFile(file: string): Promise<void> {
   const video = await readVideoFile(file);
@@ -151,7 +181,8 @@ async function checkFile(file: string): Promise<void> {
       const said = lines.filter((line) => "text" in line).length;
       const played = lines.filter((line) => "sound" in line).length;
       log(`Checked: ${shown}, a script of ${count(video.script.scenes.length, "scene")} and ${count(lines.length, "line")}, ${said} of them said${played > 0 ? ` and ${played} played` : ""}.`);
-      return logDefaults(checked);
+      logDefaults(checked);
+      return await checkStress(video.settings.language, lines.flatMap((line) => ("text" in line ? [{ line: line.line, text: line.text }] : [])));
     }
     sameScene(video, host);
     const { repaired, plan } = await host.check(video.file, video.source, video.library);
@@ -161,6 +192,7 @@ async function checkFile(file: string): Promise<void> {
     if (unsaid) throw new Error(`${video.file}: ${unsaid}`);
     log(`Checked: ${shown}, ${count(plan.events.length, "event")} and ${count(said.length, "line")}.`);
     if (repaired.length > 0) log(`Mended by the plugin, in what it draws (the file is as written):\n${repaired.map((r) => `  - ${r}`).join("\n")}`);
+    await checkStress(script.language, said.map(({ text }, i) => ({ line: i + 1, text })));
   } finally {
     host.close();
   }
@@ -215,6 +247,11 @@ async function playScript(video: VideoFile, fit: boolean, plugin: () => Promise<
 
   begin("the voices and the compiled scenario");
   const { language, speed, fps, loudness, timing } = video.settings;
+  // Each said line as the voice is to say it: the tool's stress marks in it (marks.ts).
+  const mark = markerIn(MODELS);
+  const marked = new Map<number, Marked>();
+  for (const line of lines) if ("text" in line) marked.set(line.line, await mark(line.text, language));
+  logUnsure(Array.from(marked, ([line, { unsure }]) => ({ line, unsure })));
   log(`Narration (${lineVoice(video.settings, NARRATOR) ?? "no voice"}, ${LANGUAGES[language]})`);
   const engines = enginesIn(MODELS);
   const voices: Voiced[] = [];
@@ -232,12 +269,13 @@ async function playScript(video: VideoFile, fit: boolean, plugin: () => Promise<
     }
     // The check has given each said line a voice in the video's language.
     const spokenIn = lineVoice(video.settings, line.who)!;
-    const spoken = await speak(engines(spokenIn), TTS_CACHE, { text: line.text, voice: spokenIn, speed });
+    const { text } = marked.get(line.line)!;
+    const spoken = await speak(engines(spokenIn), TTS_CACHE, { text, voice: spokenIn, speed });
     log(`  line ${line.line} (${line.who}, ${spokenIn}): ${spoken.duration.toFixed(2)}s ${spoken.cached ? "(cached)" : "(generated)"}`);
     own.set(line.line, spoken.duration);
     // A line begins on a frame, so its mouth is the same wherever it begins.
     const mouth = mouthTrack(await readWav(spoken.file), 0, fps).open;
-    voices.push({ file: path.basename(spoken.file), duration: spoken.duration, mouth });
+    voices.push({ file: path.basename(spoken.file), duration: spoken.duration, mouth, text });
   }
   const file = path.join(video.cache, "compiled.json");
   const from = path.relative(video.cache, video.file).split(path.sep).join("/");
@@ -368,7 +406,8 @@ async function playPlan(video: VideoFile, fit: boolean, plugin: () => Promise<Pl
   const unsaid = await unspoken(script);
   if (unsaid) throw new Error(`${video.file}: ${unsaid}`);
   log(`Narration (${voiceOf(script, {}) ?? "no voice"}, ${LANGUAGES[script.language]})`);
-  const [spoken] = await narrate(script, enginesIn(MODELS), TTS_CACHE, log);
+  const [spoken] = await narrate(script, enginesIn(MODELS), TTS_CACHE, log, markerIn(MODELS));
+  logUnsure(spoken!.map(({ n, unsure }) => ({ line: n, unsure })));
   const voiced = spoken!.map((l) => [l.text, l.speaker, l.cue, path.basename(l.audioFile), l.duration]);
   const fitKey = keyOf("fit", plan, voiced, script.fps, script.timing);
   // With --fit the fit is shown, from the cache or not.
@@ -581,8 +620,11 @@ async function main() {
       uk: "Це зразок мого голосу, щоб ви могли вибрати той, який вам до вподоби.",
       ru: "Это образец моего голоса, чтобы вы могли выбрать тот, который вам нравится.",
     };
+    const mark = markerIn(MODELS);
     for (const { name, language } of voices.filter((v) => !v.language.startsWith("en-") || sampled.includes(v.name))) {
-      const spoken = await speak(engines(name), TTS_CACHE, { text: arg ?? samples[language.slice(0, 2)]!, voice: name, speed: 1 });
+      // A sample is said as a video's line is: its words' stresses marked.
+      const { text } = await mark(arg ?? samples[language.slice(0, 2)]!, language.slice(0, 2) as Language);
+      const spoken = await speak(engines(name), TTS_CACHE, { text, voice: name, speed: 1 });
       await copyFile(spoken.file, path.join(dir, `${name}.wav`));
       log(`  ${name}.wav ${spoken.cached ? "(cached)" : "(generated)"}`);
     }

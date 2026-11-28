@@ -14,12 +14,14 @@ import { times, type Item } from "./times.ts";
 /**
  * A line's voice, spoken and measured: its file's name in the tool's voice cache, its length,
  * seconds, and how open a mouth is while it sounds (mouth.ts), a number for each frame from the
- * one it begins on.
+ * one it begins on; and its words as the voice was given them, with the tool's stress marks
+ * (marks.ts), when that is not the line as written.
  */
 export interface Voiced {
   file: string;
   duration: number;
   mouth: number[];
+  text?: string;
 }
 
 /** What a scenario is compiled by: the video's frame rate, its loudness, and its limits on a fitted action (script.ts, settings). */
@@ -186,8 +188,8 @@ export function compile(scenes: CheckedScene[], voices: Voiced[], settings: Comp
       if (at.frames === 0) return [];
       if ("sound" in line) return [{ ...at, sound: line.sound, volume: line.volume }];
       if (!("text" in line)) return [{ ...at, values: line.values }];
-      const { file, mouth } = voiceOf.get(line)!;
-      const compiled = { ...at, text: line.text, volume: line.volume, file, mouth: mouth.slice(0, at.frames), captions: [] };
+      const { file, mouth, text = line.text } = voiceOf.get(line)!;
+      const compiled = { ...at, text, volume: line.volume, file, mouth: mouth.slice(0, at.frames), captions: [] };
       lasts.set(compiled, lasting(line).length as number);
       return [compiled];
     });

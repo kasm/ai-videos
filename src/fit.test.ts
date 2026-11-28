@@ -121,7 +121,7 @@ test("a request adds up to the video's length, and a clip drawn to it puts every
 
   // Built as one scene, the video lasts what the request does, and each line starts where the fit put it.
   const script = { fps: F, timing: { lead: 0.6, gap: 0.4, tail: 1 }, scenes: [{ id: "square", narration: [] }] } as unknown as VideoScript;
-  const spoken: SpokenLine[] = SQUARE_LINES.map((l, i) => ({ ...l, n: i + 1, audioFile: "" }));
+  const spoken: SpokenLine[] = SQUARE_LINES.map((l, i) => ({ ...l, n: i + 1, audioFile: "", unsure: [] }));
   const notes: string[] = [];
   const timeline = buildTimeline(script, new Map([["square", { byFormat: {}, duration: fit.duration, events: drawn }]]), [spoken], (m) => notes.push(m));
   assert.equal(timeline.duration, Math.round(fit.duration * 1000) / 1000, "the video's length is the request's");

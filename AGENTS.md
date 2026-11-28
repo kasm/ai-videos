@@ -9,7 +9,7 @@ Node; there is no Python in this project.
 ## Commands
 
 ```
-npm run video -- setup                        once: fetch the voice models and HyperFrames' Chrome (see Offline)
+npm run video -- setup                        once: fetch the voice models, what marks a word's stress, and HyperFrames' Chrome (see Offline)
 npm run video -- make <dir>/<name>.yaml       a video, from its one file (see Projects, make)
 npm run video -- make <file> --fit            only the plan and the fit, in seconds
 npm run video -- make <file> --profile quiet  the same, a profile's settings over the rest
@@ -45,7 +45,7 @@ the voice models always stay in this tool.
 | Path | What it is |
 | --- | --- |
 | `scenes/clip/scene.html` | The scene template (a HyperFrames sub-composition with `{{placeholders}}`): the plugin's clip, muted, with the captions over it. |
-| `src/` | The pipeline: `video-file` (the file, its settings in layers, and the `script` the pipeline reads) → the plugin in its process (`plugin`, `make`, `host`): its plan → `tts` (with `supertonic`) → `timeline` (and `fit` with `mouth`) → `sound` → the drawing (`moments`, `frames`, `clip`) → `compose` (with `bundle` and `captions`) → `render`; `page`, the web page; `stages` and `lock`, a make's cache and its lock (see The cache); `setup`, what the commands need on the disk; `prompt` and `import`, a story's prompt for a web chat and its reply taken in, and `story`, the two by the clipboard and the episodes made (see prompt, import, story); `serve`, a story's text taken, its prompt given, the chat's answers imported and its episodes made by a page in a browser, the page being `serve.html` (see serve); `loudness`, how loud a voice or a sound is (see How loud); `stress`, a word's stress marked in a line (see A word's stress); `read`, `scenario` with `names` and `labels`, `values` with `formula`, `plan` with `times` and `words`, `compile`, `shown` and `guide` (with `guide-uk` and `guide-ru`), a video written as a script: its lines and blocks read and checked, what its values come to, when each begins and ends, compiled, what each frame of it shows, and how it is taught, in each language (see A script, Values, What happens at once), and `check`, the check of a script as `check`, `make` and `import` run it; `random`, what every random test draws from, to say how many different scripts or plans it tried. |
+| `src/` | The pipeline: `video-file` (the file, its settings in layers, and the `script` the pipeline reads) → the plugin in its process (`plugin`, `make`, `host`): its plan → `tts` (with `supertonic`) → `timeline` (and `fit` with `mouth`) → `sound` → the drawing (`moments`, `frames`, `clip`) → `compose` (with `bundle` and `captions`) → `render`; `page`, the web page; `stages` and `lock`, a make's cache and its lock (see The cache); `setup`, what the commands need on the disk; `prompt` and `import`, a story's prompt for a web chat and its reply taken in, and `story`, the two by the clipboard and the episodes made (see prompt, import, story); `serve`, a story's text taken, its prompt given, the chat's answers imported and its episodes made by a page in a browser, the page being `serve.html` (see serve); `loudness`, how loud a voice or a sound is (see How loud); `stress`, a word's stress marked in a line, and `marks` (with `stress-uk` and `marisa`, `stress-ru`, and `pinned`), the tool's own marks (see A word's stress); `read`, `scenario` with `names` and `labels`, `values` with `formula`, `plan` with `times` and `words`, `compile`, `shown` and `guide` (with `guide-uk` and `guide-ru`), a video written as a script: its lines and blocks read and checked, what its values come to, when each begins and ends, compiled, what each frame of it shows, and how it is taught, in each language (see A script, Values, What happens at once), and `check`, the check of a script as `check`, `make` and `import` run it; `random`, what every random test draws from, to say how many different scripts or plans it tried. |
 | `cartoons/` | A project of the tool's, in this repo: the cartoon plugin (`cartoons/src/plugin.ts`), its library, videos and stories, and its notes, `cartoons/CLAUDE.md`. Its `episode` skill is the repo's, `.claude/skills/episode/`. |
 | `out/voice-samples/` | What `voices` writes. |
 | `.cache/tts/` | Narration audio, keyed by text, voice and speed. |
@@ -293,7 +293,9 @@ scenes:
 - **`check <file>`** runs the check alone: it speaks and writes nothing, needs nothing from
   `setup` (for a script that plays sounds, ffmpeg), says the defaults taken (see Values), and exits with 1 when it refuses. A video file that is not a script it takes as
   `import` takes an episode: mended, checked and planned by its plugin, every speaker with a voice
-  the tool speaks in, in the video's language.
+  the tool speaks in, in the video's language. Of a video in Ukrainian or Russian it then lists the
+  words whose stress the tool is not sure of (see A word's stress), when what marks them is on the
+  disk; with none, it says that it did not look.
 - **`make <file>`** runs the check, speaks and measures each said line (the voice cache), and
   writes the compiled scenario, `.cache/<name>/compiled.json`, with its timing shown; `--fit` stops
   there. Then it makes what any video's outputs say, as any video's (see make), from that file, read
@@ -569,18 +571,52 @@ says whose it is (`enginesIn`). Each voice has its language (`toolVoices`):
   apostrophe (ʼ) and low quote („) are read as `'` and `"`.
 
 `voices` lists them by language and writes a sample of a few of Kokoro's and each of Supertonic's,
-each in its own language, or the text given. `src/supertonic.test.ts` shows each rule.
+each in its own language, or the text given, said as a video's line is (see A word's stress).
+`src/supertonic.test.ts` shows each rule.
 
 ### A word's stress
 
-Supertonic picks each word's stress itself, and gets some wrong. A line of a video in Ukrainian or
-Russian, a script's or a plan's, may mark a word's: a combining acute (U+0301) right after the
-stressed vowel, `за́мок` or `замо́к` (`src/stress.ts`).
+Supertonic picks each word's stress itself, and gets some wrong. So a word of a line in Ukrainian or
+Russian, a script's or a plan's, has its stress marked before the voice says it: a combining acute
+(U+0301) right after the stressed vowel, `за́мок` or `замо́к` (`src/stress.ts`). The writer marks a
+word in the line, or the tool marks it (`src/marks.ts`).
 
-- **The voice** gets the line's text as written, its marks too, and Supertonic reads a mark as the
-  word's stress (measured: `docs/plans/word-stress.md`). So the compiled scenario's `text` and a
-  request's have them. A marked line is another line to the voice cache, and one marked all through
-  lasts 4 to 6 % longer.
+- **The tool's marks:** a word of two vowels or more with no mark of the writer's is given one by its
+  language's source, read from this disk alone (see Offline): in Ukrainian each word, in Russian a
+  homograph alone. A word the writer marked is as written, and so is a line in English. How the
+  sources were picked and tried is in `docs/plans/word-stress.md`.
+  - **Ukrainian** (`src/stress-uk.ts`): lang-uk's dictionary (ukrainian-word-stress, MIT), a marisa
+    trie of 2.9 million forms, read by `src/marisa.ts`. A form with one stress has it, and one with
+    two, either of them right (за́вжди́), has one of the two. A form the dictionary has under two
+    stresses by what it means (гні́зда, гнізда́: a word in seven of the stories tried), or lacks, is
+    a guess: Silero's stress model (MIT, as TigreGotico exports it to ONNX) reads the word's letters
+    and no line, and was right four times of five. A guess is said when it is one of the
+    dictionary's own stresses for the word. A few pronouns are the tool's own: forms the dictionary
+    lacks or has otherwise (його́, ньо́го), and those whose stress moves after a preposition (мене́,
+    до ме́не; кому́, на ко́му).
+  - **Russian** (`src/stress-ru.ts`): RUAccent (MIT). Only a homograph is marked (за́мок, замо́к;
+    дела́, де́ла), one of the 19,700 words its list has under two stresses: it has the reading its
+    network gives it from the sentence, and none is listed. Any other word has no mark, and the
+    voice stresses it itself: a mark spoils some of the words it is put in (below), so the tool puts
+    one only where the letters do not say the stress. A word the voice still stresses wrong
+    (молодость) is the writer's to mark. A reading stressed on its ё has no mark, and a ё written
+    as е is not put back.
+- **What it was not sure of** is said by `check` and `make`: a row for each word as it is said, with
+  the lines that say it. A guess has the dictionary's other stresses, `гнізда́ (or гні́зда): lines
+  12, 40`; a word no dictionary has says so, `Ропухо́вих (not in the dictionary): line 33`; and one
+  the model is no surer of is left to the voice. A mark in the line settles a word there. `check`
+  says them when the sources' files are on the disk, and else that it did not look; `import` says
+  none.
+- **The voice** gets the line with its marks, the writer's and the tool's, and Supertonic reads a
+  mark as the word's stress (measured: `docs/plans/word-stress.md`). So the compiled scenario's
+  `text` and a request's are the line as it is said. A marked line is another line to the voice
+  cache, and one marked all through lasts 4 to 6 % longer.
+- **A mark is no sure thing.** The voice follows it mostly, not always, and a marked word may be read
+  worse. Heard in a Russian video with a mark in every word: the wrong stresses mended, and of 150
+  marked words eight spoiled, each rightly marked: a ё read as е (Серё́га), сего́дня and друго́го
+  with their г, коне́чно with its чн, худо́й as «худай». So in Russian a word is marked where it is
+  said wrong, or where its letters do not say its stress, and nowhere else. A Ukrainian video with
+  a mark in every word was heard much better than with none, and so the tool marks each.
 - **Nothing shows it:** the captions, the video's and the page's, are the text without its marks
   (`captionsOf`), split and timed by what they show. `ai-videos/plugin` exports `unstressed`, a
   text as it is shown, for a plugin's tests.
@@ -592,7 +628,9 @@ stressed vowel, `за́мок` or `замо́к` (`src/stress.ts`).
   own (a Latin é), and no stress.
 - **The guide** says how a word is marked, in each language (see A script).
 
-`src/stress.test.ts` and `src/check.test.ts` show each rule.
+`src/stress.test.ts`, `src/marks.test.ts` and `src/check.test.ts` show each rule. The sources
+themselves are tried on words whose stress is known when `setup` has fetched their files, and are
+passed over when it has not.
 
 ### The library
 
@@ -659,7 +697,7 @@ comes before the page: a step of its own when the video is made too, else the pa
 | Stage | Made from | What it makes, in `.cache/<name>/` |
 | --- | --- | --- |
 | The plan | the source, `use`, the library (but its voices and volumes), the plugin's code, its inputs | `plan.json`, and in `stages.json` the format, the picture, what was mended, the limits and the inputs |
-| The voices | each line's text, voice and `speed` (the tool's voice cache) | |
+| The voices | each line's text as it is said (see A word's stress), voice and `speed` (the tool's voice cache) | |
 | The fit | the plan, the voices, `fps`, `timing` | `clips/<name>-<format>.request.json` |
 | The sound | each line's voice and when it starts (the fit's timeline), the video's length, `loudness` | `sound.m4a` |
 | The drawing | the request, the source, the library (but its voices and volumes), the plugin's code, its inputs | `clips/<name>-<format>.mp4`, its `.json`, `.frames` and (drawn) `.svgs` |
@@ -980,6 +1018,11 @@ Only `setup` uses the network. It fetches once what no other command may fetch:
   325 MB), and Supertonic (`Supertone/supertonic-3`, about 400 MB), each file of a revision pinned
   and checked against its sha256 (`SUPERTONIC_FILES`, `src/supertonic.ts`). Supertonic's weights are
   under BigScience OpenRAIL-M, whose use rules have a published video say its voices are machine-made;
+- what marks a word's stress in Ukrainian and Russian (see A word's stress), about 390 MB, beside
+  the voice models and pinned and checked as Supertonic is (`STRESS_FILES`, `src/marks.ts`): the
+  Ukrainian dictionary (`lang-uk/ukrainian-word-stress`, on GitHub, 13 MB), Silero's Ukrainian
+  model as ONNX (`TigreGotico/stressonnx-models`, 10 MB), and RUAccent's list of homographs and
+  the model that reads them (`ruaccent/accentuator`, 365 MB), each with its licence;
 - HyperFrames' Chrome (chrome-headless-shell), which HyperFrames keeps in its own cache
   (`~/.cache/hyperframes/`); `setup` records where, and for which HyperFrames, in `.cache/setup.json`.
 
@@ -989,7 +1032,8 @@ bundles a web page's drawing (see The web page). Running `setup` again keeps wha
 checks it.
 
 Every other command first checks that what it needs is on the disk (`src/setup.ts`): both voice
-models' files, and for anything HyperFrames draws or checks, its Chrome. A piece missing stops the
+models' files and what marks a word's stress, and for anything HyperFrames draws or checks, its
+Chrome. A piece missing stops the
 command before it writes anything, naming the piece and where it should be, with "run setup":
 nothing is fetched. HyperFrames gets its Chrome by path (`HYPERFRAMES_BROWSER_PATH`), so it never
 downloads one, and runs with its update check off. `src/setup.test.ts` and `src/bundle.test.ts`
