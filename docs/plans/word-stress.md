@@ -58,7 +58,46 @@
     dictionary, then Silero for what it leaves, 594, 25 wrong.
   - The scripts, the answers and the downloads (735 MB, each at a pinned
     revision, `scripts/fetch.sh`) are in `out/stress-sources/`.
-- **Next: step 3.**
+- Step 3 done 2026-11-28, on the user's word that day.
+  - The rule, as the user heard it out. Ukrainian: each word is marked,
+    by lang-uk's trie (MIT, 12.6 MB; a reader ported from libmarisa
+    reads it from Node, and it answers as the text dictionary did on
+    each of the 620 words), then by Silero's guess, said and listed:
+    the user's choice 2026-11-27. Russian: a homograph alone, by
+    RUAccent's network from its sentence.
+  - Why not each Russian word: `m4-ru` made so, 2026-11-27, had its four
+    wrong stresses mended and eight words spoiled, each rightly marked:
+    a ё read as е (Серё́га), г and чн read as written (сего́дня,
+    коне́чно), худо́й as «худай». The user chose homographs alone that
+    day. RUAccent's dictionary and its network of letters, 365 MB of
+    its 402, are not fetched.
+  - A table of Ukrainian pronouns (`src/stress-uk.ts`) is the tool's
+    own: forms the dictionary lacks or has otherwise (його́), and the
+    stress that moves after a preposition (до ме́не). Asked 2026-11-28,
+    the user did not answer; it stays.
+  - Heard by the user 2026-11-28. `m4-ru`, no mark written: of the four
+    words wrong before, three are right (дела, другом, стоит); with
+    молодость marked in its line, none is wrong. `forest1-uk-1`, no
+    mark written, is much better than before; then the user marked
+    вапна́ and гні́зда in their lines, two of the six words `check`
+    lists there, and made it again.
+  - Counted on step 2's lines: Ukrainian 602 of 620 words right, 17
+    wrong, 1 left to the voice, each of the 18 in the list `make`
+    prints; Russian 40 of the 40 homograph sentences.
+  - The network: no video was made with it off. In its place, `make
+    --fit` of `forest1-uk-2` and `m5-ru`, neither with a mark written,
+    every connection from Node refused but this machine's own: the
+    first said its 23 lines anew, the second the four with a homograph,
+    and no connection was tried. `setup`, run again, found each source
+    whole and fetched nothing.
+  - `npm test` (383, the sources' own tests on the fetched files too)
+    and `npm run typecheck` pass. `make cartoons/videos/hello.yaml` took
+    its voices and its sound from the cache.
+  - Each video as it was before any mark is in
+    `cartoons/out/before-stress/`; the trial's scripts, and the page the
+    user listened by, are in `out/stress-sources/`.
+- **Next: nothing. The three steps are done; the plan goes to
+  `docs/plans/done/` on the user's word.**
 
 
 ## Goal
